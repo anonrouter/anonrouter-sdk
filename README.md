@@ -54,6 +54,34 @@ on any of them, because the words matter.
   plaintext / TEE / private routes, and it is explicitly not the confidential
   package.
 
+### Two hops, verified separately
+
+A request passes through two parties, and verifying one tells you nothing about
+the other:
+
+| | Question it answers | How to verify |
+| --- | --- | --- |
+| **Hop 1** AnonRouter's own routing plane | Is the data plane I am connected to the exact reviewed build, running inside an Intel TDX confidential VM, bound to my nonce and my origin? | `verifyGateway()` / `verify_gateway()` |
+| **Hop 2** the downstream provider route | Did the model provider terminate my request inside a verified enclave running measurements I pinned? | `verifyAttestation()` / `verify_attestation()` |
+
+A verified hop 2 says nothing about who routed the request to it. A verified hop 1
+says nothing about where inference actually ran. `verify()` establishes both and
+reports them separately, and `trusted` covers only the hops the call asked for, so
+a report can never read as though it had covered a hop it skipped.
+
+Hop 1 pins live in `shared/gateway-policies.json`. The policy a gateway is held to
+must never be fetched from that gateway: a server that could hand you the list of
+builds you accept could always name itself. So the pins ship inside the packages,
+and an origin with no pin fails closed rather than falling back to the server's own
+claim about itself.
+
+Two caveats on the pin shipped today. It is marked `candidate`, because the
+confidential plane is pre-release and its measurements move on every release, so
+resolving it takes an explicit opt-in. And it requires hardware verification while
+these packages ship no DCAP engine, so it fails closed with reason
+`quote_signature_chain` unless you supply your own chain verifier. That is the
+honest outcome: nobody has checked the quote came from real silicon.
+
 ### The trust boundary that actually earns the claim
 
 Verification is only as strong as where the verifier runs.
@@ -84,7 +112,11 @@ The SDK reports a `verification_level` and never inflates it:
 - `hardware-verified` is a clearly labeled future upgrade, not a current claim.
   The Intel side is within reach (a pinned Intel root chain already exists in the
   product code). The NVIDIA GPU root pinning is the hard, partly blocked piece.
-  Until it ships, the SDK will not print `hardware-verified`.
+  Until it ships, the SDK will not print `hardware-verified` on its own.
+  Gateway verification exposes the seam as an explicit `chainVerifier` /
+  `chain_verifier` port: plug in a DCAP engine and the verdict can reach
+  `hardware-verified`; plug in none and a policy demanding it fails closed rather
+  than quietly settling for the weaker level and still reporting success.
 
 ## Quickstart: `@anonrouter/confidential` (JavaScript)
 

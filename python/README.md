@@ -45,7 +45,17 @@ venice.decrypt(ciphertext_hex, client_private_hex)          # -> str
 chutes.decrypt_response(blob_bytes, response_secret_key)    # -> dict
 ```
 
-## Verify a route
+## The two hops
+
+A request travels through two parties, and verifying one tells you nothing about
+the other:
+
+| | Question it answers | How to verify |
+| --- | --- | --- |
+| **Hop 1** AnonRouter's own routing plane | Is the data plane I am connected to the exact reviewed build, running inside an Intel TDX confidential VM, bound to my nonce and my origin? | `verify_gateway()` |
+| **Hop 2** the downstream provider route | Did the model provider terminate my request inside a verified enclave running measurements I pinned? | `verify_attestation()` |
+
+## Verify a route (hop 2)
 
 ```python
 from anonrouter_confidential import create_client
@@ -56,6 +66,48 @@ with create_client("https://api.anonrouter.ai", api_key="...") as client:
     assert verdict.status == "ok"
     assert verdict.verification_level == "provider-attested"
 ```
+
+## Verify AnonRouter itself (hop 1)
+
+```python
+result = client.verify_gateway()           # or policy=... to pin it yourself
+verdict = result["verdict"]
+assert verdict.status == "ok"
+print(verdict.binding.release_id, verdict.binding.compose_hash)
+```
+
+The policy a gateway is held to must never come from that gateway: a server that
+could hand you the list of builds you accept could always name itself. So the pins
+ship inside this package, and an origin with no pin raises rather than falling back
+to whatever the server claims.
+
+Two things to know about the pin shipped today. It is marked `candidate`, because
+the confidential plane is pre-release and its measurements move on every release,
+so resolving it takes `allow_candidate_policy=True`. And it sets
+`requireHardwareVerified` while this package ships **no DCAP engine**, so
+verification fails closed with reason `quote_signature_chain` unless you pass your
+own `chain_verifier`. That is the honest answer: without chaining the quote's
+signature to Intel's roots, nobody has checked it came from real silicon.
+
+## Both hops at once
+
+```python
+report = client.verify(
+    model="venice-uncensored",
+    provider="venice",
+    gateway=True,                          # omit to skip hop 1 entirely
+)
+
+report["trusted"]                          # every hop this call ASKED for verified
+report["gateway"]["requested"]             # whether hop 1 was in scope at all
+report["gateway"]["status"]                # ok | failed | unavailable | unpinned | not-requested
+report["route"]["content_visible_to_anonrouter"]   # True on a tee route
+```
+
+`trusted` only ever covers the hops you asked for, which is why
+`gateway["requested"]` sits beside it. A report with `trusted: True` and
+`gateway["requested"]: False` establishes the provider enclave and makes no claim
+about the router.
 
 ## Confidential chat
 
@@ -68,6 +120,10 @@ out = client.chat(
 )
 print(out["content"])
 ```
+
+To refuse to send anything unless AnonRouter's own plane attests, pass
+`require_gateway=True`. The check runs before the first authenticated call, so a
+failure means no ticket was spent and no plaintext went near the wire.
 
 ## Verification ceiling (honest by design)
 

@@ -63,8 +63,34 @@ route.
   pins, but the ECDSA/DCAP chain to the Intel roots (and the NVIDIA NRAS chain) is
   not verified client-side. A passing check therefore proves "this evidence is
   internally consistent and matches reviewed pins," not "this silicon is genuine."
-  The SDK never prints `hardware-verified` for this reason. Wiring a real
-  browser/Python DCAP+NRAS verifier is the main upgrade path.
+  The SDK never prints `hardware-verified` on its own for this reason. Wiring a
+  real browser/Python DCAP+NRAS verifier is the main upgrade path. Gateway
+  verification exposes the seam explicitly as a `chainVerifier` /
+  `chain_verifier` port: supply an engine and the verdict can reach
+  `hardware-verified`; supply none and a policy requiring it fails closed with
+  reason `quote_signature_chain` rather than silently accepting the weaker level.
+
+- **Verifying one hop says nothing about the other.** The provider verifiers
+  answer "did the upstream model provider run my request in an enclave?".
+  `verifyGateway` answers "is the AnonRouter data plane I am connected to the
+  exact reviewed build, in a confidential VM?". Neither implies the other, and a
+  `verify()` report that skipped hop 1 says so in `gateway.requested` rather than
+  letting `trusted` imply coverage it does not have.
+
+- **A pinned policy must never come from the party it describes.** A gateway that
+  could hand a client the list of builds the client accepts could always name
+  itself. Gateway pins therefore ship inside the packages (or come from a policy
+  you supply), never from a fetch against the gateway being verified, and an
+  origin with no pin fails closed instead of falling back to what the server says.
+
+- **Attestation proves which code ran, not that it behaves well.** Both hops
+  establish that a specific measured build is running. Reviewing the source behind
+  a pinned compose hash is what turns that into a reason to trust the build.
+
+- **The confidential-plane pin shipped today is `candidate`, not `published`.**
+  That plane is pre-release and its measurements move on every release, so
+  resolving its pin takes an explicit opt-in. Treat a passing verdict against it
+  as a development signal, not a production guarantee.
 
 - **NEAR/Venice responses are confidential but not authenticated.** For `near-ai`
   and `venice` the client's public key travels in a request header and responses

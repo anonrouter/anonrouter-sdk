@@ -16,6 +16,38 @@ PyPI onboarding. Until it lands, install the Python package from a clone.
 Initial public release.
 
 ### Added
+- **Verification of AnonRouter's own confidential routing plane (hop 1).**
+  Previously the SDK could verify only the far end of the path: that the upstream
+  provider ran a request inside an enclave. It could establish nothing about
+  AnonRouter itself, so a caller had no way to know whether the data plane routing
+  the request was the reviewed build, or ran in a confidential VM at all. The two
+  hops are kept separate because neither implies the other.
+  - `verifyGateway()` / `verify_gateway()` verify `GET /v1/gateway/attestation`
+    against locally pinned measurements: report_data must equal SHA-512 of the
+    canonical binding, the event log must replay to the quote's RTMRs, each RTMR3
+    digest must commit to the payload printed beside it, the attested app-compose
+    manifest must be the measured one and must declare private logs and
+    digest-pinned images, and app id, compose hash, release, and origin must all be
+    on the local allowlist.
+  - `verify()` establishes both hops and reports them separately. `trusted` covers
+    only the hops the call asked for, and `gateway.requested` says which way that
+    went, so a report can never read as if it had covered a hop it skipped.
+  - `chat({ requireGateway })` / `chat(require_gateway=...)` gate on hop 1 before
+    the first authenticated call, so a failure means no ticket was spent and no
+    plaintext reached the wire.
+  - The DCAP chain remains a pluggable port (`chainVerifier` / `chain_verifier`).
+    Without one the ceiling stays `provider-attested`, and a policy that demands
+    hardware verification fails closed rather than quietly downgrading.
+  - `shared/gateway-policies.json`: origin-keyed pins for the confidential plane,
+    synced into both packages and covered by the parity gate. An unknown origin
+    resolves nothing and fails closed. The plane shipped today is marked
+    `candidate` (pre-release; its measurements move every release) and needs an
+    explicit opt-in to resolve.
+  - `shared/vectors/gateway-binding.json`: known-answer vectors pinning the
+    canonical binding serialization and its SHA-512 digest. That digest is what a
+    TD places in report_data, so a one-byte difference between the two languages,
+    or against the in-TEE producer, would make a verifier reject every genuine
+    quote. Both languages reproduce the vectors exactly.
 - `@anonrouter/confidential` (npm): independently verify AnonRouter TEE / E2EE
   routes and run end-to-end-encrypted confidential inference for the `near-ai`,
   `venice`, and `chutes` providers, plus `tinfoil` TEE verification via the
@@ -38,6 +70,23 @@ Initial public release.
   gateway old enough not to report it.
 
 ### Fixed
+- **A client could be pointed at a plaintext origin.** `createClient` /
+  `ConfidentialClient` accepted any `baseUrl`, including `http://` and URLs
+  carrying a path or credentials. Over plaintext the API key travels in the clear
+  and the origin a gateway quote binds cannot mean anything, which would make an
+  attested route decorative. The base URL must now be a bare https origin;
+  loopback http is available for local development behind an explicit
+  `allowInsecureHttp` / `allow_insecure_http`.
+- **`verifyAttestation` did not bind the route the gateway served.** `chat()`
+  checked that the returned evidence was for the provider that was requested, but
+  the verify path did not, so a substituted route surfaced as "malformed evidence"
+  rather than as AnonRouter having routed elsewhere. Both the echoed provider and
+  the echoed privacy class are now bound, in both languages.
+- **The pin drift gate wrote the files it was checking.** `check-parity.mjs`
+  imported `sync-shared.mjs`, whose top-level loop runs on import, so the
+  read-only gate re-synced every copy before comparing it and could never have
+  reported drift. The file map moved to `scripts/shared-files.mjs`, which has no
+  side effects on import.
 - **Attestation verification did not work against every deployment.** Both packages
   now mint a content-free attestation ticket and present only that ticket to the
   attestation endpoint, falling back to the key-authenticated read endpoint when a
