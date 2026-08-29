@@ -46,6 +46,8 @@ function testPolicy(overrides: Partial<GatewayMeasurementPolicy> = {}): GatewayM
       requirePrivateLogs: true,
       requireDigestPinnedImages: true,
       requireHardwareVerified: false,
+      acceptableTcbStatuses: ["UpToDate"],
+      requireEvidenceExpiry: false,
       maxEvidenceAgeMs: 300_000
     }),
     ...overrides

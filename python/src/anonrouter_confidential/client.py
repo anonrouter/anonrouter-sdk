@@ -44,6 +44,17 @@ from .measurements import pinned_endpoint_identity_for, pinned_measurement_polic
 from .tdx import TDX_TEE_TYPE, match_measurement_allowlist, parse_tdx_quote
 from .verify import verify_raw_evidence
 from .verify.checks import hex_equal
+from .verify.route import (
+    RequestedRoute,
+    RouteHopVerdict,
+    RouteVerdict,
+    assemble_route_verdict,
+    gateway_hop_verdict,
+    hop_not_requested,
+    hop_unavailable,
+    provider_hop_verdict,
+)
+from .verify.state import describe_state
 from .verify.types import AttestationExpectations, NormalizedVerdict
 
 _E2EE_PROVIDERS = {"near-ai", "venice", "chutes"}
@@ -301,7 +312,83 @@ class ConfidentialClient:
             "raw_evidence": evidence,
         }
 
-    # -- both hops -----------------------------------------------------------
+    # -- THE STABLE CONTRACT --------------------------------------------------
+    def verify_route(
+        self,
+        model: str,
+        provider: str,
+        *,
+        nonce: str | None = None,
+        upstream_model: str | None = None,
+        gateway: bool | dict[str, Any] = False,
+    ) -> RouteVerdict:
+        """Establish the route end to end and report what actually held.
+
+        This is the call to build on. Both hops are cross-bound to the route you
+        asked for, and the result reports ordered STATES rather than a single
+        boolean, so a threshold like ``at_least(v.overall_state,
+        "cryptographically_checked")`` keeps meaning the same thing over time.
+
+        The provider hop always runs. The gateway hop runs only when asked, and
+        ``verdict.gateway.requested`` says which way that went, so a skipped hop
+        can never be mistaken for a passing one. Any disagreement between the
+        requested route and what a hop attested forces the whole verdict
+        untrusted, however strong the individual hops were.
+        """
+        gateway_options = _gateway_option_to_kwargs(gateway)
+        gateway_hop = (
+            hop_not_requested() if gateway_options is None else self._gateway_route_hop(gateway_options)
+        )
+
+        attestation: dict[str, Any] | None = None
+        provider_failure: str | None = None
+        try:
+            attestation = self.verify_attestation(
+                model, provider, nonce, upstream_model=upstream_model
+            )
+        except ConfidentialError as exc:
+            provider_failure = str(exc)
+
+        if attestation is not None:
+            provider_hop = provider_hop_verdict(attestation["verdict"])
+            echo: dict[str, Any] | None = {
+                "provider": attestation.get("provider"),
+                "privacy_class": attestation.get("privacy_modality"),
+            }
+            attested_upstream = attestation.get("upstream_model")
+            modality = attestation["privacy_modality"]
+        else:
+            provider_hop = RouteHopVerdict(
+                requested=True,
+                state="untrusted",
+                meaning=describe_state("untrusted"),
+                reason=provider_failure or "provider verification failed",
+                failed_checks=[provider_failure or "provider_verification_failed"],
+            )
+            echo = None
+            attested_upstream = None
+            modality = "tee" if provider == "tinfoil" else "e2ee"
+
+        return assemble_route_verdict(
+            route=RequestedRoute(provider=provider, model=model, privacy_modality=modality),
+            gateway=gateway_hop,
+            provider=provider_hop,
+            gateway_echo=echo,
+            attested_upstream_model=attested_upstream,
+            expected_upstream_model=upstream_model,
+        )
+
+    def _gateway_route_hop(self, options: dict[str, Any]) -> RouteHopVerdict:
+        """Run hop 1 and project it into the stable contract."""
+        report = self._gateway_hop(options)
+        if report["status"] in ("unavailable", "unpinned"):
+            return hop_unavailable(str(report.get("reason") or report["status"]))
+        verdict = report.get("verdict")
+        if verdict is None:
+            return hop_unavailable(str(report.get("reason") or "no gateway verdict"))
+        return gateway_hop_verdict(verdict)
+
+    # -- both hops (earlier report shape; prefer verify_route) ----------------
     def verify(
         self,
         model: str,

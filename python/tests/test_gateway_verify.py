@@ -70,6 +70,8 @@ def policy(**overrides: Any) -> GatewayMeasurementPolicy:
             "requirePrivateLogs": True,
             "requireDigestPinnedImages": True,
             "requireHardwareVerified": False,
+            "acceptableTcbStatuses": ["UpToDate"],
+            "requireEvidenceExpiry": False,
             "maxEvidenceAgeMs": 300_000,
         }
     )
@@ -173,6 +175,8 @@ def platform_policy(**overrides: Any) -> GatewayMeasurementPolicy:
             "requirePrivateLogs": True,
             "requireDigestPinnedImages": True,
             "requireHardwareVerified": False,
+            "acceptableTcbStatuses": ["UpToDate"],
+            "requireEvidenceExpiry": False,
             "maxEvidenceAgeMs": 300_000,
         }
     )

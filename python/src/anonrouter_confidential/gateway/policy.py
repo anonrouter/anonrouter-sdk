@@ -83,6 +83,21 @@ class GatewayMeasurementPolicy:
     #: NO DCAP engine, so a policy with this set true fails closed unless the caller
     #: supplies a ``chain_verifier``. That is deliberate.
     require_hardware_verified: bool
+    #: TCB statuses this policy accepts from a chain verifier.
+    #:
+    #: A DCAP verdict is not a boolean: a quote can verify against Intel's roots
+    #: while the platform's TCB is out of date, meaning known vulnerabilities are
+    #: unpatched on the machine holding your data. Accepting ``OutOfDate`` because
+    #: the signature checked out is the mistake this list exists to prevent.
+    #: Enforced even when the verifier reports ``verified: True``.
+    acceptable_tcb_statuses: list[str]
+    #: Require the evidence document to carry a timestamp inside the age window.
+    #:
+    #: The nonce is the real anti-replay proof, so this is defence in depth. It
+    #: matters because a document with NO timestamp cannot be aged at all, and
+    #: treating "unmeasurable" as "fresh enough" is the quiet way an expiry check
+    #: stops existing.
+    require_evidence_expiry: bool
     #: Maximum age of the evidence document itself, in milliseconds.
     max_evidence_age_ms: float
     #: The KMS identity allowed to hold this app's derived keys, as it appears in
@@ -189,6 +204,12 @@ def load_gateway_policy(raw: Any) -> GatewayMeasurementPolicy:
         ),
         require_hardware_verified=_required_bool(
             "policy.requireHardwareVerified", raw.get("requireHardwareVerified")
+        ),
+        acceptable_tcb_statuses=_string_list(
+            "policy.acceptableTcbStatuses", raw.get("acceptableTcbStatuses")
+        ),
+        require_evidence_expiry=_required_bool(
+            "policy.requireEvidenceExpiry", raw.get("requireEvidenceExpiry")
         ),
         max_evidence_age_ms=float(max_age),
     )

@@ -19,6 +19,7 @@ export {
   type VerifyGatewayResult,
   type VerifyGatewayOption,
   type GatewayPolicyProvenance,
+  type VerifyRouteInput,
   type VerifyInput,
   type VerificationReport,
   type GatewayHopReport,
@@ -87,6 +88,31 @@ export {
   type AttestedAppCompose,
   type AttestedImageReference
 } from "./gateway/appCompose.js";
+
+// ---- The stable verdict contract --------------------------------------------
+// Prefer these over the internal VerificationLevel: the states say WHAT was
+// established rather than who asserted it, and they are ordered so a threshold
+// keeps meaning the same thing as the SDK evolves.
+export {
+  atLeast,
+  isTrusted,
+  describeState,
+  stateForLevel,
+  TRUSTED_STATES,
+  type RouteVerificationState
+} from "./verify/state.js";
+export {
+  assembleRouteVerdict,
+  gatewayHopVerdict,
+  providerHopVerdict,
+  hopNotRequested,
+  hopUnavailable,
+  type RouteVerdict,
+  type RouteHopVerdict,
+  type RouteBindingMismatch,
+  type RequestedRoute,
+  type AssembleRouteVerdictInput
+} from "./verify/route.js";
 
 // ---- Pure verification ------------------------------------------------------
 export {

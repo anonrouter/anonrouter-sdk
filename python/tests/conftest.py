@@ -34,3 +34,9 @@ def attestation_vectors() -> dict[str, Any]:
 def gateway_binding_vectors() -> dict[str, Any]:
     """Hop 1's parity contract: the canonical binding serialization and digest."""
     return _load("gateway-binding.json")
+
+
+@pytest.fixture(scope="session")
+def state_vectors() -> Any:
+    """The stable verdict contract: level mapping and the at_least matrix."""
+    return _load("verification-states.json")

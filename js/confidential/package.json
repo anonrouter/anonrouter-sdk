@@ -15,7 +15,11 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
-    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" }
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
+    "./chain-verifiers": {
+      "types": "./dist/gateway/chain-verifiers.d.ts",
+      "import": "./dist/gateway/chain-verifiers.js"
+    }
   },
   "files": ["dist", "src/measurements.json", "src/gateway/gateway-policies.json", "README.md", "LICENSE"],
   "sideEffects": false,

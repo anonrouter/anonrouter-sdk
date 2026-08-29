@@ -1,0 +1,71 @@
+{
+  "_readme": [
+    "The stable verdict contract, pinned across languages.",
+    "",
+    "`RouteVerificationState` is what callers gate on, so JS and Python must agree",
+    "on two things exactly: which internal VerificationLevel maps to which state,",
+    "and whether a given state satisfies a given threshold. A divergence here is",
+    "not cosmetic. If one language ranked `policy_matched` above",
+    "`cryptographically_checked`, a caller who wrote the same threshold in both",
+    "would get different security decisions from the same evidence.",
+    "",
+    "levelMapping: state_for_level(level) must equal `state`.",
+    "atLeast: at_least(state, required) must equal `expected`.",
+    "trustedStates: is_trusted(state) must be true for exactly these.",
+    "",
+    "The atLeast matrix is exhaustive over all 5 states x all 5 thresholds, so a",
+    "new state cannot be added in one language without this file failing in both."
+  ],
+  "states": [
+    "hardware_verified",
+    "cryptographically_checked",
+    "policy_matched",
+    "untrusted",
+    "unavailable"
+  ],
+  "trustedStates": [
+    "hardware_verified",
+    "cryptographically_checked",
+    "policy_matched"
+  ],
+  "levelMapping": [
+    { "level": "hardware-verified", "state": "hardware_verified" },
+    { "level": "provider-attested", "state": "cryptographically_checked" },
+    { "level": "sdk-verified", "state": "policy_matched" },
+    { "level": "unverified", "state": "untrusted" },
+    { "level": "unsupported", "state": "unavailable" },
+    { "level": "something-unrecognized", "state": "untrusted" },
+    { "level": "", "state": "untrusted" }
+  ],
+  "atLeast": [
+    { "state": "hardware_verified", "required": "hardware_verified", "expected": true },
+    { "state": "hardware_verified", "required": "cryptographically_checked", "expected": true },
+    { "state": "hardware_verified", "required": "policy_matched", "expected": true },
+    { "state": "hardware_verified", "required": "untrusted", "expected": false },
+    { "state": "hardware_verified", "required": "unavailable", "expected": false },
+
+    { "state": "cryptographically_checked", "required": "hardware_verified", "expected": false },
+    { "state": "cryptographically_checked", "required": "cryptographically_checked", "expected": true },
+    { "state": "cryptographically_checked", "required": "policy_matched", "expected": true },
+    { "state": "cryptographically_checked", "required": "untrusted", "expected": false },
+    { "state": "cryptographically_checked", "required": "unavailable", "expected": false },
+
+    { "state": "policy_matched", "required": "hardware_verified", "expected": false },
+    { "state": "policy_matched", "required": "cryptographically_checked", "expected": false },
+    { "state": "policy_matched", "required": "policy_matched", "expected": true },
+    { "state": "policy_matched", "required": "untrusted", "expected": false },
+    { "state": "policy_matched", "required": "unavailable", "expected": false },
+
+    { "state": "untrusted", "required": "hardware_verified", "expected": false },
+    { "state": "untrusted", "required": "cryptographically_checked", "expected": false },
+    { "state": "untrusted", "required": "policy_matched", "expected": false },
+    { "state": "untrusted", "required": "untrusted", "expected": false },
+    { "state": "untrusted", "required": "unavailable", "expected": false },
+
+    { "state": "unavailable", "required": "hardware_verified", "expected": false },
+    { "state": "unavailable", "required": "cryptographically_checked", "expected": false },
+    { "state": "unavailable", "required": "policy_matched", "expected": false },
+    { "state": "unavailable", "required": "untrusted", "expected": false },
+    { "state": "unavailable", "required": "unavailable", "expected": false }
+  ]
+}

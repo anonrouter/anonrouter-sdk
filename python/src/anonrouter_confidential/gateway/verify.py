@@ -465,7 +465,11 @@ def verify_gateway_attestation(
             )
         )
 
-    # --- 9. Evidence age (advisory; the nonce is the real freshness proof) ----
+    # --- 9. Evidence expiry ----------------------------------------------------
+    # The nonce is the primary anti-replay proof, so this is defence in depth. Note
+    # WHY the "no timestamp" case fails rather than passing: a document that cannot
+    # be aged has not been shown to be fresh, and treating unmeasurable as
+    # acceptable is how an expiry check quietly stops existing.
     issued_at = doc.get("issued_at_ms")
     age = (
         now_ms - issued_at
@@ -476,7 +480,7 @@ def verify_gateway_attestation(
         check(
             "evidence_recent",
             age is not None and -60_000 <= age <= policy.max_evidence_age_ms,
-            False,
+            policy.require_evidence_expiry,
             "no issued_at_ms" if age is None else f"age_ms={age}",
         )
     )
@@ -485,13 +489,31 @@ def verify_gateway_attestation(
     tcb_status: str | None = None
     chain_verified = False
     if chain_verifier is not None:
-        chain_verified, tcb_status = chain_verifier.verify_chain(str(doc.get("quote")), None)
+        engine_verified, tcb_status = chain_verifier.verify_chain(str(doc.get("quote")), None)
+        # The TCB status is enforced against the policy EVEN WHEN the verifier said
+        # verified. A quote can chain perfectly to Intel's roots while the platform
+        # holding your data has known unpatched vulnerabilities, and an engine's own
+        # idea of an acceptable status is not this policy's decision to delegate.
+        tcb_acceptable = tcb_status is not None and any(
+            s.lower() == tcb_status.lower() for s in policy.acceptable_tcb_statuses
+        )
+        chain_verified = bool(engine_verified) and tcb_acceptable
         checks.append(
             check(
                 "quote_signature_chain",
-                chain_verified,
+                bool(engine_verified),
                 True,
-                f"tcb={tcb_status}" if tcb_status else None,
+                f"tcb={tcb_status}" if tcb_status else "chain verifier reported no TCB status",
+            )
+        )
+        checks.append(
+            check(
+                "tcb_status_acceptable",
+                tcb_acceptable,
+                True,
+                "chain verifier returned no TCB status, so it cannot be checked against the policy"
+                if tcb_status is None
+                else f"tcb={tcb_status}, accepted={'|'.join(policy.acceptable_tcb_statuses)}",
             )
         )
     else:
@@ -506,6 +528,17 @@ def verify_gateway_attestation(
                 "policy requires hardware verification but no DCAP chain verifier was supplied"
                 if policy.require_hardware_verified
                 else "no DCAP chain verifier supplied; verdict capped at provider-attested",
+            )
+        )
+        # Recorded even with no verifier, so the check set is the same shape either
+        # way and a reader diffing two verdicts is not left wondering whether the
+        # TCB was checked and passed or never looked at.
+        checks.append(
+            check(
+                "tcb_status_acceptable",
+                False,
+                policy.require_hardware_verified,
+                "no chain verifier supplied, so no TCB status was reported to check",
             )
         )
 

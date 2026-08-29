@@ -423,13 +423,18 @@ export function verifyGatewayAttestation(
     ));
   }
 
-  // --- 9. Evidence age (advisory; the nonce is the real freshness proof) ----
+  // --- 9. Evidence expiry ----------------------------------------------------
+  // The nonce is the primary anti-replay proof, so this is defence in depth. It
+  // is required only when the policy says so, but note WHY the "no timestamp"
+  // case fails rather than passing: a document that cannot be aged has not been
+  // shown to be fresh, and treating unmeasurable as acceptable is how an expiry
+  // check quietly stops existing.
   const issuedAt = typeof evidence.issued_at_ms === "number" ? evidence.issued_at_ms : null;
   const age = issuedAt === null ? null : now - issuedAt;
   checks.push(check(
     "evidence_recent",
     age !== null && age >= -60_000 && age <= policy.maxEvidenceAgeMs,
-    false,
+    policy.requireEvidenceExpiry,
     age === null ? "no issued_at_ms" : `age_ms=${age}`
   ));
 
@@ -438,9 +443,29 @@ export function verifyGatewayAttestation(
   let chainVerified = false;
   if (expectations.chainVerifier) {
     const outcome = expectations.chainVerifier.verifyChain(evidence.quote, undefined);
-    chainVerified = outcome.verified;
     tcbStatus = outcome.tcbStatus ?? null;
-    checks.push(check("quote_signature_chain", chainVerified, true, tcbStatus ? `tcb=${tcbStatus}` : undefined));
+    // The TCB status is enforced against the policy EVEN WHEN the verifier said
+    // verified. A quote can chain perfectly to Intel's roots while the platform
+    // holding your data has known unpatched vulnerabilities, and an engine's own
+    // idea of an acceptable status is not this policy's decision to delegate.
+    const tcbAcceptable = tcbStatus === null
+      ? false
+      : policy.acceptableTcbStatuses.some((status) => status.toLowerCase() === tcbStatus!.toLowerCase());
+    chainVerified = outcome.verified && tcbAcceptable;
+    checks.push(check(
+      "quote_signature_chain",
+      outcome.verified,
+      true,
+      tcbStatus ? `tcb=${tcbStatus}` : "chain verifier reported no TCB status"
+    ));
+    checks.push(check(
+      "tcb_status_acceptable",
+      tcbAcceptable,
+      true,
+      tcbStatus === null
+        ? "chain verifier returned no TCB status, so it cannot be checked against the policy"
+        : `tcb=${tcbStatus}, accepted=${policy.acceptableTcbStatuses.join("|")}`
+    ));
   } else {
     // Required when the policy demands hardware verification, so a client whose
     // DCAP engine is missing or unbuilt fails loudly instead of quietly accepting
@@ -452,6 +477,15 @@ export function verifyGatewayAttestation(
       policy.requireHardwareVerified
         ? "policy requires hardware verification but no DCAP chain verifier was supplied"
         : "no DCAP chain verifier supplied; verdict capped at provider-attested"
+    ));
+    // Recorded even with no verifier, so the check set is the same shape either
+    // way and a reader diffing two verdicts is not left wondering whether the
+    // TCB was checked and passed or never looked at.
+    checks.push(check(
+      "tcb_status_acceptable",
+      false,
+      policy.requireHardwareVerified,
+      "no chain verifier supplied, so no TCB status was reported to check"
     ));
   }
 

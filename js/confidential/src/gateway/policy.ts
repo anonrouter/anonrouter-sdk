@@ -89,6 +89,31 @@ export interface GatewayMeasurementPolicy {
    * supplies a `chainVerifier`. That is deliberate: see the SDK README.
    */
   requireHardwareVerified: boolean;
+  /**
+   * TCB statuses this policy accepts from a chain verifier.
+   *
+   * A DCAP verdict is not a boolean: a quote can verify against Intel's roots
+   * while the platform's TCB is out of date, which means known vulnerabilities
+   * are unpatched on the machine holding your data. Accepting `OutOfDate`
+   * because the signature checked out is the mistake this list exists to
+   * prevent. `UpToDate` alone is the conservative choice; widening it (for
+   * example to `SWHardeningNeeded`) is a reviewed decision and must be written
+   * down here rather than assumed.
+   *
+   * Enforced whenever a chain verifier reports a status, INCLUDING when it
+   * reports `verified: true`. A verifier that says verified with a status this
+   * policy does not accept is a failure, not a pass.
+   */
+  acceptableTcbStatuses: string[];
+  /**
+   * Require the evidence document to carry a timestamp inside the age window.
+   *
+   * The nonce is the real anti-replay proof, so this is defence in depth rather
+   * than the primary control. It matters because a document with NO timestamp
+   * cannot be aged at all, and treating "no timestamp" as "fresh enough" is the
+   * quiet way an expiry check stops existing.
+   */
+  requireEvidenceExpiry: boolean;
   /** Maximum age of the evidence document itself, in milliseconds. */
   maxEvidenceAgeMs: number;
 }
@@ -186,6 +211,8 @@ export function loadGatewayPolicy(input: unknown): GatewayMeasurementPolicy {
     requirePrivateLogs: requiredBoolean("policy.requirePrivateLogs", raw.requirePrivateLogs),
     requireDigestPinnedImages: requiredBoolean("policy.requireDigestPinnedImages", raw.requireDigestPinnedImages),
     requireHardwareVerified: requiredBoolean("policy.requireHardwareVerified", raw.requireHardwareVerified),
+    acceptableTcbStatuses: stringList("policy.acceptableTcbStatuses", raw.acceptableTcbStatuses),
+    requireEvidenceExpiry: requiredBoolean("policy.requireEvidenceExpiry", raw.requireEvidenceExpiry),
     maxEvidenceAgeMs: maxAge
   };
 }

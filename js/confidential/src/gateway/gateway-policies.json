@@ -22,7 +22,7 @@
     {
       "status": "candidate",
       "reviewedAt": "2026-08-20",
-      "notes": "AnonRouter confidential data plane on Phala prod5 (Intel TDX, dstack). Reviewed from release manifest anonrouter-tee@731c719, whose deployment reports transport in-tee-tls on a live TDX host. Held at candidate because the plane is pre-release: these pins move on every release, and the residual-work list for the two-plane build is not closed. requireHardwareVerified is true as reviewed, so verification fails closed with reason quote_signature_chain unless you supply your own DCAP chainVerifier; this package deliberately ships none.",
+      "notes": "AnonRouter confidential data plane on Phala prod5 (Intel TDX, dstack). Reviewed from release manifest anonrouter-tee@731c719, whose deployment reports transport in-tee-tls on a live TDX host. Held at candidate because the plane is pre-release: these pins move on every release, and the residual-work list for the two-plane build is not closed. requireHardwareVerified is true as reviewed, so verification fails closed with reason quote_signature_chain unless you supply your own DCAP chainVerifier; this package deliberately ships none. KNOWN STALE as of 2026-08-29: the live origin was observed serving release anonrouter-tee@xl-7b1b12a, so app_id_pinned, compose_hash_pinned, release_pinned and platform_measurements_pinned all fail against it today. That is the pin doing its job, not a defect. Do NOT refresh these values by copying what the server returned; that is circular. Capture a candidate with scripts/capture-gateway-pins.mjs, then review it against the release manifest for the build you actually intend to trust before promoting it.",
       "policy": {
         "source": "anonrouter-release-manifest-sha256:25437786094940cc2a9e425c2ea5410e8f0c8c1f11208e444745c98a860b147a",
         "version": "2026-08-20",
@@ -63,6 +63,10 @@
         "requirePrivateLogs": true,
         "requireDigestPinnedImages": true,
         "requireHardwareVerified": true,
+        "acceptableTcbStatuses": [
+          "UpToDate"
+        ],
+        "requireEvidenceExpiry": true,
         "maxEvidenceAgeMs": 300000
       }
     }

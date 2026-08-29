@@ -43,6 +43,25 @@ from .verify import (
     NormalizedVerdict,
     verify_raw_evidence,
 )
+from .verify.route import (
+    RequestedRoute,
+    RouteBindingMismatch,
+    RouteHopVerdict,
+    RouteVerdict,
+    assemble_route_verdict,
+    gateway_hop_verdict,
+    hop_not_requested,
+    hop_unavailable,
+    provider_hop_verdict,
+)
+from .verify.state import (
+    TRUSTED_STATES,
+    RouteVerificationState,
+    at_least,
+    describe_state,
+    is_trusted,
+    state_for_level,
+)
 
 __version__ = "0.1.0"
 
@@ -52,6 +71,22 @@ __all__ = [
     "create_client",
     "ConfidentialClient",
     "ConfidentialError",
+    # THE STABLE CONTRACT: ordered states + the two-hop route verdict
+    "RouteVerificationState",
+    "RouteVerdict",
+    "RouteHopVerdict",
+    "RouteBindingMismatch",
+    "RequestedRoute",
+    "assemble_route_verdict",
+    "gateway_hop_verdict",
+    "provider_hop_verdict",
+    "hop_not_requested",
+    "hop_unavailable",
+    "at_least",
+    "is_trusted",
+    "describe_state",
+    "state_for_level",
+    "TRUSTED_STATES",
     # verification: hop 2, the downstream provider route
     "verify_raw_evidence",
     "NormalizedVerdict",

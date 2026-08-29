@@ -54,6 +54,8 @@ def gateway_test_policy() -> GatewayMeasurementPolicy:
             "requirePrivateLogs": True,
             "requireDigestPinnedImages": True,
             "requireHardwareVerified": False,
+            "acceptableTcbStatuses": ["UpToDate"],
+            "requireEvidenceExpiry": False,
             "maxEvidenceAgeMs": 300_000,
         }
     )

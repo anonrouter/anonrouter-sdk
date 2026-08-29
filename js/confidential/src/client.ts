@@ -33,6 +33,14 @@ import { ConfidentialError } from "./errors.js";
 import { enableNodeCrypto, hexEqual } from "./verify/crypto.js";
 import { verifyRawEvidence } from "./verify/index.js";
 import type { NormalizedVerdict, PrivacyModality, VerificationLevel } from "./verify/types.js";
+import {
+  assembleRouteVerdict,
+  gatewayHopVerdict,
+  hopNotRequested,
+  hopUnavailable,
+  providerHopVerdict,
+  type RouteVerdict
+} from "./verify/route.js";
 import { GATEWAY_NONCE_HEX_LENGTH } from "./gateway/binding.js";
 import {
   pinnedGatewayPolicyFor,
@@ -303,13 +311,39 @@ export interface ChatResult {
 }
 
 export interface AnonRouterClient {
+  /**
+   * THE STABLE CONTRACT. Both hops, cross-bound to one route, reported as
+   * ordered states. This is the call to build on; the shape of `RouteVerdict` is
+   * what this SDK promises to keep.
+   */
+  verifyRoute(input: VerifyRouteInput): Promise<RouteVerdict>;
   /** Hop 1: independently verify AnonRouter's own confidential routing plane. */
   verifyGateway(input?: VerifyGatewayInput): Promise<VerifyGatewayResult>;
   /** Hop 2: independently verify the downstream provider route. */
   verifyAttestation(input: VerifyAttestationInput): Promise<VerifyAttestationResult>;
-  /** Both hops, with one honest verdict that says what it covered. */
+  /** Both hops in the earlier report shape. Prefer `verifyRoute`. */
   verify(input: VerifyInput): Promise<VerificationReport>;
   chat(input: ChatInput): Promise<ChatResult>;
+}
+
+export interface VerifyRouteInput {
+  model: string;
+  provider: string;
+  /** Optional caller nonce for the provider hop (hex, 32..128 chars). */
+  nonce?: string;
+  /**
+   * Pin the provider-native model id the evidence must attest. When set, a
+   * disagreement with what the evidence actually attests is reported as a route
+   * binding mismatch rather than silently accepted.
+   */
+  upstreamModel?: string;
+  /**
+   * Establish hop 1 as well. Defaults to false, because most deployments do not
+   * run inside a CVM and a verdict must never imply a hop it skipped. The
+   * resulting `gateway.requested` always says which way this went.
+   */
+  gateway?: VerifyGatewayOption;
+  signal?: AbortSignal;
 }
 
 const ACCEPTED_LEVELS = new Set<VerificationLevel>(["provider-attested", "sdk-verified", "hardware-verified"]);
@@ -751,6 +785,87 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
     };
   }
 
+  /**
+   * THE STABLE CONTRACT. Establish the route end to end and report what actually
+   * held, as ordered states rather than as a single boolean.
+   *
+   * The provider hop always runs. The gateway hop runs only when asked, and the
+   * verdict says which way that went, so a caller can never mistake a skipped
+   * hop for a passing one. Any disagreement between the requested route and what
+   * a hop attested forces the whole verdict untrusted, however strong the
+   * individual hops were.
+   */
+  async function verifyRoute(input: VerifyRouteInput): Promise<RouteVerdict> {
+    const gatewayOption = gatewayOptionToInput(input.gateway);
+    const privacyModality = privacyModalityFor(input.provider);
+
+    let gatewayHop = gatewayOption === null ? hopNotRequested() : null;
+    if (gatewayOption !== null) {
+      const hop = await gatewayHop2(gatewayOption, input.signal);
+      gatewayHop = hop.verdict;
+    }
+
+    // The provider hop can throw on a route-binding refusal (the gateway served
+    // a different provider or privacy class). That is a mismatch, not a crash,
+    // so it is turned back into a verdict the caller can read.
+    let attestation: VerifyAttestationResult | null = null;
+    let providerFailure: string | null = null;
+    try {
+      attestation = await verifyAttestation({
+        model: input.model,
+        provider: input.provider,
+        upstreamModel: input.upstreamModel,
+        nonce: input.nonce,
+        signal: input.signal
+      });
+    } catch (error) {
+      if (error instanceof ConfidentialError && error.code === "cancelled") throw error;
+      providerFailure = error instanceof ConfidentialError ? error.code : "provider_verification_failed";
+    }
+
+    const providerHop = attestation
+      ? providerHopVerdict(attestation.verdict)
+      : hopFromFailure(providerFailure ?? "provider_verification_failed");
+
+    return assembleRouteVerdict({
+      route: { provider: input.provider, model: input.model, privacyModality },
+      gateway: gatewayHop ?? hopNotRequested(),
+      provider: providerHop,
+      gatewayEcho: attestation
+        ? { provider: attestation.provider, privacyClass: attestation.privacyModality }
+        : undefined,
+      attestedUpstreamModel: attestation?.upstreamModel ?? null,
+      expectedUpstreamModel: input.upstreamModel ?? null
+    });
+  }
+
+  /** A provider hop that could not produce a verdict at all. */
+  function hopFromFailure(reason: string) {
+    return {
+      requested: true,
+      state: "untrusted" as const,
+      meaning: "A required check failed. Do not proceed on this route.",
+      reason,
+      failedChecks: [reason],
+      advisoryGaps: []
+    };
+  }
+
+  /** gatewayHop, wrapped so verifyRoute gets the stable hop shape. */
+  async function gatewayHop2(
+    option: Omit<VerifyGatewayInput, "signal">,
+    signal?: AbortSignal
+  ): Promise<{ verdict: ReturnType<typeof gatewayHopVerdict> }> {
+    const report = await gatewayHop(option, signal);
+    if (report.status === "unavailable" || report.status === "unpinned") {
+      return { verdict: hopUnavailable(report.reason ?? report.status) };
+    }
+    if (!report.verdict) {
+      return { verdict: hopUnavailable(report.reason ?? "no gateway verdict") };
+    }
+    return { verdict: gatewayHopVerdict(report.verdict) };
+  }
+
   async function postJson<T>(path: string, payload: unknown, signal?: AbortSignal, failCode: ConfidentialError["code"] = "transport_failed"): Promise<T> {
     let response: Response;
     try {
@@ -943,7 +1058,7 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
     }
   }
 
-  return { verifyGateway, verifyAttestation, verify, chat };
+  return { verifyRoute, verifyGateway, verifyAttestation, verify, chat };
 }
 
 function throwIfAborted(signal?: AbortSignal): void {
