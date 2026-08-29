@@ -1,0 +1,71 @@
+[project]
+name = "anonrouter-confidential"
+version = "0.1.0"
+description = "Independently verify AnonRouter TEE/E2EE routes and run confidential inference from Python."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+keywords = ["anonrouter", "tee", "e2ee", "attestation", "confidential", "tdx", "ml-kem", "verify"]
+authors = [{ name = "AnonRouter" }]
+classifiers = [
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3",
+  "Topic :: Security :: Cryptography",
+  "Intended Audience :: Developers",
+]
+dependencies = [
+  # Native ML-KEM-768 (>=46) is not used for Chutes because it cannot load the raw
+  # expanded decapsulation key the wire format ships; HKDF/AES-GCM/ChaCha20-Poly1305/
+  # secp256k1 ECDH/X.509 all come from here.
+  "cryptography>=42",
+  "pynacl>=1.5",
+  "httpx>=0.27",
+  # keccak-256 for the Venice Ethereum-address key binding.
+  "pycryptodome>=3.20",
+]
+
+[project.urls]
+Homepage = "https://github.com/anonrouter/anonrouter-sdk"
+Repository = "https://github.com/anonrouter/anonrouter-sdk"
+Issues = "https://github.com/anonrouter/anonrouter-sdk/issues"
+
+[project.optional-dependencies]
+# ML-KEM-768 (FIPS 203) for the Chutes transport. kyber-py is a pure-Python
+# implementation that decapsulates from the raw expanded decapsulation key the
+# Chutes wire format ships (which OpenSSL/cryptography's seed-only loader cannot).
+mlkem = ["kyber-py>=1.2"]
+# Tinfoil TEE verification via the official verifier.
+tinfoil = ["tinfoil"]
+dev = ["pytest>=8", "mypy>=1.10", "ruff>=0.6"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/anonrouter_confidential"]
+
+[tool.ruff.lint]
+ignore = [
+  # This SDK fails closed with DOMAIN errors (ConfidentialError / ValueError) on
+  # malformed or attacker-controlled input, including type guards.
+  "TRY004",
+  # __all__ is intentionally grouped by category (client / verify / tdx / pins),
+  # not alphabetized.
+  "RUF022",
+  # __enter__ returns the concrete type; typing.Self needs 3.11 and we target 3.10.
+  "PYI034",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.10"
+files = ["src"]
+ignore_missing_imports = true
+warn_unused_ignores = false
+
+[[tool.mypy.overrides]]
+module = ["nacl.*", "kyber_py.*", "Crypto.*"]
+ignore_missing_imports = true

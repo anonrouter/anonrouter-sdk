@@ -1,0 +1,56 @@
+name: Feature request
+description: Propose a capability, a stronger check, or an API change.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This repo is trust-critical, so proposals that strengthen verification are
+        especially welcome. If you are asking for a check that would raise the
+        verification ceiling (for example a full DCAP or NRAS chain to vendor
+        roots), say so directly: that is a tracked upgrade path, not a wontfix.
+
+  - type: dropdown
+    id: package
+    attributes:
+      label: Package
+      options:
+        - "@anonrouter/confidential (npm)"
+        - "@anonrouter/client (npm)"
+        - anonrouter-confidential (PyPI)
+        - All packages
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the use case, not just the proposed API.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+    validations:
+      required: true
+
+  - type: dropdown
+    id: trust
+    attributes:
+      label: Does this change the trust model?
+      description: See the trust model section of SECURITY.md.
+      options:
+        - "No, it is a convenience or ergonomics change"
+        - "Yes, it strengthens a check or raises the verification ceiling"
+        - "Yes, it relaxes or weakens a check"
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered

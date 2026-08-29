@@ -1,0 +1,34 @@
+version: 2
+updates:
+  # JS packages (npm workspaces rooted at js/).
+  - package-ecosystem: npm
+    directory: /js
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels: ["dependencies"]
+    groups:
+      noble-crypto:
+        # The @noble/* primitives are the cryptographic core. Group them so a
+        # bump is reviewed as one change against the shared known-answer vectors.
+        patterns:
+          - "@noble/*"
+      dev-tooling:
+        dependency-type: development
+        patterns:
+          - "*"
+
+  # Python package.
+  - package-ecosystem: pip
+    directory: /python
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels: ["dependencies"]
+
+  # Workflow actions.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    labels: ["dependencies"]

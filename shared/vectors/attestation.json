@@ -1,0 +1,399 @@
+{
+  "note": "Known-answer verdict vectors for the provider-neutral verifier. Both the JS and Python test suites load this file and must produce identical verdicts, so a verifier change that lands in only one language fails CI. Evidence is synthetic and self-consistent: the TDX quotes are byte-exact at the offsets the parser reads but carry no Intel signature, which is exactly why they suffice here (the SDK never verifies the DCAP chain, and says so). nowMs is a fixed clock so freshness is deterministic. Pass it as the verifier's injectable now. measurementPolicy is NOT stored here: each language resolves it from its own copy of the pins, so these vectors also prove both copies gate identically. Regenerate with: npm run gen:attestation-vectors (from js/confidential). No passing NEAR case is included: it would need the exact app_compose preimage behind the pinned composeSha256, which the pins do not distribute.",
+  "cases": [
+    {
+      "name": "venice valid evidence",
+      "why": "A self-consistent Venice attestation verifies to the honest ceiling, never higher.",
+      "provider": "venice",
+      "upstreamModel": "venice-uncensored",
+      "endpointIdentity": "venice",
+      "privacyModality": "e2ee",
+      "nonce": "3f1c8e5b9a2d47f0c6b3e81a5d94f27c0e6a83b15d2f49c7a08e365b1d4c7f92",
+      "nowMs": 1760000000000,
+      "rawEvidence": {
+        "intel_quote": "04000000810000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555eb69928058d87b05e1a3401e454f474b68a5cd9c0000000000000000000000003f1c8e5b9a2d47f0c6b3e81a5d94f27c0e6a83b15d2f49c7a08e365b1d4c7f92",
+        "nvidia_payload": "nvidia-gpu-evidence-blob",
+        "nonce": "3f1c8e5b9a2d47f0c6b3e81a5d94f27c0e6a83b15d2f49c7a08e365b1d4c7f92",
+        "model": "venice-uncensored",
+        "signing_algo": "ecdsa",
+        "signing_address": "0xeb69928058d87b05e1a3401e454f474b68a5cd9c",
+        "signing_public_key": "043ce12cca7f9b62ea99038d32841361265a545b5a000f4aa91a94d659b91c0d310cdffdc77c9900419a121665d53552badd13dc2a091b688e8554ee370dd9a600",
+        "attestation": {
+          "report_data": "eb69928058d87b05e1a3401e454f474b68a5cd9c0000000000000000000000003f1c8e5b9a2d47f0c6b3e81a5d94f27c0e6a83b15d2f49c7a08e365b1d4c7f92",
+          "evidence": {
+            "quote_report_data": "eb69928058d87b05e1a3401e454f474b68a5cd9c0000000000000000000000003f1c8e5b9a2d47f0c6b3e81a5d94f27c0e6a83b15d2f49c7a08e365b1d4c7f92"
+          },
+          "workload_keyset": {
+            "e2ee_public_keys": [
+              {
+                "algo": "secp256k1-aes-256-gcm-hkdf-sha256",
+                "public_key": "043ce12cca7f9b62ea99038d32841361265a545b5a000f4aa91a94d659b91c0d310cdffdc77c9900419a121665d53552badd13dc2a091b688e8554ee370dd9a600"
+              }
+            ]
+          }
+        }
+      },
+      "expected": {
+        "status": "ok",
+        "verificationLevel": "provider-attested",
+        "reason": null,
+        "supportsClientOpaqueE2ee": true,
+        "failedRequiredChecks": []
+      }
+    },
+    {
+      "name": "venice nonce not the one the evidence bound",
+      "why": "Anti-replay: evidence bound to another nonce must fail closed.",
+      "provider": "venice",
+      "upstreamModel": "venice-uncensored",
+      "endpointIdentity": "venice",
+      "privacyModality": "e2ee",
+      "nonce": "b9e4a1c07d3f28b56e0a9c4d17f3b28e5a6c09d4b1f7e3a25c8d06b9f4e1a3c7",
+      "nowMs": 1760000000000,
+      "rawEvidence": {
+        "intel_quote": "04000000810000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555eb69928058d87b05e1a3401e454f474b68a5cd9c0000000000000000000000003f1c8e5b9a2d47f0c6b3e81a5d94f27c0e6a83b15d2f49c7a08e365b1d4c7f92",
+        "nvidia_payload": "nvidia-gpu-evidence-blob",
+        "nonce": "3f1c8e5b9a2d47f0c6b3e81a5d94f27c0e6a83b15d2f49c7a08e365b1d4c7f92",
+        "model": "venice-uncensored",
+        "signing_algo": "ecdsa",
+        "signing_address": "0xeb69928058d87b05e1a3401e454f474b68a5cd9c",
+        "signing_public_key": "043ce12cca7f9b62ea99038d32841361265a545b5a000f4aa91a94d659b91c0d310cdffdc77c9900419a121665d53552badd13dc2a091b688e8554ee370dd9a600",
+        "attestation": {
+          "report_data": "eb69928058d87b05e1a3401e454f474b68a5cd9c0000000000000000000000003f1c8e5b9a2d47f0c6b3e81a5d94f27c0e6a83b15d2f49c7a08e365b1d4c7f92",
+          "evidence": {
+            "quote_report_data": "eb69928058d87b05e1a3401e454f474b68a5cd9c0000000000000000000000003f1c8e5b9a2d47f0c6b3e81a5d94f27c0e6a83b15d2f49c7a08e365b1d4c7f92"
+          },
+          "workload_keyset": {
+            "e2ee_public_keys": [
+              {
+                "algo": "secp256k1-aes-256-gcm-hkdf-sha256",
+                "public_key": "043ce12cca7f9b62ea99038d32841361265a545b5a000f4aa91a94d659b91c0d310cdffdc77c9900419a121665d53552badd13dc2a091b688e8554ee370dd9a600"
+              }
+            ]
+          }
+        }
+      },
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "nonce_binding",
+        "supportsClientOpaqueE2ee": true,
+        "failedRequiredChecks": [
+          "nonce_binding"
+        ]
+      }
+    },
+    {
+      "name": "venice evidence attests a different model",
+      "why": "Route binding: evidence for another model must not satisfy this route.",
+      "provider": "venice",
+      "upstreamModel": "some-other-model",
+      "endpointIdentity": "venice",
+      "privacyModality": "e2ee",
+      "nonce": "3f1c8e5b9a2d47f0c6b3e81a5d94f27c0e6a83b15d2f49c7a08e365b1d4c7f92",
+      "nowMs": 1760000000000,
+      "rawEvidence": {
+        "intel_quote": "04000000810000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555eb69928058d87b05e1a3401e454f474b68a5cd9c0000000000000000000000003f1c8e5b9a2d47f0c6b3e81a5d94f27c0e6a83b15d2f49c7a08e365b1d4c7f92",
+        "nvidia_payload": "nvidia-gpu-evidence-blob",
+        "nonce": "3f1c8e5b9a2d47f0c6b3e81a5d94f27c0e6a83b15d2f49c7a08e365b1d4c7f92",
+        "model": "venice-uncensored",
+        "signing_algo": "ecdsa",
+        "signing_address": "0xeb69928058d87b05e1a3401e454f474b68a5cd9c",
+        "signing_public_key": "043ce12cca7f9b62ea99038d32841361265a545b5a000f4aa91a94d659b91c0d310cdffdc77c9900419a121665d53552badd13dc2a091b688e8554ee370dd9a600",
+        "attestation": {
+          "report_data": "eb69928058d87b05e1a3401e454f474b68a5cd9c0000000000000000000000003f1c8e5b9a2d47f0c6b3e81a5d94f27c0e6a83b15d2f49c7a08e365b1d4c7f92",
+          "evidence": {
+            "quote_report_data": "eb69928058d87b05e1a3401e454f474b68a5cd9c0000000000000000000000003f1c8e5b9a2d47f0c6b3e81a5d94f27c0e6a83b15d2f49c7a08e365b1d4c7f92"
+          },
+          "workload_keyset": {
+            "e2ee_public_keys": [
+              {
+                "algo": "secp256k1-aes-256-gcm-hkdf-sha256",
+                "public_key": "043ce12cca7f9b62ea99038d32841361265a545b5a000f4aa91a94d659b91c0d310cdffdc77c9900419a121665d53552badd13dc2a091b688e8554ee370dd9a600"
+              }
+            ]
+          }
+        }
+      },
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "model_binding",
+        "supportsClientOpaqueE2ee": true,
+        "failedRequiredChecks": [
+          "model_binding"
+        ]
+      }
+    },
+    {
+      "name": "chutes valid evidence",
+      "why": "Full Chutes instance evidence: reviewed measurements, ML-KEM key binding, certificate possession, and GPU evidence.",
+      "provider": "chutes",
+      "upstreamModel": "z-ai/glm-5.2",
+      "endpointIdentity": "chutes",
+      "privacyModality": "e2ee",
+      "nonce": "3f1c8e5b9a2d47f0c6b3e81a5d94f27c0e6a83b15d2f49c7a08e365b1d4c7f92",
+      "nowMs": 1760000000000,
+      "rawEvidence": {
+        "e2e_instances": [
+          {
+            "instance_id": "2f8c1d90-4b63-4a71-9e05-7c1a8f2b63d4",
+            "e2e_pubkey": "0tBWGJC8ysUKxzOcQiqaxZvDxoyygJc0NSY9loXIcbS4+eBGTUpEJwQyhJdyppq9ncwyoQsUT9Oc/kmZDtd+4TSjUfYIiWdsW8KOBlEYgDBiLmYK3gF05pITQ8I74Zo7OMy/6uJBhfEXxqk5aKlOEZp40QvN9BtgvgtlPtVaHQlm9QK6jPiOTLhefeBxstsYA+J9iIUyN3ycpdpYfqd4HbAifbQqFCyKxINF7TeU0mgSIYXCt5jMesNhZbGrSmIrIQgVcxJjd6gdHPavZtajtwpirTkXAmexk+ZZ0sA3ODF5VbVwOcVF/hyVZfszVnkTVwAiBUJdYaAsdmUn8+Msy6q/1CGtW2R8cwlI2pF1pZW1hMyYwZuZmrknRKF077fAA4W7jAan+tmqDUi9Jsdth1BRFGV8SMDH3Kpwkat98oxdmLzN7HbJmgSh6JAcGnG2OWJFTlgzgNJHAIMTioK9VtTCAPiEAoEYGjk/VwAneoKzcMJvjZsh8nhvOhJu4lkImcUD7hmrfnsyMGIOQGhMvkSrkinE3+ErGmMn+4d6rFiMxYxxQMA5W5CLShQ9gqRXp9QaDQBYlRsCaYZO3csAs+d9s7uA7AZ+IhprzJq4B+lWI2wujrYBI2alDJVcZrccjULPtfCNovqn9mFflGfJgZm4fWia6QkCYgIqxZwmBmArwWFrcYwZLlixoEUTzlRCzFpR6pSiiuE6tETBGTgeL8x6prXKo6sc16NE17UDzEBQoBiu6zwjNao7Q+VS+4vJEmVN5nVcDQtzSfs2c9MarBgcOPaXruyaUtPPq8WNfMZ6MGZf8aVUt6FmTjQ9BvaZ4JzNXXiGYZx6nEgjfWROOkA6RQmq1RuhlDqdksXAtGa/zkHHWjOLddh9DKWlTgYy4Tm+kCZ0k9tmbQede6moFntL1ZKcjATGndhdJ4gTLIN+rzV7xrjPBtMvxQiLbflsWxS4BhqAD0IeheysFjSUcpymAdCJu9BOzDZ4Uot0SIo1NCFH2bUccdsw67TErBtdk3FoCJefrjQBXLG6DCEEg3QneMsTXBCkIeUG6oaGPHsMLMpYgTrPyxeqVRAhckVJdKubj+JnQhAEOvuV+gqwK+sk+OKo7IVF/2NBmhJP0ELKsKRC1zNsqHmJZNOS18O5wqZDBeoHrXQpHZlccYFdWwoDDYIS5GQcwNsBxpSAabMr1JwVmfXPRhG/bLBwDMJr4cTEZkQjHUC9RWE+QVUoZ0csfSK2B5mBxahxsERrfCs/vwWtSSGUCxtr27ij7dtHk5UeflpbLrl47Zm5itdNfAy1ZVNZSftvn0hHBpVg3UPJIyxbdQo/dsAj6VRjMqDEgpJHvbgUS3FShDCblNCAUzmpENQrLaymnEdhfrYrpOt5L8SXLseCoMds85UcnBAH+8FDnTNKkExNk3eSnmeJW0AVEVw6swO4oixoBGwda2FF82GaJdMJtDIdAnhb4KazGzWobjllW/HCqhoL6lBC5APPOhlkBvw2Sxdhn7RXNyorrrG6HyfJoQAESPqGn+JR9ejtM7kNeaysZ0tXqiS3K1yIPpCEWWhabZ2nNKUbw4E=",
+            "nonces": [
+              "3f1c8e5b9a2d47f0c6b3e81a5d94f27c0e6a83b15d2f49c7a08e365b1d4c7f92"
+            ]
+          }
+        ],
+        "e2e_pubkeys": {
+          "2f8c1d90-4b63-4a71-9e05-7c1a8f2b63d4": "0tBWGJC8ysUKxzOcQiqaxZvDxoyygJc0NSY9loXIcbS4+eBGTUpEJwQyhJdyppq9ncwyoQsUT9Oc/kmZDtd+4TSjUfYIiWdsW8KOBlEYgDBiLmYK3gF05pITQ8I74Zo7OMy/6uJBhfEXxqk5aKlOEZp40QvN9BtgvgtlPtVaHQlm9QK6jPiOTLhefeBxstsYA+J9iIUyN3ycpdpYfqd4HbAifbQqFCyKxINF7TeU0mgSIYXCt5jMesNhZbGrSmIrIQgVcxJjd6gdHPavZtajtwpirTkXAmexk+ZZ0sA3ODF5VbVwOcVF/hyVZfszVnkTVwAiBUJdYaAsdmUn8+Msy6q/1CGtW2R8cwlI2pF1pZW1hMyYwZuZmrknRKF077fAA4W7jAan+tmqDUi9Jsdth1BRFGV8SMDH3Kpwkat98oxdmLzN7HbJmgSh6JAcGnG2OWJFTlgzgNJHAIMTioK9VtTCAPiEAoEYGjk/VwAneoKzcMJvjZsh8nhvOhJu4lkImcUD7hmrfnsyMGIOQGhMvkSrkinE3+ErGmMn+4d6rFiMxYxxQMA5W5CLShQ9gqRXp9QaDQBYlRsCaYZO3csAs+d9s7uA7AZ+IhprzJq4B+lWI2wujrYBI2alDJVcZrccjULPtfCNovqn9mFflGfJgZm4fWia6QkCYgIqxZwmBmArwWFrcYwZLlixoEUTzlRCzFpR6pSiiuE6tETBGTgeL8x6prXKo6sc16NE17UDzEBQoBiu6zwjNao7Q+VS+4vJEmVN5nVcDQtzSfs2c9MarBgcOPaXruyaUtPPq8WNfMZ6MGZf8aVUt6FmTjQ9BvaZ4JzNXXiGYZx6nEgjfWROOkA6RQmq1RuhlDqdksXAtGa/zkHHWjOLddh9DKWlTgYy4Tm+kCZ0k9tmbQede6moFntL1ZKcjATGndhdJ4gTLIN+rzV7xrjPBtMvxQiLbflsWxS4BhqAD0IeheysFjSUcpymAdCJu9BOzDZ4Uot0SIo1NCFH2bUccdsw67TErBtdk3FoCJefrjQBXLG6DCEEg3QneMsTXBCkIeUG6oaGPHsMLMpYgTrPyxeqVRAhckVJdKubj+JnQhAEOvuV+gqwK+sk+OKo7IVF/2NBmhJP0ELKsKRC1zNsqHmJZNOS18O5wqZDBeoHrXQpHZlccYFdWwoDDYIS5GQcwNsBxpSAabMr1JwVmfXPRhG/bLBwDMJr4cTEZkQjHUC9RWE+QVUoZ0csfSK2B5mBxahxsERrfCs/vwWtSSGUCxtr27ij7dtHk5UeflpbLrl47Zm5itdNfAy1ZVNZSftvn0hHBpVg3UPJIyxbdQo/dsAj6VRjMqDEgpJHvbgUS3FShDCblNCAUzmpENQrLaymnEdhfrYrpOt5L8SXLseCoMds85UcnBAH+8FDnTNKkExNk3eSnmeJW0AVEVw6swO4oixoBGwda2FF82GaJdMJtDIdAnhb4KazGzWobjllW/HCqhoL6lBC5APPOhlkBvw2Sxdhn7RXNyorrrG6HyfJoQAESPqGn+JR9ejtM7kNeaysZ0tXqiS3K1yIPpCEWWhabZ2nNKUbw4E="
+        },
+        "failed_instance_ids": [],
+        "evidence": [
+          {
+            "instance_id": "2f8c1d90-4b63-4a71-9e05-7c1a8f2b63d4",
+            "quote": "BAAAAIEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAN3G783SMJ4Qg3+Kf2S3EnK37wA7EpRgQQ/nFb3//sOMfAwWht3bKiPU/WI9FF6EVQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAChksRh46BKQldYqXdfD46rheNOgd2BqglYXMkdo8YmtBa7Qg3aUffktbHWGXZFcv/hY7Srsuk7NKQhDUsa1xuQDwL7Im4yFL5D6WozueW/6CVUYxc2LksJcGFbpMqlYd3cZ9P3lGJlKXdZ2eouLh6OBaMwPNIDnSY1Kzpnkkxm+an/tJsIa1DMQ0tSI/GirHL+si76XFI0AwLxd6ic8zZJuJBVRHwj13tqpbTwZ6CTSvwH66G6Jh/9Qn9OtMTdKYPEWRnqxCq/M5EHibg2hFRH9v7zKYUXhYv0U6vaTddpwBoErNZNqobl4qXiHW6+UcTLS7AOCDUHBExC6MWU+ngw=",
+            "certificate": "MIIDLTCCAhWgAwIBAgIUVzvd1TSd+C42Wgybhoz8q407unwwDQYJKoZIhvcNAQELBQAwJTEjMCEGA1UEAwwaYW5vbnJvdXRlci1zZGstdGVzdC12ZWN0b3IwIBcNMjAwMTAxMDAwMDAwWhgPMjEwMDAxMDEwMDAwMDBaMCUxIzAhBgNVBAMMGmFub25yb3V0ZXItc2RrLXRlc3QtdmVjdG9yMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAv8sgqVWdHiY/Wb5ccyRObtuHd9FBUopeE0uk1GeiR/LQTsTQckkWAokH6qvPe+nXft2mgPQgnR41vCx3Mjht5kp3nC5lMNsfuE+tlZVN+PLs7mSo0Y4OfsY8J0lF/WhKKo/b+kBaikM+B0/uyVIbjbCb24KDoqwKRdAK4DXHJPbzX/zO0fiq7b/pxUvDRQuSVBIl+LoIxdOzpMIRVly1YKkAKMw+WyBjqypybU4JN2akT/OGxkhlAgXMcyvaEutFhcXRzqROf3m1tIKK5LlGQ6kae52uQDS1F/ncfz0cfdQUyQ4+YeXjZDKE+Qa3dnIw6m3mqutHFmCpzU+R3581ywIDAQABo1MwUTAdBgNVHQ4EFgQUEKw3pmsthVXW5KXU6EgLob1TgB0wHwYDVR0jBBgwFoAUEKw3pmsthVXW5KXU6EgLob1TgB0wDwYDVR0TAQH/BAUwAwEB/zANBgkqhkiG9w0BAQsFAAOCAQEAFxjkgzPvcTtsDqU9uuNF8amCahkOXt0gX/dmLA3JZh7w92PehZIdfpEep5ACd0KELECKUumq6cT8WArbaazQ1IS5j2EQumZdgJlngX4Wv5O3WGAkIUzVaE6pSVst8dJVxhPACBUv7qeXeBDhZrHj4xw0IywvHgoTUuuyMX4gMbRrtzhHvCive2yUMVWPUaltpbXQGg+aujY0q2ELeSIe2fNAr5OthXtMY2GXtHqab9cyBSFTLJOYolhCsyxSu1DFSxxLqJuZL7Td9r1zD/q3jBKFW7LNKOltEcklZXuhwGT2+iK/YWU/QfKCkw/dc5NEvncqkE5h9wjuIvLxMXwJ2Q==",
+            "attested_body": "eyJub25jZSI6IjNmMWM4ZTViOWEyZDQ3ZjBjNmIzZTgxYTVkOTRmMjdjMGU2YTgzYjE1ZDJmNDljN2EwOGUzNjViMWQ0YzdmOTIiLCJldmlkZW5jZSI6eyJ0ZHhfcXVvdGUiOiJCQUFBQUlFQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU4zRzc4M1NNSjRRZzMrS2YyUzNFbkszN3dBN0VwUmdRUS9uRmIzLy9zT01mQXdXaHQzYktpUFUvV0k5RkY2RVZRQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFDaGtzUmg0NkJLUWxkWXFYZGZENDZyaGVOT2dkMkJxZ2xZWE1rZG84WW10QmE3UWczYVVmZmt0YkhXR1haRmN2L2hZN1Nyc3VrN05LUWhEVXNhMXh1UUR3TDdJbTR5Rkw1RDZXb3p1ZVcvNkNWVVl4YzJMa3NKY0dGYnBNcWxZZDNjWjlQM2xHSmxLWGRaMmVvdUxoNk9CYU13UE5JRG5TWTFLenBua2t4bSthbi90SnNJYTFETVEwdFNJL0dpckhMK3NpNzZYRkkwQXdMeGQ2aWM4elpKdUpCVlJId2oxM3RxcGJUd1o2Q1RTdndINjZHNkpoLzlRbjlPdE1UZEtZUEVXUm5xeENxL001RUhpYmcyaEZSSDl2N3pLWVVYaFl2MFU2dmFUZGRwd0JvRXJOWk5xb2JsNHFYaUhXNitVY1RMUzdBT0NEVUhCRXhDNk1XVStuZ3c9IiwibnZ0cnVzdF9ldmlkZW5jZSI6Ilt7XCJjZXJ0aWZpY2F0ZVwiOlwibnZpZGlhLWNlcnQtY2hhaW4tcGVtXCIsXCJldmlkZW5jZVwiOlwibnZpZGlhLWF0dGVzdGF0aW9uLWJsb2JcIn1dIn19",
+            "signature": "CfoO+hsb3ngZ4bwvKFOT+C8UnrWTD/kdeiFOaoOo0g4h+2ACOODff2//e2qruiFLllrZiJLtakIHArHuAowK3pZuKUI555ZzVRJHwU5JLJl7l41naJb8Q2rOtofc3/6WTvPhSguGC2vdtr2qtjdks06BUdlt8aUH9M1Aekofg17bx9n7aw4O3bFXIJCtaivgQ1DTr85LdyHZdjhRYdlAS8J5zaXk1AgC/b8iNr3i9vidV5lrvtBOIxlL4nNe4lXZcsJDu3lLWHm9RciitdPHq83nLA1HfEfnrpBeBSbYwZgJB3StR11J2nbO39Bv3kQE5jZt4fHgh7hCwF7q3oYQTQ==",
+            "gpu_evidence": [
+              {
+                "certificate": "nvidia-cert-chain-pem",
+                "evidence": "nvidia-attestation-blob"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "ok",
+        "verificationLevel": "provider-attested",
+        "reason": null,
+        "supportsClientOpaqueE2ee": true,
+        "failedRequiredChecks": []
+      }
+    },
+    {
+      "name": "chutes report_data binds a key other than the served one",
+      "why": "A relay that attests one ML-KEM key while serving another must fail closed, so no request is ever sealed to an unverified key.",
+      "provider": "chutes",
+      "upstreamModel": "z-ai/glm-5.2",
+      "endpointIdentity": "chutes",
+      "privacyModality": "e2ee",
+      "nonce": "3f1c8e5b9a2d47f0c6b3e81a5d94f27c0e6a83b15d2f49c7a08e365b1d4c7f92",
+      "nowMs": 1760000000000,
+      "rawEvidence": {
+        "e2e_instances": [
+          {
+            "instance_id": "2f8c1d90-4b63-4a71-9e05-7c1a8f2b63d4",
+            "e2e_pubkey": "0tBWGJC8ysUKxzOcQiqaxZvDxoyygJc0NSY9loXIcbS4+eBGTUpEJwQyhJdyppq9ncwyoQsUT9Oc/kmZDtd+4TSjUfYIiWdsW8KOBlEYgDBiLmYK3gF05pITQ8I74Zo7OMy/6uJBhfEXxqk5aKlOEZp40QvN9BtgvgtlPtVaHQlm9QK6jPiOTLhefeBxstsYA+J9iIUyN3ycpdpYfqd4HbAifbQqFCyKxINF7TeU0mgSIYXCt5jMesNhZbGrSmIrIQgVcxJjd6gdHPavZtajtwpirTkXAmexk+ZZ0sA3ODF5VbVwOcVF/hyVZfszVnkTVwAiBUJdYaAsdmUn8+Msy6q/1CGtW2R8cwlI2pF1pZW1hMyYwZuZmrknRKF077fAA4W7jAan+tmqDUi9Jsdth1BRFGV8SMDH3Kpwkat98oxdmLzN7HbJmgSh6JAcGnG2OWJFTlgzgNJHAIMTioK9VtTCAPiEAoEYGjk/VwAneoKzcMJvjZsh8nhvOhJu4lkImcUD7hmrfnsyMGIOQGhMvkSrkinE3+ErGmMn+4d6rFiMxYxxQMA5W5CLShQ9gqRXp9QaDQBYlRsCaYZO3csAs+d9s7uA7AZ+IhprzJq4B+lWI2wujrYBI2alDJVcZrccjULPtfCNovqn9mFflGfJgZm4fWia6QkCYgIqxZwmBmArwWFrcYwZLlixoEUTzlRCzFpR6pSiiuE6tETBGTgeL8x6prXKo6sc16NE17UDzEBQoBiu6zwjNao7Q+VS+4vJEmVN5nVcDQtzSfs2c9MarBgcOPaXruyaUtPPq8WNfMZ6MGZf8aVUt6FmTjQ9BvaZ4JzNXXiGYZx6nEgjfWROOkA6RQmq1RuhlDqdksXAtGa/zkHHWjOLddh9DKWlTgYy4Tm+kCZ0k9tmbQede6moFntL1ZKcjATGndhdJ4gTLIN+rzV7xrjPBtMvxQiLbflsWxS4BhqAD0IeheysFjSUcpymAdCJu9BOzDZ4Uot0SIo1NCFH2bUccdsw67TErBtdk3FoCJefrjQBXLG6DCEEg3QneMsTXBCkIeUG6oaGPHsMLMpYgTrPyxeqVRAhckVJdKubj+JnQhAEOvuV+gqwK+sk+OKo7IVF/2NBmhJP0ELKsKRC1zNsqHmJZNOS18O5wqZDBeoHrXQpHZlccYFdWwoDDYIS5GQcwNsBxpSAabMr1JwVmfXPRhG/bLBwDMJr4cTEZkQjHUC9RWE+QVUoZ0csfSK2B5mBxahxsERrfCs/vwWtSSGUCxtr27ij7dtHk5UeflpbLrl47Zm5itdNfAy1ZVNZSftvn0hHBpVg3UPJIyxbdQo/dsAj6VRjMqDEgpJHvbgUS3FShDCblNCAUzmpENQrLaymnEdhfrYrpOt5L8SXLseCoMds85UcnBAH+8FDnTNKkExNk3eSnmeJW0AVEVw6swO4oixoBGwda2FF82GaJdMJtDIdAnhb4KazGzWobjllW/HCqhoL6lBC5APPOhlkBvw2Sxdhn7RXNyorrrG6HyfJoQAESPqGn+JR9ejtM7kNeaysZ0tXqiS3K1yIPpCEWWhabZ2nNKUbw4E=",
+            "nonces": [
+              "3f1c8e5b9a2d47f0c6b3e81a5d94f27c0e6a83b15d2f49c7a08e365b1d4c7f92"
+            ]
+          }
+        ],
+        "e2e_pubkeys": {
+          "2f8c1d90-4b63-4a71-9e05-7c1a8f2b63d4": "0tBWGJC8ysUKxzOcQiqaxZvDxoyygJc0NSY9loXIcbS4+eBGTUpEJwQyhJdyppq9ncwyoQsUT9Oc/kmZDtd+4TSjUfYIiWdsW8KOBlEYgDBiLmYK3gF05pITQ8I74Zo7OMy/6uJBhfEXxqk5aKlOEZp40QvN9BtgvgtlPtVaHQlm9QK6jPiOTLhefeBxstsYA+J9iIUyN3ycpdpYfqd4HbAifbQqFCyKxINF7TeU0mgSIYXCt5jMesNhZbGrSmIrIQgVcxJjd6gdHPavZtajtwpirTkXAmexk+ZZ0sA3ODF5VbVwOcVF/hyVZfszVnkTVwAiBUJdYaAsdmUn8+Msy6q/1CGtW2R8cwlI2pF1pZW1hMyYwZuZmrknRKF077fAA4W7jAan+tmqDUi9Jsdth1BRFGV8SMDH3Kpwkat98oxdmLzN7HbJmgSh6JAcGnG2OWJFTlgzgNJHAIMTioK9VtTCAPiEAoEYGjk/VwAneoKzcMJvjZsh8nhvOhJu4lkImcUD7hmrfnsyMGIOQGhMvkSrkinE3+ErGmMn+4d6rFiMxYxxQMA5W5CLShQ9gqRXp9QaDQBYlRsCaYZO3csAs+d9s7uA7AZ+IhprzJq4B+lWI2wujrYBI2alDJVcZrccjULPtfCNovqn9mFflGfJgZm4fWia6QkCYgIqxZwmBmArwWFrcYwZLlixoEUTzlRCzFpR6pSiiuE6tETBGTgeL8x6prXKo6sc16NE17UDzEBQoBiu6zwjNao7Q+VS+4vJEmVN5nVcDQtzSfs2c9MarBgcOPaXruyaUtPPq8WNfMZ6MGZf8aVUt6FmTjQ9BvaZ4JzNXXiGYZx6nEgjfWROOkA6RQmq1RuhlDqdksXAtGa/zkHHWjOLddh9DKWlTgYy4Tm+kCZ0k9tmbQede6moFntL1ZKcjATGndhdJ4gTLIN+rzV7xrjPBtMvxQiLbflsWxS4BhqAD0IeheysFjSUcpymAdCJu9BOzDZ4Uot0SIo1NCFH2bUccdsw67TErBtdk3FoCJefrjQBXLG6DCEEg3QneMsTXBCkIeUG6oaGPHsMLMpYgTrPyxeqVRAhckVJdKubj+JnQhAEOvuV+gqwK+sk+OKo7IVF/2NBmhJP0ELKsKRC1zNsqHmJZNOS18O5wqZDBeoHrXQpHZlccYFdWwoDDYIS5GQcwNsBxpSAabMr1JwVmfXPRhG/bLBwDMJr4cTEZkQjHUC9RWE+QVUoZ0csfSK2B5mBxahxsERrfCs/vwWtSSGUCxtr27ij7dtHk5UeflpbLrl47Zm5itdNfAy1ZVNZSftvn0hHBpVg3UPJIyxbdQo/dsAj6VRjMqDEgpJHvbgUS3FShDCblNCAUzmpENQrLaymnEdhfrYrpOt5L8SXLseCoMds85UcnBAH+8FDnTNKkExNk3eSnmeJW0AVEVw6swO4oixoBGwda2FF82GaJdMJtDIdAnhb4KazGzWobjllW/HCqhoL6lBC5APPOhlkBvw2Sxdhn7RXNyorrrG6HyfJoQAESPqGn+JR9ejtM7kNeaysZ0tXqiS3K1yIPpCEWWhabZ2nNKUbw4E="
+        },
+        "failed_instance_ids": [],
+        "evidence": [
+          {
+            "instance_id": "2f8c1d90-4b63-4a71-9e05-7c1a8f2b63d4",
+            "quote": "BAAAAIEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAN3G783SMJ4Qg3+Kf2S3EnK37wA7EpRgQQ/nFb3//sOMfAwWht3bKiPU/WI9FF6EVQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAChksRh46BKQldYqXdfD46rheNOgd2BqglYXMkdo8YmtBa7Qg3aUffktbHWGXZFcv/hY7Srsuk7NKQhDUsa1xuQDwL7Im4yFL5D6WozueW/6CVUYxc2LksJcGFbpMqlYd3cZ9P3lGJlKXdZ2eouLh6OBaMwPNIDnSY1Kzpnkkxm+an/tJsIa1DMQ0tSI/GirHL+si76XFI0AwLxd6ic8zZJuJBVRHwj13tqpbTwZ6CTSvwH66G6Jh/9Qn9OtMTdKYHnTLJYDJZ4gBnV0tqEBOgs2bZOYQVAMDd2SsZNQthbYv4u+Y6ddVlGwdQaNGA3XZwAjmPmGJ59o4V3RIdFsnwE=",
+            "certificate": "MIIDLTCCAhWgAwIBAgIUVfFXDjG6uL+phQzjIhPHPnUg3xIwDQYJKoZIhvcNAQELBQAwJTEjMCEGA1UEAwwaYW5vbnJvdXRlci1zZGstdGVzdC12ZWN0b3IwIBcNMjAwMTAxMDAwMDAwWhgPMjEwMDAxMDEwMDAwMDBaMCUxIzAhBgNVBAMMGmFub25yb3V0ZXItc2RrLXRlc3QtdmVjdG9yMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAn6p/KJrKx1c/ugKVFWCGgFCGl/v5aYdxDtYV36ppO5cdNd2RT5Hie4Azbk8EsaLjHADpa7dZ230TzT1gPhzntI1sEdlzVET2xH6K3ypyZLYXXqkfcgLOU85ed+p16mVORp1Hn0zLPYNOq74OG1/+qZIdVmnBvXJjtNH0AXIY+IStAKJNvh0RKcoh7Kd/WuVbVb41bnl/YMGs0asOYc3hyOSD3bn5dwxbldrweLWTnFuWV6p6Uujqo0/LouZEBfFZP+KEDD+TPGg6Id5k77U9oqzvpkeMfr24neCxiqEiqRwPORuGqImht+Z/pz2ZcFWzFVb4lis0pdWZnrdCcPxlMQIDAQABo1MwUTAdBgNVHQ4EFgQUFq0yuQTFLz4S6I4IgtROENR8pKcwHwYDVR0jBBgwFoAUFq0yuQTFLz4S6I4IgtROENR8pKcwDwYDVR0TAQH/BAUwAwEB/zANBgkqhkiG9w0BAQsFAAOCAQEAORSVsnzI+dDwfG3EEp8QlSel1ZP4vr29R7D9hO3Wc09bwR4hvfj312cximHPBIpL70QjcNasYJsQ4Y43Z5iEh1u51J9z8yCNU9ykEwXGTBc++VDLiE65g/860bin8X78aidJsWT9zKp2m+Xp9xj0jalNRpDpR0wNzPrNrKt83YbL3zbl2ULdsd0MJQX5FNTIu7uGeK7754IaTDe18X2GZ7evjzoMNdCR4SDl5qX+7yrduZmDoWBZUwBvSl7MVmvMrp9XyJMQ9QBZTR3MYS/qr0epQdpHgoGYsdLZOnC/7j6egWQTK2db9mbKwZiRI2HombZWKJO/cqA1aBqTXwpSPw==",
+            "attested_body": "eyJub25jZSI6IjNmMWM4ZTViOWEyZDQ3ZjBjNmIzZTgxYTVkOTRmMjdjMGU2YTgzYjE1ZDJmNDljN2EwOGUzNjViMWQ0YzdmOTIiLCJldmlkZW5jZSI6eyJ0ZHhfcXVvdGUiOiJCQUFBQUlFQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU4zRzc4M1NNSjRRZzMrS2YyUzNFbkszN3dBN0VwUmdRUS9uRmIzLy9zT01mQXdXaHQzYktpUFUvV0k5RkY2RVZRQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFDaGtzUmg0NkJLUWxkWXFYZGZENDZyaGVOT2dkMkJxZ2xZWE1rZG84WW10QmE3UWczYVVmZmt0YkhXR1haRmN2L2hZN1Nyc3VrN05LUWhEVXNhMXh1UUR3TDdJbTR5Rkw1RDZXb3p1ZVcvNkNWVVl4YzJMa3NKY0dGYnBNcWxZZDNjWjlQM2xHSmxLWGRaMmVvdUxoNk9CYU13UE5JRG5TWTFLenBua2t4bSthbi90SnNJYTFETVEwdFNJL0dpckhMK3NpNzZYRkkwQXdMeGQ2aWM4elpKdUpCVlJId2oxM3RxcGJUd1o2Q1RTdndINjZHNkpoLzlRbjlPdE1UZEtZSG5UTEpZREpaNGdCblYwdHFFQk9nczJiWk9ZUVZBTURkMlNzWk5RdGhiWXY0dStZNmRkVmxHd2RRYU5HQTNYWndBam1QbUdKNTlvNFYzUklkRnNud0U9IiwibnZ0cnVzdF9ldmlkZW5jZSI6Ilt7XCJjZXJ0aWZpY2F0ZVwiOlwibnZpZGlhLWNlcnQtY2hhaW4tcGVtXCIsXCJldmlkZW5jZVwiOlwibnZpZGlhLWF0dGVzdGF0aW9uLWJsb2JcIn1dIn19",
+            "signature": "NTDFDQ7sUYcr7DC+ZiXrG7Yeh6eGoF/XzrGbskMCotX/AFvw7R3LXETAjFeiPS0crNkR19T/aU23gMuFxTnqUCQPvK6HVZ2U/iRKgPmGXtDSby8HDdVe9r/3DLpxeNAd+bhilOlBs1gNLpRNK4pLDNSMKfLLSV1FQaResoWnFmZOeOO6WGHhR+nTFq17TTCmuIhepwIK2JiEgdKGSfz+Bsywyp8oTTe/Xjr6C0ohtu/yoeyQiJNyuM+ccksgYcFP2fh2IzS4VXQGsi8BCR9pr9JupSTyrogHCnnh0/T4l4L7vTH7tZSrm439ZPo6fi9kSA/qx3SlDPfYP2O4H4M9WA==",
+            "gpu_evidence": [
+              {
+                "certificate": "nvidia-cert-chain-pem",
+                "evidence": "nvidia-attestation-blob"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "instance_0_nonce_key_binding",
+        "supportsClientOpaqueE2ee": false,
+        "failedRequiredChecks": [
+          "instance_0_nonce_key_binding"
+        ]
+      }
+    },
+    {
+      "name": "near compose document is not the reviewed one",
+      "why": "Structurally complete NEAR evidence still fails when the compose document is outside the reviewed allowlist.",
+      "provider": "near-ai",
+      "upstreamModel": "openai/gpt-oss-120b",
+      "endpointIdentity": "gpt-oss-120b.completions.near.ai",
+      "privacyModality": "e2ee",
+      "nonce": "3f1c8e5b9a2d47f0c6b3e81a5d94f27c0e6a83b15d2f49c7a08e365b1d4c7f92",
+      "nowMs": 1760000000000,
+      "rawEvidence": {
+        "intel_quote": "04000000810000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666012827ec4bc1f5942a2ed119cd68d9ffec1e79734644ed64cdaa31717e1222428c000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa94e0a1488ee0b53a3bee69d1a7966b87b4c4eef4bbf67176bd28603d90746cce3f1c8e5b9a2d47f0c6b3e81a5d94f27c0e6a83b15d2f49c7a08e365b1d4c7f92",
+        "nvidia_payload": "nvidia-gpu-evidence-blob",
+        "model_name": "openai/gpt-oss-120b",
+        "signing_address": "0xabababababababababababababababababababab",
+        "signing_algo": "ed25519",
+        "tls_cert_fingerprint": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+        "app_compose": "services:\n  app:\n    image: example/not-the-reviewed-compose\n",
+        "compose_hash": "2827ec4bc1f5942a2ed119cd68d9ffec1e79734644ed64cdaa31717e1222428c"
+      },
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "measurement_allowlist",
+        "supportsClientOpaqueE2ee": true,
+        "failedRequiredChecks": [
+          "measurement_allowlist"
+        ]
+      }
+    },
+    {
+      "name": "near empty evidence",
+      "why": "Absent evidence is never treated as absent-and-fine.",
+      "provider": "near-ai",
+      "upstreamModel": "openai/gpt-oss-120b",
+      "endpointIdentity": "gpt-oss-120b.completions.near.ai",
+      "privacyModality": "e2ee",
+      "nonce": "3f1c8e5b9a2d47f0c6b3e81a5d94f27c0e6a83b15d2f49c7a08e365b1d4c7f92",
+      "nowMs": 1760000000000,
+      "rawEvidence": {},
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "evidence_present",
+        "supportsClientOpaqueE2ee": true,
+        "failedRequiredChecks": [
+          "evidence_present",
+          "quote_parsed",
+          "model_binding",
+          "gpu_evidence_present"
+        ]
+      }
+    },
+    {
+      "name": "tinfoil valid verification document",
+      "why": "A Tinfoil document reporting a successful SDK verification, on a pinned release, reaches sdk-verified and no higher.",
+      "provider": "tinfoil",
+      "upstreamModel": "llama3-3-70b",
+      "endpointIdentity": "inference.tinfoil.sh",
+      "privacyModality": "tee",
+      "nonce": "3f1c8e5b9a2d47f0c6b3e81a5d94f27c0e6a83b15d2f49c7a08e365b1d4c7f92",
+      "nowMs": 1760000000000,
+      "rawEvidence": {
+        "schemaVersion": 1,
+        "configRepo": "tinfoilsh/confidential-model-router",
+        "enclaveHost": "inference.tinfoil.sh",
+        "selectedRouterEndpoint": "https://inference.tinfoil.sh",
+        "releaseTag": "v0.0.140",
+        "releaseDigest": "d88c75279bb24cd0674515c477a2a9ed71334036a2df69797dcd968d2c6a238b",
+        "codeFingerprint": "5cd252b81bb05d773879f65e34fc591e5d5f4b1c5f2de41861beb2ee291b57487cc336d635957d8a43b98c9b500c067c",
+        "enclaveFingerprint": "5cd252b81bb05d773879f65e34fc591e5d5f4b1c5f2de41861beb2ee291b57487cc336d635957d8a43b98c9b500c067c",
+        "tlsPublicKey": "3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d",
+        "enclaveMeasurement": {
+          "tlsPublicKeyFingerprint": "7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c"
+        },
+        "securityVerified": true,
+        "verifier": "tinfoil-go/0.0.0",
+        "steps": {
+          "fetchDigest": {
+            "status": "success"
+          },
+          "verifyCode": {
+            "status": "success"
+          },
+          "verifyEnclave": {
+            "status": "success"
+          },
+          "compareMeasurements": {
+            "status": "success"
+          },
+          "verifyCertificate": {
+            "status": "success"
+          }
+        }
+      },
+      "expected": {
+        "status": "ok",
+        "verificationLevel": "sdk-verified",
+        "reason": null,
+        "supportsClientOpaqueE2ee": false,
+        "failedRequiredChecks": []
+      }
+    },
+    {
+      "name": "tinfoil document with a failed verification step",
+      "why": "If Tinfoil's own verifier did not complete every cryptographic step, the document must not be accepted.",
+      "provider": "tinfoil",
+      "upstreamModel": "llama3-3-70b",
+      "endpointIdentity": "inference.tinfoil.sh",
+      "privacyModality": "tee",
+      "nonce": "3f1c8e5b9a2d47f0c6b3e81a5d94f27c0e6a83b15d2f49c7a08e365b1d4c7f92",
+      "nowMs": 1760000000000,
+      "rawEvidence": {
+        "schemaVersion": 1,
+        "configRepo": "tinfoilsh/confidential-model-router",
+        "enclaveHost": "inference.tinfoil.sh",
+        "selectedRouterEndpoint": "https://inference.tinfoil.sh",
+        "releaseTag": "v0.0.140",
+        "releaseDigest": "d88c75279bb24cd0674515c477a2a9ed71334036a2df69797dcd968d2c6a238b",
+        "codeFingerprint": "5cd252b81bb05d773879f65e34fc591e5d5f4b1c5f2de41861beb2ee291b57487cc336d635957d8a43b98c9b500c067c",
+        "enclaveFingerprint": "5cd252b81bb05d773879f65e34fc591e5d5f4b1c5f2de41861beb2ee291b57487cc336d635957d8a43b98c9b500c067c",
+        "tlsPublicKey": "3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d",
+        "enclaveMeasurement": {
+          "tlsPublicKeyFingerprint": "7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c"
+        },
+        "securityVerified": true,
+        "verifier": "tinfoil-go/0.0.0",
+        "steps": {
+          "fetchDigest": {
+            "status": "success"
+          },
+          "verifyCode": {
+            "status": "success"
+          },
+          "verifyEnclave": {
+            "status": "failed"
+          },
+          "compareMeasurements": {
+            "status": "success"
+          },
+          "verifyCertificate": {
+            "status": "success"
+          }
+        }
+      },
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "sdk_verification_steps",
+        "supportsClientOpaqueE2ee": false,
+        "failedRequiredChecks": [
+          "sdk_verification_steps"
+        ]
+      }
+    },
+    {
+      "name": "unknown provider",
+      "why": "A provider with no verifier is not verifiable, and must not be reported as verified.",
+      "provider": "acme-inference",
+      "upstreamModel": "acme/model",
+      "endpointIdentity": "acme-inference",
+      "privacyModality": "e2ee",
+      "nonce": "3f1c8e5b9a2d47f0c6b3e81a5d94f27c0e6a83b15d2f49c7a08e365b1d4c7f92",
+      "nowMs": 1760000000000,
+      "rawEvidence": {},
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "evidence_present",
+        "supportsClientOpaqueE2ee": false,
+        "failedRequiredChecks": [
+          "evidence_present"
+        ]
+      }
+    }
+  ]
+}

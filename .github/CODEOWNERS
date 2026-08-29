@@ -1,0 +1,19 @@
+# Default owners for everything in this repository.
+* @anonrouterai @SundayLabs-org
+
+# The measurement pins are security policy, not ordinary data. Any change here
+# must follow the rotation process in SECURITY.md: verify the provider's
+# published evidence first, add a new immutable entry, bump the version string.
+/shared/measurements.json                        @anonrouterai @SundayLabs-org
+/js/confidential/src/measurements.json           @anonrouterai @SundayLabs-org
+/python/src/anonrouter_confidential/measurements.json @anonrouterai @SundayLabs-org
+
+# The known-answer vectors are the cross-language parity contract.
+/shared/vectors/                                 @anonrouterai @SundayLabs-org
+
+# Verification logic: the trust core of this repo.
+/js/confidential/src/verify/                     @anonrouterai @SundayLabs-org
+/python/src/anonrouter_confidential/verify/      @anonrouterai @SundayLabs-org
+
+# Security policy and disclosure.
+/SECURITY.md                                     @anonrouterai @SundayLabs-org

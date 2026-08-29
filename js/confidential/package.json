@@ -1,0 +1,50 @@
+{
+  "name": "@anonrouter/confidential",
+  "version": "0.1.0",
+  "description": "Independently verify AnonRouter TEE/E2EE routes and run confidential inference from your own app.",
+  "license": "Apache-2.0",
+  "author": "AnonRouter",
+  "homepage": "https://github.com/anonrouter/anonrouter-sdk#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anonrouter/anonrouter-sdk.git",
+    "directory": "js/confidential"
+  },
+  "bugs": { "url": "https://github.com/anonrouter/anonrouter-sdk/issues" },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" }
+  },
+  "files": ["dist", "src/measurements.json", "src/gateway/gateway-policies.json", "README.md", "LICENSE"],
+  "sideEffects": false,
+  "engines": { "node": ">=22" },
+  "publishConfig": { "access": "public" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node -e \"const f=require('fs');f.copyFileSync('src/measurements.json','dist/measurements.json');f.mkdirSync('dist/gateway',{recursive:true});f.copyFileSync('src/gateway/gateway-policies.json','dist/gateway/gateway-policies.json')\"",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build",
+    "example:selftest": "tsx examples/selftest-mock.ts",
+    "example:verify-tee": "tsx examples/verify-tee.ts",
+    "example:chat-e2ee": "tsx examples/chat-e2ee.ts",
+    "gen:attestation-vectors": "tsx scripts/gen-attestation-vectors.ts",
+    "gen:gateway-binding-vectors": "tsx scripts/gen-gateway-binding-vectors.ts"
+  },
+  "keywords": ["anonrouter", "tee", "e2ee", "attestation", "confidential", "tdx", "ml-kem", "verify"],
+  "dependencies": {
+    "@noble/ciphers": "^2.3.0",
+    "@noble/curves": "^1.9.7",
+    "@noble/hashes": "^1.8.0",
+    "@noble/post-quantum": "^0.7.0"
+  },
+  "optionalDependencies": {
+    "tinfoil": "^1.2.1"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.10"
+  }
+}

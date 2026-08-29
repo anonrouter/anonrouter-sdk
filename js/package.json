@@ -1,0 +1,11 @@
+{
+  "name": "anonrouter-sdk-js",
+  "private": true,
+  "description": "npm workspaces root for the AnonRouter JS SDKs",
+  "workspaces": ["confidential", "client"],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  }
+}

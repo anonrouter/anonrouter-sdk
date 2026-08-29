@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/anonrouter/anonrouter-sdk/security/policy
+    about: Please do not open a public issue. Email contact@anonrouter.ai instead.
+  - name: AnonRouter documentation
+    url: https://docs.anonrouter.ai
+    about: Guides for the API, the confidential routes, and TEE verification.

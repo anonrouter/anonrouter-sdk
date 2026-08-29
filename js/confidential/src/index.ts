@@ -1,0 +1,192 @@
+// @anonrouter/confidential: independently verify AnonRouter TEE/E2EE routes and run
+// confidential inference from your own Node or browser app. "Don't trust us, verify."
+//
+// TEE means the workload runs in a verified enclave; it does NOT by itself hide
+// your content from AnonRouter. Only the E2EE providers (near-ai, venice, chutes)
+// keep request/response content opaque to the gateway. This package makes that
+// distinction explicit and never emits a `hardware-verified` claim: the vendor-root
+// chain is deliberately not wired, so the honest ceiling is `provider-attested`
+// (near/venice/chutes) or `sdk-verified` (tinfoil, via its official SDK).
+
+// ---- Client -----------------------------------------------------------------
+export {
+  createClient,
+  type AnonRouterClient,
+  type CreateClientOptions,
+  type VerifyAttestationInput,
+  type VerifyAttestationResult,
+  type VerifyGatewayInput,
+  type VerifyGatewayResult,
+  type VerifyGatewayOption,
+  type GatewayPolicyProvenance,
+  type VerifyInput,
+  type VerificationReport,
+  type GatewayHopReport,
+  type ProviderHopReport,
+  type ChatInput,
+  type ChatResult
+} from "./client.js";
+
+// ---- Hop 1: AnonRouter's own confidential routing plane ----------------------
+// Verifying the provider's enclave says nothing about who routed the request to
+// it. These verify the other half: that the AnonRouter data plane you connected
+// to is the exact reviewed build, running in an Intel TDX confidential VM, bound
+// to your nonce and your origin.
+export {
+  verifyGatewayAttestation,
+  type GatewayAttestationEvidence,
+  type GatewayVerificationExpectations,
+  type GatewayVerificationResult,
+  type TdxChainVerifier
+} from "./gateway/verify.js";
+export {
+  canonicalGatewayBindingJson,
+  canonicalGatewayOrigin,
+  gatewayBindingDigest,
+  gatewayBindingHash,
+  normalizeGatewayBinding,
+  assertGatewayNonce,
+  GatewayBindingError,
+  GATEWAY_BINDING_VERSION,
+  GATEWAY_BINDING_DIGEST_ALGORITHM,
+  GATEWAY_BINDING_DIGEST_HEX_LENGTH,
+  GATEWAY_NONCE_BYTES,
+  GATEWAY_NONCE_HEX_LENGTH,
+  type GatewayAttestationBinding,
+  type GatewayKeyAlgorithm,
+  type GatewayTransportBinding
+} from "./gateway/binding.js";
+export {
+  loadGatewayPolicy,
+  gatewayPolicyRegistry,
+  pinnedGatewayPolicyFor,
+  GatewayPolicyError,
+  type GatewayMeasurementPolicy,
+  type GatewayPlatformMeasurements,
+  type GatewayPolicyEntry,
+  type GatewayPolicyStatus,
+  type ResolveGatewayPolicyOptions
+} from "./gateway/policy.js";
+export {
+  parseEventLog,
+  replayRtmrs,
+  replayRegister,
+  computeRtmr3EventDigestV1,
+  rtmr3EventDigest,
+  rtmr3EventDigestIsSelfConsistent,
+  inconsistentRtmr3Events,
+  singleEventPayload,
+  EventLogError,
+  RTMR_INITIAL_VALUE,
+  type DstackEventLogEntry
+} from "./gateway/eventLog.js";
+export {
+  readAttestedAppCompose,
+  extractComposeImages,
+  AppComposeError,
+  type AttestedAppCompose,
+  type AttestedImageReference
+} from "./gateway/appCompose.js";
+
+// ---- Pure verification ------------------------------------------------------
+export {
+  verifyRawEvidence,
+  verifierFor,
+  buildExpectations,
+  type VerifyExpectations,
+  type VerifiableProvider
+} from "./verify/index.js";
+export {
+  toNormalizedVerdict,
+  type NormalizedVerdict,
+  type NormalizedAttestationResult,
+  type AttestationCheck,
+  type AttestationExpectations,
+  type VerificationLevel,
+  type HardwareType,
+  type PrivacyModality,
+  type TeeVerifier
+} from "./verify/types.js";
+export { NearTeeVerifier, type NearVerifierOptions } from "./verify/near.js";
+export { VeniceTeeVerifier, type VeniceVerifierOptions } from "./verify/venice.js";
+export { ChutesTeeVerifier, type ChutesVerifierOptions } from "./verify/chutes.js";
+export { TinfoilTeeVerifier, type TinfoilVerifierOptions, type TinfoilVerificationDocument } from "./verify/tinfoil.js";
+
+// ---- TDX quote parsing ------------------------------------------------------
+export { parseTdxQuote, matchMeasurementAllowlist, type ParsedTdxQuote } from "./verify/tdx.js";
+
+// ---- Verification crypto primitives -----------------------------------------
+export {
+  sha256Hex,
+  sha256Bytes,
+  hexEqual,
+  fromHex,
+  secp256k1AddressFromPublicKey,
+  verifyEd25519,
+  enableNodeCrypto,
+  setNodeCryptoProvider
+} from "./verify/crypto.js";
+
+// ---- Measurement policy (pins) ----------------------------------------------
+export {
+  pinnedMeasurementPolicyFor,
+  pinnedEndpointIdentityFor,
+  measurementPolicyDocument,
+  TDX_TEE_TYPE,
+  type MeasurementPolicy,
+  type TdxMeasurementEntry,
+  type TinfoilAcceptedRelease
+} from "./measurements.js";
+
+// ---- Tinfoil (optional dependency) ------------------------------------------
+export { verifyTinfoilEnclave, type TinfoilVerifyOptions } from "./tinfoil.js";
+
+// ---- E2EE transports + low-level provider crypto ----------------------------
+export { transportFor, isE2eeProvider } from "./transport/index.js";
+export {
+  joinUrl,
+  type E2eeTransport,
+  type E2eeSession,
+  type E2eeProviderId,
+  type E2eeProtocol,
+  type E2eeRole,
+  type E2eeChatMessage,
+  type E2eeChatRequest,
+  type E2eeCompletion,
+  type CreateSessionInput,
+  type CompleteOptions,
+  type HttpContext,
+  type FetchLike
+} from "./transport/types.js";
+export { validateE2eeMessages, validateE2eeRequest, type RawTurnMessage } from "./transport/validation.js";
+
+import { encryptField as nearEncryptField, decryptField as nearDecryptField } from "./transport/near.js";
+import { veniceEncrypt, veniceDecrypt } from "./transport/venice.js";
+import { chutesDecryptResponseJson, decryptChutesResponse } from "./transport/chutes.js";
+
+export { nearEncryptField, nearDecryptField, veniceEncrypt, veniceDecrypt, chutesDecryptResponseJson, decryptChutesResponse };
+
+/** The low-level provider crypto grouped by provider (exported for advanced users
+ *  and exercised by the shared known-answer-test vectors). */
+export const providerCrypto = {
+  "near-ai": { encryptField: nearEncryptField, decryptField: nearDecryptField },
+  venice: { encrypt: veniceEncrypt, decrypt: veniceDecrypt },
+  chutes: { decryptResponse: decryptChutesResponse, decryptResponseJson: chutesDecryptResponseJson }
+} as const;
+
+// ---- Errors + byte helpers --------------------------------------------------
+export {
+  ConfidentialError,
+  confidentialErrorCode,
+  confidentialUserMessage,
+  type ConfidentialErrorCode
+} from "./errors.js";
+export {
+  bytesToHex,
+  hexToBytes,
+  base64ToBytes,
+  bytesToBase64,
+  randomBytes,
+  utf8Encode,
+  utf8Decode
+} from "./bytes.js";

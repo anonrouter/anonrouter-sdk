@@ -1,0 +1,152 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A push that lands while an earlier run is still going cancels the older run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  js:
+    name: JS (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Node 22 is the floor: the package imports its measurement pins with
+        # `with { type: "json" }`, and import attributes need a flag before 22.
+        node: ["22", "24"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: js/package-lock.json
+      - name: Install
+        working-directory: js
+        run: npm ci
+      - name: Typecheck
+        working-directory: js
+        run: npm run typecheck
+      - name: Test
+        working-directory: js
+        run: npm test
+      - name: Build
+        working-directory: js
+        run: npm run build
+
+  # The full verify + E2EE chat round trip against an in-process mock gateway.
+  # Deterministic: no API key, no network, no spend. It is the only job that
+  # exercises the client HTTP flow end to end, so it guards the wiring the unit
+  # tests cannot reach.
+  selftest:
+    name: End-to-end self-test (mock gateway)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: js/package-lock.json
+      - name: Install
+        working-directory: js
+        run: npm ci
+      - name: Verify + E2EE chat round trip
+        working-directory: js/confidential
+        run: npm run example:selftest
+
+  python:
+    name: Python ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: python/pyproject.toml
+      - name: Install
+        working-directory: python
+        run: pip install -e ".[dev,mlkem]"
+      - name: Test
+        working-directory: python
+        run: pytest -q
+
+  # Lint and type-check once, on the lowest supported version, since mypy targets
+  # python_version 3.10.
+  python-lint:
+    name: Python lint and types
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+          cache-dependency-path: python/pyproject.toml
+      - name: Install
+        working-directory: python
+        run: pip install -e ".[dev,mlkem]"
+      - name: Ruff
+        working-directory: python
+        run: ruff check .
+      - name: Mypy
+        working-directory: python
+        run: mypy src
+
+  # Fails the build if any per-package copy of the measurement pins has drifted
+  # from the canonical shared/measurements.json.
+  parity:
+    name: Cross-language measurement parity gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check pin parity
+        run: node scripts/check-parity.mjs
+
+  # Confirms the published artifacts are well formed before a release, not after.
+  packaging:
+    name: Package artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: js/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Build JS packages
+        working-directory: js
+        run: |
+          npm ci
+          npm run build
+      - name: Pack npm tarballs
+        working-directory: js
+        run: |
+          npm pack --dry-run -w @anonrouter/confidential
+          npm pack --dry-run -w @anonrouter/client
+      - name: Build and check the Python distribution
+        working-directory: python
+        run: |
+          pip install build twine
+          python -m build
+          twine check dist/*

@@ -1,0 +1,32 @@
+# Dependencies / build output
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+.next/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.eggs/
+
+# Local agent working notes / handoff logs (NEVER published)
+.agent/
+
+# Local secrets / env (NEVER commit). .env.example is tracked as a template.
+.env
+.env.local
+.env.*.local
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.log
+*.tmp
