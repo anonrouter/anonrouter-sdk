@@ -22,7 +22,30 @@
     {
       "status": "candidate",
       "reviewedAt": "2026-08-20",
-      "notes": "AnonRouter confidential data plane on Phala prod5 (Intel TDX, dstack). Reviewed from release manifest anonrouter-tee@731c719, whose deployment reports transport in-tee-tls on a live TDX host. Held at candidate because the plane is pre-release: these pins move on every release, and the residual-work list for the two-plane build is not closed. requireHardwareVerified is true as reviewed, so verification fails closed with reason quote_signature_chain unless you supply your own DCAP chainVerifier; this package deliberately ships none. KNOWN STALE as of 2026-08-29: the live origin was observed serving release anonrouter-tee@xl-7b1b12a, so app_id_pinned, compose_hash_pinned, release_pinned and platform_measurements_pinned all fail against it today. That is the pin doing its job, not a defect. Do NOT refresh these values by copying what the server returned; that is circular. Capture a candidate with scripts/capture-gateway-pins.mjs, then review it against the release manifest for the build you actually intend to trust before promoting it.",
+      "notes": "AnonRouter confidential data plane on Phala prod5 (Intel TDX, dstack). Reviewed from release manifest anonrouter-tee@731c719, whose deployment reports transport in-tee-tls on a live TDX host. Held at candidate because the plane is pre-release: these pins move on every release, and the residual-work list for the two-plane build is not closed. requireHardwareVerified is true as reviewed, so verification fails closed with reason quote_signature_chain unless you supply your own DCAP chainVerifier; this package deliberately ships none. STALE, AND THE REFRESH WAS REVIEWED AND REJECTED on 2026-08-29: see reviewedRefreshAttempt below. Capture an observation with scripts/capture-gateway-pins.mjs, resolve every item in its reviewChecklist against independent evidence, and only then promote.",
+      "reviewedRefreshAttempt": {
+        "date": "2026-08-29",
+        "candidateRelease": "anonrouter-tee@xl-7b1b12a",
+        "outcome": "rejected",
+        "summary": "The live origin serves a build whose MEASUREMENT identity is corroborated by independent evidence, but whose ORIGIN is not. Every reviewed identity record covering this CVM names the preproduction hostname, and the project's own acceptance target marks those values preproduction-only and refuses them for a production tuple by name. Pinning a public SDK's default trust anchor for a production origin on preproduction review artifacts is the circular step this process exists to prevent.",
+        "corroborated": [
+          "app_id 91c6a04e... , compose_hash d5fc4ac2... and os_image_hash bd369a8c... all appear in the independently produced identity record .evidence/content-plane/pinned-identity.json (recorded 2026-08-27T22:00Z) in the product repo.",
+          "mrTd, rtmr1 and rtmr2 are byte-identical to the already-reviewed 731c719 production pin, consistent with an unchanged guest OS image.",
+          "rtmr0 ec216f1d... appears in the committed .evidence/prod-release-2026-08-27/content-plane-attestation.json for the same CVM.",
+          "transport is in-tee-tls and the certificate actually served on the origin was independently observed to equal the SPKI the TD attests, so the transport binding genuinely holds.",
+          "Every cryptographic check in this SDK passes against live evidence bound to a fresh nonce."
+        ],
+        "notCovered": [
+          "ORIGIN. The reviewed record names host preprod-usw1-xl.private.anonrouter.ai, not the production origin above. Both names resolve to the same Phala prod5 host, but the record documents the CVM under its preproduction identity and acceptance/targets/preproduction-usw1-xl.json is explicitly mode=preproduction and refused for production by acceptance/g18-target.mjs.",
+          "RELEASE ID. anonrouter-tee@xl-7b1b12a is injected at deploy time via the GATEWAY_RELEASE_ID environment variable and carries no measurements. No release manifest for it exists anywhere in the product repository's history, and the nearest recorded attestation names a different release, xl-119f181.",
+          "PRODUCTION SPKI. The reviewed record carries the preproduction hostname's certificate; the production origin's SPKI appears only as a deployment input."
+        ],
+        "toPromote": [
+          "An identity record produced for the production origin itself, not for the preproduction hostname.",
+          "A release manifest binding anonrouter-tee@xl-7b1b12a to reviewed source, so the release id means more than what an env var was set to.",
+          "mrTd and rtmr0..2 reproduced offline with dstack-mr from the OS image and vm_config, rather than carried over or observed."
+        ]
+      },
       "policy": {
         "source": "anonrouter-release-manifest-sha256:25437786094940cc2a9e425c2ea5410e8f0c8c1f11208e444745c98a860b147a",
         "version": "2026-08-20",

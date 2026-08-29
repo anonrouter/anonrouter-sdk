@@ -177,6 +177,40 @@ Every switch in a policy is required. There are no permissive defaults, so a
 truncated or hand-edited policy fails to parse rather than silently disabling a
 check.
 
+### Refreshing a pin after a release
+
+Deployments move, and a pin that no longer matches is the system working rather
+than breaking. The refresh is a review, not a copy:
+
+```
+node scripts/capture-gateway-pins.mjs https://your-cvm.example
+```
+
+That prints an **observation**, not a policy, with a `reviewChecklist` of what
+must be corroborated before any of it becomes a pin. The rule it enforces is the
+one that makes pinning worth doing at all: a value taken from the server it
+describes proves nothing about that server.
+
+What each field needs:
+
+- **`app_id`, `compose_hash`, `os_image_hash`** must appear in an independently
+  produced identity record **for the origin you are pinning**, not for a
+  neighbouring hostname on the same machine.
+- **`release_id`** is injected at deploy time and carries no measurements. It
+  proves what someone set an environment variable to. Confirm it names a build
+  you reviewed.
+- **`mrTd`, `rtmr0..2`** should be reproduced offline with `dstack-mr` from the OS
+  image and `vm_config`, not carried over and not read off the machine.
+- **`tls_spki_sha256`** should be compared against the certificate actually served
+  on that origin, observed by you.
+
+The pin shipped today is `candidate` and its refresh was reviewed on 2026-08-29
+and **rejected**. The measurement identity was corroborated, but every reviewed
+record covering that CVM names a preproduction hostname, and no release manifest
+exists for the deployed release id. `reviewedRefreshAttempt` in
+`shared/gateway-policies.json` records exactly what was and was not established,
+and what would be needed to promote it.
+
 ## Testing against a real confidential VM
 
 Both suites carry live tests that are skipped unless you point them at a
