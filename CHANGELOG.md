@@ -162,6 +162,12 @@ Initial public release.
   gateway old enough not to report it.
 
 ### Fixed
+- **The end-to-end self-test had been broken since the origin hardening landed.**
+  `example:selftest` pointed its in-process mock gateway at `http://mock.local`,
+  and the client now refuses a non-loopback plaintext origin, so the CI job that
+  exists to guard the client's whole HTTP flow could not have passed. It uses
+  `https` now, which is also the code path a real application takes; nothing is
+  dialled either way, because the example replaces `fetch` entirely.
 - **The reference subprocess chain verifier did not fit AnonRouter's own engine,
   while documenting that it did.** `createSubprocessChainVerifier` wrote a bare
   quote on stdin and read a camelCase `tcbStatus`; the reviewed engine reads a JSON

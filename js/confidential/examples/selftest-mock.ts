@@ -20,7 +20,17 @@ import {
   readRequestBytes
 } from "../test/helpers/mock-enclaves.js";
 
-const BASE = "http://mock.local";
+/**
+ * HTTPS even though nothing is dialled.
+ *
+ * The client refuses a non-loopback `http://` origin, because over plaintext the
+ * API key travels in the clear and the origin a gateway quote binds cannot mean
+ * anything. This self-test replaces `fetch` entirely, so no connection is made
+ * either way, and using `https` keeps it on the same code path a real application
+ * takes rather than the `allowInsecureHttp` escape hatch. Using `http` here is
+ * what silently broke this gate when that check landed.
+ */
+const BASE = "https://mock.local";
 
 function json(obj: unknown): Response {
   return new Response(JSON.stringify(obj), { status: 200, headers: { "content-type": "application/json" } });
