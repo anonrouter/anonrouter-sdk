@@ -15,17 +15,17 @@ file lands with.
 | Gate | Command | Result |
 | --- | --- | --- |
 | JS typecheck | `npm run typecheck` (in `js/`) | clean, covering `src`, `test`, `examples` and `scripts` |
-| JS tests, offline | `npm test` (in `js/`) | **287 passed, 31 skipped** in `@anonrouter/confidential`; **6 passed** in `@anonrouter/client` |
+| JS tests, offline | `npm test` (in `js/`) | **294 passed, 31 skipped** in `@anonrouter/confidential`; **6 passed** in `@anonrouter/client` |
 | JS build | `npm run build` (in `js/`) | clean |
 | End-to-end self-test | `npm run example:selftest` | PASS: venice and chutes, verify plus E2EE chat, relay saw ciphertext only |
-| Python tests, offline | `pytest -q` (in `python/`) | **200 passed, 31 skipped** |
+| Python tests, offline | `pytest -q` (in `python/`) | **207 passed, 31 skipped** |
 | Python types | `mypy` (in `python/`) | clean, 32 files, `src` and `examples` |
 | Python lint | `ruff check .` (in `python/`) | clean |
 | Measurement pin parity | `node scripts/check-parity.mjs` | all four per-package copies match `shared/` |
 | Command parity | `node scripts/check-cli-parity.mjs` | 4/4 cases, both real executables, identical documents and exit codes |
 | Artifact installs | `node scripts/smoke-artifacts.mjs` | **21/21** |
-| **Live, JS** | `npm test` with a live origin and an engine | **318 passed, 0 skipped** |
-| **Live, Python** | `pytest -q` with a live origin and an engine | **231 passed, 0 skipped** |
+| **Live, JS** | `npm test` with a live origin and an engine | **325 passed, 0 skipped** |
+| **Live, Python** | `pytest -q` with a live origin and an engine | **238 passed, 0 skipped** |
 
 The 31 skips in each offline run are the opt-in live cases. They skip with a
 stated reason and never fabricate a result. With
@@ -91,6 +91,21 @@ structural checking could catch.
   output says which it was.
 - **Attestation proves which code ran, not that it behaves well.** Reviewing the
   source behind a pinned compose hash is a separate act.
+
+## One thing the suites assert that is easy to miss
+
+There is no environment variable that weakens a verdict. Twelve plausible spellings
+of an escape hatch (`ANONROUTER_INSECURE`, `ANONROUTER_SKIP_VERIFY`, `NODE_ENV=test`,
+`CI=true`, and so on) are set, and the verdict for the same evidence must come out
+IDENTICAL, not merely also-failing. The deliberate opt-ins are checked from the
+other side: a candidate pin does not resolve through the environment, a plaintext
+remote origin is refused even with `allowInsecureHttp`, and the command still
+refuses `--require hardware_verified` without `--dcap`.
+
+Behavioural tests can only cover the names somebody thought to try, so there is a
+structural one beside them: the four modules that decide whether a verdict passes
+(`gateway/verify`, `gateway/policy`, `verify/state`, `verify/route`) may not
+contain a read of the environment at all, in either language.
 
 ## Artifacts, as built
 
