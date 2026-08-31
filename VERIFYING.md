@@ -205,11 +205,22 @@ What each field needs:
   on that origin, observed by you.
 
 The pin shipped today is `candidate` and its refresh was reviewed on 2026-08-29
-and **rejected**. The measurement identity was corroborated, but every reviewed
-record covering that CVM names a preproduction hostname, and no release manifest
-exists for the deployed release id. `reviewedRefreshAttempt` in
-`shared/gateway-policies.json` records exactly what was and was not established,
-and what would be needed to promote it.
+and **rejected**, then reconfirmed as rejected on 2026-08-30. The measurement
+identity was corroborated, but every reviewed record covering that CVM names a
+preproduction hostname, and no release manifest exists for the deployed release
+id. `reviewedRefreshAttempt` in `shared/gateway-policies.json` records exactly what
+was and was not established, and what would be needed to promote it.
+
+The reconfirmation found the fact that settles it. Between the two dates the
+plane's `compose_hash` moved while `release_id` stayed `anonrouter-tee@xl-7b1b12a`.
+A release id that does not move when the measured configuration does is not an
+identity, and pinning it would authorize every future build deployed under the
+same environment variable.
+
+Which origin serves what, and what each answer means, is inventoried in
+[`docs/live-contract-inventory.md`](docs/live-contract-inventory.md). The short
+version: hop 1 exists only on the confidential origin today, and this SDK
+deliberately offers no way to verify one origin while sending content to another.
 
 ## Testing against a real confidential VM
 

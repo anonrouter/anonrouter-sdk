@@ -46,6 +46,7 @@ from .verify.route import (
     assemble_route_verdict,
     gateway_hop_verdict,
     hop_not_requested,
+    hop_unavailable,
     provider_hop_verdict,
 )
 from .verify.state import TRUSTED_STATES, at_least, describe_state
@@ -465,8 +466,20 @@ def _verify(options: dict[str, Any], io: CliIo) -> int:
     # verified yet, which inverts the trust order this command exists to keep.
     client = create_client(origin, api_key or None, timeout=timeout_seconds)
     try:
-        hop1 = client.verify_gateway(**gateway_kwargs)
-        gateway_hop = gateway_hop_verdict(hop1["verdict"])
+        # Hop 1 not being ATTEMPTABLE (no pin for this origin, no attestation
+        # route here) must not stop hop 2 from being reported. They are separate
+        # questions, and a caller who asked about the route deserves the answer to
+        # the half that could be established. It still cannot prop the verdict up:
+        # an unavailable hop is not a passing hop, and assemble_route_verdict
+        # takes the weakest.
+        hop1: dict[str, Any] | None = None
+        try:
+            hop1 = client.verify_gateway(**gateway_kwargs)
+            gateway_hop = gateway_hop_verdict(hop1["verdict"])
+        except ConfidentialError as exc:
+            gateway_hop = hop_unavailable(
+                str(exc) or "gateway verification could not be attempted"
+            )
 
         provider_hop = hop_not_requested()
         attestation: dict[str, Any] | None = None
@@ -514,7 +527,7 @@ def _verify(options: dict[str, Any], io: CliIo) -> int:
         gated = verdict.gateway.state if options["command"] == "gateway" else verdict.overall_state
         met = at_least(gated, options["require"]) and not verdict.binding_mismatches
 
-        binding = hop1["verdict"].binding
+        binding = hop1["verdict"].binding if hop1 else None
         attested_spki = binding.tls_spki_sha256 if binding else None
         document = {
             "schema": SCHEMA,
@@ -538,7 +551,7 @@ def _verify(options: dict[str, Any], io: CliIo) -> int:
             },
             "gateway": {
                 **_hop_document(verdict.gateway),
-                "policy": hop1["policy"],
+                "policy": hop1["policy"] if hop1 else None,
                 "identity": {
                     "appId": binding.app_id,
                     "instanceId": binding.instance_id,
@@ -550,8 +563,8 @@ def _verify(options: dict[str, Any], io: CliIo) -> int:
                 }
                 if binding
                 else None,
-                "measurements": hop1["verdict"].measurements,
-                "tcbStatus": hop1["verdict"].tcb_status,
+                "measurements": hop1["verdict"].measurements if hop1 else None,
+                "tcbStatus": hop1["verdict"].tcb_status if hop1 else None,
                 "tlsSpki": {
                     "observed": observed_spki,
                     "source": "separate-tls-connection" if options["tls_check"] else "not-observed",

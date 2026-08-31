@@ -44,7 +44,18 @@
           "An identity record produced for the production origin itself, not for the preproduction hostname.",
           "A release manifest binding anonrouter-tee@xl-7b1b12a to reviewed source, so the release id means more than what an env var was set to.",
           "mrTd and rtmr0..2 reproduced offline with dstack-mr from the OS image and vm_config, rather than carried over or observed."
-        ]
+        ],
+        "reconfirmed": {
+          "date": "2026-08-30",
+          "outcome": "still rejected, and the case for rejecting it is now stronger",
+          "observed": [
+            "The live plane's compose_hash moved again, from d5fc4ac2... on 2026-08-29 to 07d803b3... on 2026-08-30, and app_id moved to 91c6a04e... with mrConfigId now encoding the compose hash directly (01 || compose_hash || zero padding).",
+            "release_id did NOT move. It is still anonrouter-tee@xl-7b1b12a across both measured configurations.",
+            "Every structural and cryptographic check still passes against the live plane under this pin; only app_id_pinned, compose_hash_pinned, release_pinned and platform_measurements_pinned fail.",
+            "With the reviewed DCAP engine and Intel PCS collateral the quote chains to Intel's roots with tcb/qe/platform all UpToDate and no advisories, and the leaf SPKI observed independently on the origin equals the SPKI the TD attests."
+          ],
+          "whyThisSettlesIt": "A release id that stays fixed while the measured configuration changes underneath it is not an identity. Pinning releaseIds to anonrouter-tee@xl-7b1b12a would authorize every future compose hash deployed under the same environment variable, which is the opposite of what a pin is for. The hardware is genuine and the transport binding holds; neither fact supplies the missing production-origin identity record."
+        }
       },
       "policy": {
         "source": "anonrouter-release-manifest-sha256:25437786094940cc2a9e425c2ea5410e8f0c8c1f11208e444745c98a860b147a",

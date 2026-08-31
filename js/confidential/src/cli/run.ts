@@ -33,6 +33,7 @@ import {
   assembleRouteVerdict,
   gatewayHopVerdict,
   hopNotRequested,
+  hopUnavailable,
   providerHopVerdict,
   type RouteHopVerdict
 } from "../verify/route.js";
@@ -424,8 +425,20 @@ export async function runCli(argv: string[], io: CliIo = PROCESS_IO): Promise<nu
       apiKey: apiKey && apiKey.length > 0 ? apiKey : "unused-for-gateway-verification"
     });
 
-    const hop1 = await client.verifyGateway({ ...gatewayOption, signal: controller.signal });
-    const gatewayHop = gatewayHopVerdict(hop1.verdict);
+    // Hop 1 not being ATTEMPTABLE (no pin for this origin, no attestation route
+    // here) must not stop hop 2 from being reported. They are separate questions,
+    // and a caller who asked about the route deserves the answer to the half that
+    // could be established. It still cannot prop the verdict up: an unavailable
+    // hop is not a passing hop, and assembleRouteVerdict takes the weakest.
+    let hop1: Awaited<ReturnType<typeof client.verifyGateway>> | null = null;
+    let gatewayHop;
+    try {
+      hop1 = await client.verifyGateway({ ...gatewayOption, signal: controller.signal });
+      gatewayHop = gatewayHopVerdict(hop1.verdict);
+    } catch (error) {
+      if (error instanceof ConfidentialError && error.code === "cancelled") throw error;
+      gatewayHop = hopUnavailable(error instanceof Error ? error.message : "gateway verification could not be attempted");
+    }
 
     let providerHop = hopNotRequested();
     let attestation: Awaited<ReturnType<typeof client.verifyAttestation>> | null = null;
@@ -440,12 +453,15 @@ export async function runCli(argv: string[], io: CliIo = PROCESS_IO): Promise<nu
         });
         providerHop = providerHopVerdict(attestation.verdict);
       } catch (error) {
+        // The CODE is the stable machine-readable name and the MESSAGE says what
+        // to do about it. Reporting only the code turns "your key was refused"
+        // and "this origin does not serve the route" into the same word.
         providerError = error instanceof ConfidentialError ? error.code : "provider_verification_failed";
         providerHop = {
           requested: true,
           state: "untrusted",
           meaning: describeState("untrusted"),
-          reason: providerError,
+          reason: error instanceof Error ? error.message : providerError,
           failedChecks: [providerError],
           advisoryGaps: []
         };
@@ -475,7 +491,7 @@ export async function runCli(argv: string[], io: CliIo = PROCESS_IO): Promise<nu
     const gated = options.command === "gateway" ? verdict.gateway.state : verdict.overallState;
     const met = atLeast(gated, options.require) && verdict.bindingMismatches.length === 0;
 
-    const binding = hop1.verdict.binding;
+    const binding = hop1?.verdict.binding ?? null;
     const document = {
       schema: SCHEMA,
       command: options.command,
@@ -496,7 +512,7 @@ export async function runCli(argv: string[], io: CliIo = PROCESS_IO): Promise<nu
       },
       gateway: {
         ...hopDocument(verdict.gateway),
-        policy: hop1.policy,
+        policy: hop1?.policy ?? null,
         identity: binding
           ? {
             appId: binding.app_id,
@@ -508,8 +524,8 @@ export async function runCli(argv: string[], io: CliIo = PROCESS_IO): Promise<nu
             attestedTlsSpkiSha256: binding.tls_spki_sha256
           }
           : null,
-        measurements: hop1.verdict.measurements,
-        tcbStatus: hop1.verdict.tcbStatus,
+        measurements: hop1?.verdict.measurements ?? null,
+        tcbStatus: hop1?.verdict.tcbStatus ?? null,
         tlsSpki: {
           observed: observedSpki,
           source: options.tlsCheck ? "separate-tls-connection" : "not-observed",
