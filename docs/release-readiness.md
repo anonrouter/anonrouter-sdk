@@ -26,6 +26,7 @@ file lands with.
 | Artifact installs | `node scripts/smoke-artifacts.mjs` | **21/21** |
 | **Live, JS** | `npm test` with a live origin and an engine | **330 passed, 0 skipped** |
 | **Live, Python** | `pytest -q` with a live origin and an engine | **241 passed, 1 platform-only skip** |
+| **Live provider route, JS + Python** | `anonrouter-verify route` plus one bounded E2EE chat per SDK | gateway **`hardware_verified`**, Venice **`cryptographically_checked`**, cross-binding held, both decrypted `OK`, plaintext/key leak canaries clean |
 
 The offline skips are opt-in live/platform cases. They skip with a stated reason
 and never fabricate a result. With
@@ -55,14 +56,30 @@ covers it. Four more run with the engine, including a quote tampered inside the
 signed body, which is refused at the **signature** and which no amount of
 structural checking could catch.
 
+## Live provider-hop proof
+
+Using a fresh inference-scoped key that was read from a mode-0600 temporary file
+and never printed, both SDK implementations verified provider `venice`, model
+`openai/gpt-oss-20b`, across the production split origins:
+
+- the key and content-free ticket requests went only to
+  `https://api.anonrouter.ai`;
+- gateway/provider evidence and encrypted inference went only to
+  `https://api.private.anonrouter.ai`;
+- hop 1 reached **`hardware_verified`** under the shipped production pin and the
+  SHA-pinned DCAP engine;
+- hop 2 reached **`cryptographically_checked`**, with no binding mismatch;
+- each language completed a bounded encrypted inference and decrypted `OK`;
+- request instrumentation found neither the plaintext canary in a relay body nor
+  an Authorization header on the confidential origin.
+
+The first two Python inference attempts returned HTTP 503 after verification; a
+diagnostic retry completed with 200 from gateway attestation, ticket minting,
+provider attestation, inference ticket minting and the encrypted relay. No check
+was bypassed and no plaintext fallback exists.
+
 ## What a green run does not cover
 
-- **Hop 2 has never been exercised end to end.** Confirming it needs a real API
-  key and a callable `(provider, model)` pair, and that is the one input an owner
-  has to supply. With a fabricated key both origins answer as an unauthorized
-  caller should, so "the route is absent" and "your key was refused" cannot be
-  told apart from outside. Everything hop 2 does against recorded evidence is
-  covered by `shared/vectors/attestation.json`.
 - **Hop 2's ceiling is `provider-attested` and stays there.** Several provider
   routes run GPU enclaves whose NVIDIA attestation chain is not available to
   verify. Chaining only the CPU quote and printing `hardware_verified` would claim
