@@ -1,0 +1,11 @@
+{
+  // Examples are documentation people copy, so they are type-checked like code.
+  // The main tsconfig excludes them because they must not land in dist; this one
+  // exists so a rotted example fails CI instead of failing a reader.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "."
+  },
+  "include": ["examples/**/*", "src/**/*", "test/**/*", "scripts/**/*"]
+}

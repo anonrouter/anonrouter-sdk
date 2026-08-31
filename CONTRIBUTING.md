@@ -51,9 +51,32 @@ npm run example:selftest
 cd python
 pip install -e ".[dev,mlkem]"   # dev tools + the ML-KEM extra for the Chutes route
 pytest -q
-mypy src
+mypy                            # no path: pyproject covers src and examples
 ruff check .
 ```
+
+## Testing against a real confidential VM
+
+Both suites carry live tests that skip, with a stated reason, unless you point
+them at a deployment. They are never silently green.
+
+```bash
+export ANONROUTER_LIVE_GATEWAY_ORIGIN=https://your-cvm.example
+export ANONROUTER_LIVE_PUBLIC_ORIGIN=https://your-non-cvm.example   # optional
+export ANONROUTER_DCAP_VERIFIER_BIN=/path/to/anonrouter-dcap-verifier  # optional
+npm test        # in js/
+pytest -q       # in python/
+```
+
+The attestation endpoint is credential-free, content-free and read-only, so
+pointing these at a real deployment sends no prompt, no key and no account
+identity. With the engine set, four more cases run per language and the verdict
+may legitimately reach `hardware_verified`.
+
+Most of the live suite is NEGATIVES: one genuine document, one field changed at a
+time, each required to fail on the exact check that covers it. A live "it
+verified" on its own is nearly worthless, because a verifier that returned ok for
+everything would produce it too. If you add a check, add its negative.
 
 ## The cross-language parity gate
 
@@ -65,14 +88,39 @@ run in CI:
   is the strictest of them: it pins the whole verdict for each case, including the
   exact set of required checks that failed, so neither a one-sided verifier change
   nor a quiet downgrade of a required check to advisory can pass CI.
-- The measurement pins are checked for drift by a standalone script:
+- The measurement pins are checked for drift by a standalone script.
+- Both packages ship a command called `anonrouter-verify`, and a second gate runs
+  the two real executables over inputs that need no network and requires the JSON
+  they print and the codes they exit with to be identical. Two commands with the
+  same name that disagreed would be worse than shipping one.
+- A third gate installs the actual publishable artifacts into empty environments
+  and uses them there. Every other gate runs against the working tree, which says
+  nothing about whether a `files` entry, an `exports` map, a `bin`, or a wheel's
+  package data is right.
 
 ```bash
-node scripts/check-parity.mjs
+node scripts/check-parity.mjs      # pin copies match shared/
+node scripts/check-cli-parity.mjs  # needs a built js/ and an installed python package
+node scripts/smoke-artifacts.mjs   # builds, installs and exercises every artifact
 ```
 
-Run it before you push. If it fails, a per-package copy has drifted from the
-canonical pins and you need to re-sync (see below).
+Run the first before you push. If it fails, a per-package copy has drifted from
+the canonical pins and you need to re-sync (see below).
+
+### Regenerating the DCAP vectors
+
+`shared/vectors/dcap.json` is generated, but unlike the verdict vectors its
+expectations are stated independently of the implementation: the FMSPC is the six
+bytes the generator embeds, the PCK chain is the PEM it embeds, and the engine
+request and verdict shapes come from the engine's documented v1 contract.
+
+```bash
+cd js/confidential
+npx tsx scripts/gen-dcap-vectors.ts
+```
+
+A changed expectation there is a changed wire contract with the reviewed DCAP
+engine, not a test fixup.
 
 ### Regenerating the verdict vectors
 
@@ -111,8 +159,11 @@ version string.
 
 - [ ] `npm run typecheck && npm test && npm run build` pass in `js/`.
 - [ ] `npm run example:selftest` passes in `js/confidential/`.
-- [ ] `pytest -q && mypy src && ruff check .` pass in `python/`.
+- [ ] `pytest -q && mypy && ruff check .` pass in `python/`.
 - [ ] `node scripts/check-parity.mjs` passes.
+- [ ] `node scripts/check-cli-parity.mjs` passes.
+- [ ] `node scripts/smoke-artifacts.mjs` passes if you touched packaging, exports,
+      `files`, `bin`, package data, or anything either CLI prints.
 - [ ] If you changed pins, you edited `shared/measurements.json`, ran
       `node scripts/sync-shared.mjs`, and followed `SECURITY.md`.
 - [ ] No em dashes in user-facing copy (AnonRouter house style: use periods,

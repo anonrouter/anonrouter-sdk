@@ -67,7 +67,9 @@ testpaths = ["tests"]
 
 [tool.mypy]
 python_version = "3.10"
-files = ["src"]
+# Examples are documentation people copy, so they are type-checked like code: a
+# rotted example should fail CI rather than fail a reader.
+files = ["src", "examples"]
 ignore_missing_imports = true
 warn_unused_ignores = false
 

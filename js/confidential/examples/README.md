@@ -1,7 +1,9 @@
 # Verifiable end-to-end examples
 
-Three runnable scripts that prove `@anonrouter/confidential` works end to end. Run
-them from `js/confidential/` after `npm install`.
+Runnable scripts that prove `@anonrouter/confidential` works end to end. Run them
+from `js/confidential/` after `npm install`. They are type-checked by
+`npm run typecheck`, because an example is documentation people copy and a rotted
+one should fail CI rather than fail a reader.
 
 ## 1. Self-test (no key, no network, no spend)
 ```bash
@@ -24,7 +26,31 @@ Env: `ANONROUTER_BASE_URL` (default `https://api.anonrouter.ai`), `TEE_MODEL`
 (default `openai/gpt-oss-120b`), `TEE_PROVIDER` (default `tinfoil`; also try
 `near-ai`, `venice`, `chutes`).
 
-## 3. Full E2EE chat (real gateway, your key, BILLABLE)
+## 3. Verify both hops and read the verdict (real gateway, your key, NOT billable)
+```bash
+ANONROUTER_API_KEY=ar_... npm run example:verify-route
+```
+Runs `verifyRoute()` and prints what each hop established, what it did not, and
+why, then exits nonzero if the route did not reach the threshold. This is the
+smallest complete picture of the contract.
+
+Env: `ANONROUTER_BASE_URL`, `ANONROUTER_MODEL`, `ANONROUTER_PROVIDER`.
+
+## 4. Verify, then call (real gateway, your key, BILLABLE)
+```bash
+ANONROUTER_API_KEY=ar_... npm run example:verify-then-call
+```
+The shape most applications want: gate before sending, re-verify hop 1 at send
+time with a fresh nonce, and say out loud what the verdict did not cover. Supplies
+the DCAP chain verifier unconditionally, so it reaches `hardware_verified` where
+an engine is installed and fails the chain check rather than downgrading where one
+is not.
+
+Env: everything from example 3, plus `ANONROUTER_REQUIRE` (default
+`cryptographically_checked`; try `hardware_verified` with an engine installed),
+`PROMPT`, `MAX_TOKENS`.
+
+## 5. Full E2EE chat (real gateway, your key, BILLABLE)
 ```bash
 ANONROUTER_API_KEY=ar_... npm run example:chat-e2ee
 ```

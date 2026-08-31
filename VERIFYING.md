@@ -130,36 +130,108 @@ usually a stale pin after a release, not an attack.
 
 ## Reaching `hardware_verified`
 
-The packages ship **no DCAP engine**. Verifying a quote's signature against Intel's
-roots needs vendor collateral that cannot be vendored into a browser-safe library,
-and printing `hardware_verified` for work that was never done would defeat the
-purpose of the SDK. So the chain is a port you fill, and there are two maintained
-adapters:
+The packages bundle **no DCAP engine**, and the reason is worth stating because it
+is the same reason the rest of this SDK exists. Publishing prebuilt binaries would
+mean asserting that a binary we did not build reproducibly is the reviewed one. A
+hand-rolled JavaScript or Python reimplementation would be worse: an unreviewed,
+un-cross-checked version of the single component whose failure mode is printing
+`hardware_verified` for a forged quote.
+
+What ships instead is a strict adapter to AnonRouter's reviewed offline engine.
+Install `anonrouter-dcap-verifier`, put it on PATH or name it in
+`ANONROUTER_DCAP_VERIFIER_BIN`, and hop 1 can reach `hardware_verified`:
 
 ```ts
-import { createSubprocessChainVerifier } from "@anonrouter/confidential/chain-verifiers";
+import { createAnonRouterDcapVerifier } from "@anonrouter/confidential/dcap";
 
-const adapter = createSubprocessChainVerifier({ binaryPath: "/opt/dcap-verifier" });
-const chainVerifier = await adapter.prepare(evidence.quote);
-
-await client.verifyGateway({ chainVerifier });
+const verdict = await client.verifyRoute({
+  model, provider,
+  gateway: { chainVerifier: createAnonRouterDcapVerifier() }
+});
 ```
 
-- **Subprocess** (`createSubprocessChainVerifier` / `SubprocessChainVerifier`) runs
-  an engine you control. The trust stays on your machine. This is the strong option.
-- **Remote** (`createRemoteChainVerifier` / `RemoteChainVerifier`) asks a Quote
-  Verification Service. Convenient, and a real transfer of trust: you are now
-  trusting that service's answer about whether the hardware is genuine. Never point
-  it at a service operated by the party you are verifying, which the SDK cannot
-  detect for you.
+```python
+from anonrouter_confidential.gateway.dcap import create_anonrouter_dcap_verifier
 
-Both fail closed. A missing binary, a timeout, a crash, a non-zero exit, non-JSON
-output, an oversized response, an unreachable service, or a `verified` field that
-is not a real boolean all resolve to not-verified. There is no path where an error
-becomes a pass.
+verdict = client.verify_route(
+    model=..., provider=...,
+    gateway={"chain_verifier": create_anonrouter_dcap_verifier()},
+)
+```
 
-A prepared verifier is bound to the exact quote it ran on and refuses any other,
-so a verdict for one quote can never be replayed onto another.
+Check what your machine can do with `anonrouter-verify doctor`, or with
+`describeDcapInstallation()` / `describe_dcap_installation()`. It reports the
+engine that would actually run, its SHA-256, the host's target triple, and, when
+there is none, exactly what to install.
+
+### What the adapter does beyond spawning a process
+
+- **It fetches the collateral the engine will not.** The engine performs no network
+  access on purpose: a verifier that fetches its own trust inputs is only as
+  trustworthy as whatever it reached. The SDK acquires Intel's signed TCB info, QE
+  identity and CRLs, caches them to the collateral's OWN signed `nextUpdate` rather
+  than a constant, and hands them in as untrusted input that the engine
+  revalidates under its pinned Intel root. Supply `collateral` yourself to avoid
+  the fetch entirely; a mirror is not a party you have to trust.
+- **It cross-checks the engine against our own parse.** The engine echoes its view
+  of `mr_td`, the RTMRs and `report_data`. A "verified" verdict describing a
+  different TD is refused, because a pass nobody can attribute to the quote in hand
+  is worse than a failure.
+- **It can pin the engine.** Set `expectedBinarySha256` /
+  `expected_binary_sha256` and a swapped binary is a refusal rather than a
+  different answer.
+- **It resolves the engine without substituting one.** An explicit path that does
+  not exist resolves to NOTHING; it never falls through to the environment, and the
+  environment never falls through to PATH.
+- **It forwards your policy's accepted TCB statuses**, so the engine and the local
+  policy cannot disagree about what "acceptable" means.
+
+Everything fails closed: a missing engine, a digest mismatch, a timeout, a crash, a
+non-zero exit with no verdict, non-JSON output, an oversized response, collateral
+that could not be acquired, or a `verified` field that is not a real boolean. There
+is no path where an error becomes a pass.
+
+A prepared verifier is bound to the exact quote it ran on and refuses any other, so
+a verdict for one quote can never be replayed onto another.
+
+**Hop 2 is not affected by any of this.** The provider hop still caps at
+`cryptographically_checked`, because several provider routes run GPU enclaves whose
+NVIDIA attestation chain is not available to verify, and chaining only the CPU
+quote while printing `hardware_verified` would claim more than was checked.
+
+### Bringing your own engine
+
+`@anonrouter/confidential/chain-verifiers` and
+`anonrouter_confidential.gateway.chain_verifiers` remain for an engine you wrote.
+They speak a minimal contract of their own (raw quote hex on stdin, camelCase
+`tcbStatus` out), which is **not** the reviewed engine's contract. Point them at
+your own wrapper, not at `anonrouter-dcap-verifier` directly. The remote variant
+asks a Quote Verification Service, which is a real transfer of trust: never point
+it at a service operated by the party you are verifying, which the SDK cannot
+detect for you.
+
+## Verifying from a terminal
+
+```bash
+anonrouter-verify doctor  --origin https://api.private.anonrouter.ai
+anonrouter-verify gateway --origin https://api.private.anonrouter.ai \
+  --policy ./reviewed-policy.json --dcap --require hardware_verified
+echo $?
+```
+
+| Exit | Meaning |
+| --- | --- |
+| 0 | The requested assurance was established. |
+| 1 | It was not, including "we could not look". |
+| 2 | The command or its inputs were wrong. |
+
+Keeping 1 and 2 apart is load-bearing: if a mistyped flag exited 1, a job gating on
+the exit code would read its own typo as a verification answer.
+
+`gateway` is credential-free. `route` adds hop 2 and reads an API key only from an
+environment variable; `--api-key` is refused by name, because argv is visible in
+the process table and lands in shell history. Neither command prints a key, a
+ticket, request content, or the raw evidence body.
 
 ## Pinning
 
@@ -228,15 +300,43 @@ Both suites carry live tests that are skipped unless you point them at a
 deployment:
 
 ```
-ANONROUTER_LIVE_GATEWAY_ORIGIN=https://your-cvm.example npm test        # JS
-ANONROUTER_LIVE_GATEWAY_ORIGIN=https://your-cvm.example pytest          # Python
+export ANONROUTER_LIVE_GATEWAY_ORIGIN=https://your-cvm.example
+export ANONROUTER_LIVE_PUBLIC_ORIGIN=https://your-non-cvm.example      # optional
+export ANONROUTER_DCAP_VERIFIER_BIN=/path/to/anonrouter-dcap-verifier  # optional
+npm test        # JS
+pytest -q       # Python
 ```
 
-They fetch with a fresh nonce, verify the real quote, replay the real event log,
-and assert that replaying the document against a **different** nonce is refused.
 With no origin set they skip with a stated reason and never fabricate a result;
 the readiness cases still run and assert that a non-attesting deployment reports
 `unavailable` rather than passing.
+
+**Most of the live suite is negatives, and that is the point.** A live "it
+verified" is nearly worthless on its own: a verifier that returned ok for
+everything would produce it too. So the suite takes ONE genuine document and
+changes exactly one thing at a time, fifteen times, requiring the verdict to fail
+on the exact check that covers it. A replayed nonce. A wrong origin. A rewritten
+release id, TLS fingerprint, event digest, compose-hash payload, or manifest. A
+flipped `report_data` or RTMR byte. The debug attribute set. A `vm_config` naming
+an OS image the hardware never measured. Stale evidence. An observed certificate
+the TD did not attest. A different key provider. Platform measurements that do not
+match.
+
+One invariant is asserted that survives a pin refresh: under the shipped pin, only
+POLICY checks may fail. If a structural or cryptographic check ever fails against
+real hardware, the verifier and the hardware disagree, and that is a defect rather
+than a stale allowlist.
+
+With `ANONROUTER_DCAP_VERIFIER_BIN` set, four more cases run: the verdict reaches
+`hardware_verified`; a quote tampered inside the signed body is refused at the
+SIGNATURE, which no amount of structural checking could catch; a verifier prepared
+for one live quote refuses another from the same machine; and a policy accepting no
+status the platform can report fails at `tcb_status_acceptable` while the signature
+itself is fine.
+
+`ANONROUTER_LIVE_PUBLIC_ORIGIN` covers the other half: a deployment that does NOT
+serve the contract must report `unavailable` with no failed checks, and no pin may
+ship for it.
 
 The attestation endpoint is credential-free, content-free, and read-only, so
 pointing these at a real deployment sends no prompt, no key, and no account

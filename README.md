@@ -18,18 +18,23 @@ lives here in the open.
 | `@anonrouter/client` | JavaScript / TypeScript (npm) | Thin, dependency-free API client for the public (plaintext / TEE / private) routes. |
 | `anonrouter-confidential` | Python (PyPI) | The Python twin of `@anonrouter/confidential`: same verification, same E2EE. |
 
+Both `@anonrouter/confidential` and `anonrouter-confidential` also install an
+`anonrouter-verify` command. See [Verify from a terminal](#verify-from-a-terminal).
+
 Layout:
 
 ```
 shared/
-  measurements.json     # canonical, reviewed measurement pins (single source of truth)
-  vectors/              # language-neutral known-answer test vectors
+  measurements.json       # canonical, reviewed measurement pins (single source of truth)
+  gateway-policies.json   # canonical pins for AnonRouter's own confidential plane
+  vectors/                # language-neutral known-answer test vectors
 js/
-  confidential/         # @anonrouter/confidential
-  client/               # @anonrouter/client
-python/                 # anonrouter-confidential
-scripts/                # sync + cross-language parity gate
-.github/workflows/      # CI: js, python, parity
+  confidential/           # @anonrouter/confidential
+  client/                 # @anonrouter/client
+python/                   # anonrouter-confidential
+docs/                     # what the live origins actually serve
+scripts/                  # sync, parity gates, artifact smoke installs
+.github/workflows/        # CI: js, python, parity, CLI parity, packaging
 ```
 
 ## What "confidential" means here, honestly
@@ -77,10 +82,71 @@ claim about itself.
 
 Two caveats on the pin shipped today. It is marked `candidate`, because the
 confidential plane is pre-release and its measurements move on every release, so
-resolving it takes an explicit opt-in. And it requires hardware verification while
-these packages ship no DCAP engine, so it fails closed with reason
-`quote_signature_chain` unless you supply your own chain verifier. That is the
-honest outcome: nobody has checked the quote came from real silicon.
+resolving it takes an explicit opt-in. And it requires hardware verification,
+which needs a DCAP engine these packages do not bundle, so a default call fails
+closed with reason `quote_signature_chain`. Installing the engine is the
+[one-step fix](#reaching-hardware_verified), and the failure is the honest
+outcome until you do: nobody has checked the quote came from real silicon.
+
+## Verify from a terminal
+
+Both packages install a command called `anonrouter-verify`. It prints one JSON
+document and exits nonzero unless the assurance you asked for was established, so
+it can gate a deploy rather than only inform one:
+
+```bash
+anonrouter-verify doctor --origin https://api.private.anonrouter.ai
+anonrouter-verify gateway --origin https://api.private.anonrouter.ai --allow-candidate
+echo $?    # 0 met, 1 not met, 2 the command itself was wrong
+```
+
+`gateway` is credential-free. `route` adds hop 2 and needs an API key, read only
+from an environment variable, never from argv. Neither command ever prints a key,
+a ticket, request content, or the raw evidence body.
+
+Which origin serves which hop today is inventoried in
+[`docs/live-contract-inventory.md`](docs/live-contract-inventory.md).
+
+## Reaching `hardware_verified`
+
+These packages bundle **no DCAP engine**, and the reason is not laziness. Shipping
+prebuilt binaries would mean asserting that a binary we did not build reproducibly
+is the reviewed one, and a hand-rolled JavaScript or Python reimplementation would
+be an unreviewed version of the single component whose failure mode is printing
+`hardware_verified` for a forged quote.
+
+What ships instead is a first-class adapter to the reviewed engine, plus the Intel
+collateral acquisition that engine needs (it performs no network access, on
+purpose). Install `anonrouter-dcap-verifier`, put it on PATH or name it in
+`ANONROUTER_DCAP_VERIFIER_BIN`, and hop 1 can reach `hardware_verified`:
+
+```ts
+import { createAnonRouterDcapVerifier } from "@anonrouter/confidential/dcap";
+
+const verdict = await client.verifyRoute({
+  model, provider,
+  gateway: { chainVerifier: createAnonRouterDcapVerifier() }
+});
+```
+
+```python
+from anonrouter_confidential.gateway.dcap import create_anonrouter_dcap_verifier
+
+verdict = client.verify_route(
+    model=..., provider=...,
+    gateway={"chain_verifier": create_anonrouter_dcap_verifier()},
+)
+```
+
+`anonrouter-verify doctor` reports whether an engine is installed, its SHA-256,
+and exactly what to do if not. With no engine the verdict is capped at
+`cryptographically_checked` and a policy demanding hardware verification fails
+closed. It never silently downgrades.
+
+**Hop 2 is a different story and is not affected by this.** The provider hop still
+caps at `provider-attested`, because several provider routes run GPU enclaves
+whose NVIDIA attestation chain is not available to verify. Chaining only the CPU
+quote and printing `hardware_verified` would claim more than was checked.
 
 ### The trust boundary that actually earns the claim
 
@@ -109,14 +175,14 @@ The SDK reports a `verification_level` and never inflates it:
 - `sdk-verified` for `tinfoil`, via Tinfoil's official verifier (an optional
   dependency: `tinfoil` on npm, `tinfoil` on PyPI). Tinfoil is a TEE route, so it
   is attested but not content-private from AnonRouter.
-- `hardware-verified` is a clearly labeled future upgrade, not a current claim.
-  The Intel side is within reach (a pinned Intel root chain already exists in the
-  product code). The NVIDIA GPU root pinning is the hard, partly blocked piece.
-  Until it ships, the SDK will not print `hardware-verified` on its own.
-  Gateway verification exposes the seam as an explicit `chainVerifier` /
-  `chain_verifier` port: plug in a DCAP engine and the verdict can reach
-  `hardware-verified`; plug in none and a policy demanding it fails closed rather
-  than quietly settling for the weaker level and still reporting success.
+- `hardware-verified` is reachable **on hop 1**, and only with a real engine. The
+  Intel chain is wired: install `anonrouter-dcap-verifier` and hop 1's verdict can
+  reach it, having actually chained the quote's ECDSA signature to Intel's roots
+  with an accepted TCB status. Supply no engine and a policy demanding it fails
+  closed rather than quietly settling for the weaker level while reporting success.
+  On **hop 2** it remains a labeled future upgrade: the NVIDIA GPU root pinning
+  several provider routes would need is the hard, partly blocked piece, and the SDK
+  will not print `hardware-verified` for a chain it did not complete.
 
 ## Quickstart: `@anonrouter/confidential` (JavaScript)
 
@@ -124,28 +190,40 @@ The SDK reports a `verification_level` and never inflates it:
 npm install @anonrouter/confidential
 ```
 
+Node 22 or newer. The verification core and the E2EE transports are browser-safe
+(Web Crypto and `fetch` only, no `Buffer`, no `node:*`), so `@anonrouter/confidential`
+itself runs unchanged in a browser. The `./dcap` and `./chain-verifiers` subpaths
+are Node-only by design: they spawn a process, and a browser that could not run
+the engine must fail closed rather than silently verify less.
+
 ```ts
-import { createClient } from "@anonrouter/confidential";
+import { createClient, atLeast } from "@anonrouter/confidential";
 
 const client = createClient({
   baseUrl: "https://api.anonrouter.ai",
   apiKey: process.env.ANONROUTER_API_KEY!
 });
 
-// Independently verify a route's attestation before you trust it.
-const result = await client.verifyAttestation({
+// Verify BOTH hops and gate on the result. This is the stable contract; see
+// VERIFYING.md for the five states and what each one does and does not prove.
+const verdict = await client.verifyRoute({
   model: "openai/gpt-oss-120b",
-  provider: "near-ai"
+  provider: "near-ai",
+  gateway: { allowCandidatePolicy: true }   // omit `gateway` to skip hop 1 entirely
 });
-console.log(result.verdict.status, result.verdict.verification_level);
+if (!atLeast(verdict.overallState, "cryptographically_checked")) {
+  throw new Error(`route not established: ${verdict.reason}`);
+}
 
-// End-to-end-encrypted chat: keys and nonce are fresh per call, and only
-// ciphertext ever reaches AnonRouter's relay.
+// End-to-end-encrypted chat: keys and nonce are fresh per call, only ciphertext
+// reaches AnonRouter's relay, and requireGateway re-establishes hop 1 with a new
+// nonce BEFORE a ticket is spent or a model is named.
 const reply = await client.chat({
   model: "openai/gpt-oss-120b",
   provider: "near-ai",
   messages: [{ role: "user", content: "Draft a private message." }],
-  maxOutputTokens: 512
+  maxOutputTokens: 512,
+  requireGateway: { allowCandidatePolicy: true }
 });
 console.log(reply.content);
 ```
@@ -165,20 +243,27 @@ pip install "./python[mlkem]"                  # mlkem extra enables the Chutes 
 # pip install "anonrouter-confidential[mlkem]"
 ```
 
+Python 3.10 or newer. CI runs the suite on 3.10, 3.11, 3.12 and 3.13.
+
 ```python
 import os
 
-from anonrouter_confidential import create_client
+from anonrouter_confidential import at_least, create_client
 
 client = create_client(
     base_url="https://api.anonrouter.ai",
     api_key=os.environ["ANONROUTER_API_KEY"],
 )
 
-# verify_attestation() and chat() return dicts; the verdict is a NormalizedVerdict.
-result = client.verify_attestation(model="openai/gpt-oss-120b", provider="near-ai")
-verdict = result["verdict"]
-print(verdict.status, verdict.verification_level)
+# Verify BOTH hops and gate on the result. This is the stable contract; see
+# VERIFYING.md for the five states and what each one does and does not prove.
+verdict = client.verify_route(
+    model="openai/gpt-oss-120b",
+    provider="near-ai",
+    gateway={"allow_candidate_policy": True},   # omit `gateway` to skip hop 1
+)
+if not at_least(verdict.overall_state, "cryptographically_checked"):
+    raise SystemExit(f"route not established: {verdict.reason}")
 
 reply = client.chat(
     model="openai/gpt-oss-120b",
@@ -231,14 +316,27 @@ languages so they can never quietly disagree:
   required checks that failed. That is deliberately strict. A verifier change that
   lands in one language and not the other cannot pass CI, and neither can a change
   that quietly relaxes a required check into an advisory one.
-- A dedicated parity gate (`scripts/check-parity.mjs`) runs in CI and fails the
-  build if any per-package measurement copy drifts from the canonical pins.
+- `shared/vectors/dcap.json` pins the wire contract with the DCAP engine: how a
+  PCK chain and its FMSPC are read out of a quote, how Intel's signed documents are
+  sliced without breaking their signatures, and every way a malformed engine
+  verdict must fail to parse rather than be coerced into a pass.
+- `shared/vectors/cli-contract.json` pins the `anonrouter-verify` command: its exit
+  codes, its document shape, the inputs it must refuse before contacting anything,
+  and the substrings it must never print.
 
-Run the gate locally:
+Three gates run in CI and can be run locally:
 
 ```bash
-node scripts/check-parity.mjs
+node scripts/check-parity.mjs      # per-package pin copies match shared/
+node scripts/check-cli-parity.mjs  # both real anonrouter-verify binaries agree
+node scripts/smoke-artifacts.mjs   # every artifact installs into an empty env and works
 ```
+
+The last one is the one that catches what the others cannot. Every other gate runs
+against the working tree, which says nothing about whether the published
+**artifact** is right: a missing entry in `files`, an `exports` map that does not
+resolve, a `bin` that is not executable, or a wheel that omits the measurement
+pins are all invisible until somebody installs the thing.
 
 ## Contributing and security
 

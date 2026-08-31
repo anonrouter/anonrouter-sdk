@@ -27,17 +27,20 @@
     "./package.json": "./package.json"
   },
   "bin": { "anonrouter-verify": "./dist/cli.js" },
-  "files": ["dist", "src/measurements.json", "src/gateway/gateway-policies.json", "README.md", "LICENSE"],
+  "//files": "src ships alongside dist on purpose. This package's entire value is that you can read what it checks, and the emitted source maps would otherwise point at files nobody received. The measurement pins are in src/measurements.json and src/gateway/gateway-policies.json.",
+  "files": ["dist", "src", "README.md", "LICENSE"],
   "sideEffects": false,
   "engines": { "node": ">=22" },
   "publishConfig": { "access": "public" },
   "scripts": {
     "build": "tsc -p tsconfig.json && node -e \"const f=require('fs');f.copyFileSync('src/measurements.json','dist/measurements.json');f.mkdirSync('dist/gateway',{recursive:true});f.copyFileSync('src/gateway/gateway-policies.json','dist/gateway/gateway-policies.json')\"",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.examples.json",
     "prepublishOnly": "npm run build",
     "example:selftest": "tsx examples/selftest-mock.ts",
     "example:verify-tee": "tsx examples/verify-tee.ts",
+    "example:verify-route": "tsx examples/verify-route.ts",
+    "example:verify-then-call": "tsx examples/verify-then-call.ts",
     "example:chat-e2ee": "tsx examples/chat-e2ee.ts",
     "gen:attestation-vectors": "tsx scripts/gen-attestation-vectors.ts",
     "gen:gateway-binding-vectors": "tsx scripts/gen-gateway-binding-vectors.ts"

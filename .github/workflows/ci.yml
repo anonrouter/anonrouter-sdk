@@ -105,7 +105,9 @@ jobs:
         run: ruff check .
       - name: Mypy
         working-directory: python
-        run: mypy src
+        # No path argument: pyproject's `files` covers src and examples, so an
+        # example that stopped compiling fails here rather than failing a reader.
+        run: mypy
 
   # Fails the build if any per-package copy of the measurement pins has drifted
   # from the canonical shared/measurements.json.
@@ -149,6 +151,12 @@ jobs:
         run: node scripts/check-cli-parity.mjs
 
   # Confirms the published artifacts are well formed before a release, not after.
+  #
+  # Every other job runs against the working tree, which says nothing about the
+  # ARTIFACT: a missing entry in `files`, an `exports` map that does not resolve, a
+  # `bin` that is not executable, or a wheel that omits the measurement pins are
+  # all invisible until somebody installs the thing. This installs both tarballs
+  # and both Python distributions into empty environments and uses them there.
   packaging:
     name: Package artifacts
     runs-on: ubuntu-latest
@@ -162,19 +170,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Build JS packages
+      - name: Install JS workspace
         working-directory: js
-        run: |
-          npm ci
-          npm run build
-      - name: Pack npm tarballs
-        working-directory: js
-        run: |
-          npm pack --dry-run -w @anonrouter/confidential
-          npm pack --dry-run -w @anonrouter/client
-      - name: Build and check the Python distribution
-        working-directory: python
-        run: |
-          pip install build twine
-          python -m build
-          twine check dist/*
+        run: npm ci
+      - name: Install into empty environments and use it
+        run: node scripts/smoke-artifacts.mjs

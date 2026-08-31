@@ -25,6 +25,11 @@ Once it is published the same extras apply to the package name:
 pip install "anonrouter-confidential[mlkem]"
 ```
 
+Python 3.10 or newer. CI runs the suite on 3.10, 3.11, 3.12 and 3.13. Four runtime
+dependencies: `cryptography`, `pynacl`, `httpx`, `pycryptodome`.
+
+Installing also installs the `anonrouter-verify` command. See below.
+
 ## Provider crypto (protocols)
 
 - `near-ai` (`near-v2`): Ed25519 client key, per-field ephemeral X25519,
@@ -84,30 +89,99 @@ to whatever the server claims.
 Two things to know about the pin shipped today. It is marked `candidate`, because
 the confidential plane is pre-release and its measurements move on every release,
 so resolving it takes `allow_candidate_policy=True`. And it sets
-`requireHardwareVerified` while this package ships **no DCAP engine**, so
-verification fails closed with reason `quote_signature_chain` unless you pass your
-own `chain_verifier`. That is the honest answer: without chaining the quote's
-signature to Intel's roots, nobody has checked it came from real silicon.
+`requireHardwareVerified` while this package bundles no engine, so verification
+fails closed with reason `quote_signature_chain` until you install one (see
+below). That is the honest answer: without chaining the quote's signature to
+Intel's roots, nobody has checked it came from real silicon.
+
+## Reaching `hardware_verified`
+
+This package bundles **no DCAP engine**, on purpose: shipping prebuilt binaries
+would mean asserting that a binary we did not build reproducibly is the reviewed
+one, and a hand-rolled Python reimplementation would be an unreviewed version of
+the single component whose failure mode is reporting `hardware_verified` for a
+forged quote.
+
+What ships instead is a strict adapter to the reviewed engine, plus the
+Intel-signed collateral it needs (the engine performs no network access, on
+purpose). Install `anonrouter-dcap-verifier`, put it on PATH or name it in
+`ANONROUTER_DCAP_VERIFIER_BIN`, and hop 1 can reach `hardware_verified`:
+
+```python
+from anonrouter_confidential.gateway.dcap import (
+    create_anonrouter_dcap_verifier,
+    describe_dcap_installation,
+)
+
+describe_dcap_installation()   # is one installed? which one? what is its digest?
+
+verdict = client.verify_route(
+    model=..., provider=...,
+    gateway={"chain_verifier": create_anonrouter_dcap_verifier()},
+)
+```
+
+The adapter fails closed on every path: a missing engine, a digest that does not
+match `expected_binary_sha256`, a timeout, a crash, non-JSON output, collateral it
+could not acquire, or a verdict whose measured report disagrees with the quote the
+SDK parsed. Without an engine the ceiling is `cryptographically_checked` and a
+policy demanding hardware verification fails closed. It never silently downgrades.
+
+Hop 2 is unaffected and still caps at `provider-attested`: several provider routes
+run GPU enclaves whose NVIDIA attestation chain is not available to verify, and
+chaining only the CPU quote would claim more than was checked.
+
+## Verify from a terminal
+
+```bash
+anonrouter-verify doctor --origin https://api.private.anonrouter.ai
+anonrouter-verify gateway --origin https://api.private.anonrouter.ai --allow-candidate
+echo $?   # 0 met, 1 not met, 2 the command itself was wrong
+```
+
+It prints one JSON document, identical to the one the JavaScript command prints,
+and exits nonzero unless the assurance you asked for was established. `gateway` is
+credential-free; `route` adds hop 2 and reads an API key only from an environment
+variable, never from argv. Neither prints a key, a ticket, request content, or the
+raw evidence body.
 
 ## Both hops at once
 
+`verify_route()` is the stable contract: it establishes both hops, cross-binds them
+to the route you asked for, and reports ordered states rather than a boolean.
+
 ```python
-report = client.verify(
+from anonrouter_confidential import at_least
+
+verdict = client.verify_route(
     model="venice-uncensored",
     provider="venice",
     gateway=True,                          # omit to skip hop 1 entirely
 )
 
-report["trusted"]                          # every hop this call ASKED for verified
-report["gateway"]["requested"]             # whether hop 1 was in scope at all
-report["gateway"]["status"]                # ok | failed | unavailable | unpinned | not-requested
-report["route"]["content_visible_to_anonrouter"]   # True on a tee route
+verdict.overall_state                      # the weakest hop you ASKED about
+verdict.gateway.requested                  # whether hop 1 was in scope at all
+verdict.gateway.state                      # hardware_verified | ... | unavailable
+verdict.gateway.failed_checks              # the exact required checks that failed
+verdict.binding_mismatches                 # the route you asked for vs what was served
+verdict.content_visible_to_anonrouter      # True on a tee route
+
+if not at_least(verdict.overall_state, "cryptographically_checked"):
+    raise SystemExit(verdict.reason)
 ```
 
-`trusted` only ever covers the hops you asked for, which is why
-`gateway["requested"]` sits beside it. A report with `trusted: True` and
-`gateway["requested"]: False` establishes the provider enclave and makes no claim
-about the router.
+Gate with `at_least()` rather than comparing strings: it is the one place the
+ordering lives, so a threshold keeps meaning the same thing if a state is later
+inserted into the scale.
+
+`overall_state` only ever covers the hops you asked for, which is why
+`gateway.requested` sits beside it. A trusted verdict with
+`gateway.requested is False` establishes the provider enclave and makes no claim
+about the router. And any entry in `binding_mismatches` forces the whole verdict
+untrusted however strong the individual hops were.
+
+`verify()` returns the earlier report shape and is still supported; prefer
+`verify_route()`.
 
 ## Confidential chat
 
@@ -127,12 +201,19 @@ failure means no ticket was spent and no plaintext went near the wire.
 
 ## Verification ceiling (honest by design)
 
-The ceiling is `provider-attested` for NEAR / Venice / Chutes: the DCAP / NRAS
-chain-to-vendor-roots is deliberately not wired, and faking it would be dishonest.
-Tinfoil reaches `sdk-verified` via its official verifier (the optional `tinfoil`
-dependency); without it, Tinfoil verification fails closed. This package NEVER emits
-`hardware-verified`. A TEE route is enclave-verified but AnonRouter's gateway may
-still see plaintext; only the E2EE routes keep content opaque to the gateway.
+Hop 2's ceiling is `provider-attested` for NEAR / Venice / Chutes: the chain to
+the vendor roots is deliberately not wired there, because several of those routes
+run GPU enclaves whose NVIDIA attestation is not available to verify, and chaining
+only the CPU quote would claim more than was checked. Tinfoil reaches
+`sdk-verified` via its official verifier (the optional `tinfoil` dependency);
+without it, Tinfoil verification fails closed.
+
+Hop 1 can reach `hardware_verified`, and only with a real engine that actually
+chained the quote to Intel's roots with an accepted TCB status. Nothing here emits
+that state on its own.
+
+A TEE route is enclave-verified but AnonRouter's gateway may still see plaintext;
+only the E2EE routes keep content opaque to the gateway.
 
 ## License
 

@@ -58,17 +58,35 @@ enclave, and AnonRouter's relay only ever sees ciphertext. The following residua
 trust boundaries are known and deliberate. Understand them before you rely on a
 route.
 
-- **No hardware signature-chain verification (ceiling is `provider-attested`).**
-  The TDX quote is parsed and its measurements are checked against the reviewed
-  pins, but the ECDSA/DCAP chain to the Intel roots (and the NVIDIA NRAS chain) is
-  not verified client-side. A passing check therefore proves "this evidence is
-  internally consistent and matches reviewed pins," not "this silicon is genuine."
-  The SDK never prints `hardware-verified` on its own for this reason. Wiring a
-  real browser/Python DCAP+NRAS verifier is the main upgrade path. Gateway
-  verification exposes the seam explicitly as a `chainVerifier` /
-  `chain_verifier` port: supply an engine and the verdict can reach
-  `hardware-verified`; supply none and a policy requiring it fails closed with
-  reason `quote_signature_chain` rather than silently accepting the weaker level.
+- **Hardware signature-chain verification is available on hop 1 and requires an
+  engine you install.** These packages bundle no DCAP engine, because publishing
+  prebuilt binaries would mean asserting that a binary we did not build
+  reproducibly is the reviewed one, and a hand-rolled JavaScript or Python
+  reimplementation would be an unreviewed version of the one component whose
+  failure mode is printing `hardware_verified` for a forged quote. What ships is a
+  strict adapter (`@anonrouter/confidential/dcap`,
+  `anonrouter_confidential.gateway.dcap`) to AnonRouter's reviewed offline engine,
+  plus the Intel-signed collateral acquisition it needs. With the engine installed,
+  hop 1 reaches `hardware_verified` having actually chained the quote's ECDSA
+  signature to Intel's roots with an accepted TCB status. Without it, hop 1 is
+  capped at `cryptographically_checked` and a policy requiring hardware
+  verification fails closed with reason `quote_signature_chain` rather than
+  silently accepting the weaker level.
+
+  Two safeguards are worth knowing about. The engine's SHA-256 can be pinned, so a
+  swapped binary is a refusal rather than a different answer. And the engine's own
+  view of the TD (`mr_td`, the RTMRs, `report_data`) is compared against the SDK's
+  independent parse of the same bytes; a "verified" verdict describing a different
+  TD is refused, because a pass nobody can attribute to the quote in hand is worse
+  than a failure.
+
+- **Hop 2's ceiling is still `provider-attested`, and that is deliberate.** The
+  provider TDX quote is parsed and its measurements checked against the reviewed
+  pins, but the chain to the vendor roots is not completed there. Several provider
+  routes run GPU enclaves whose NVIDIA NRAS chain is not available to verify, and
+  chaining only the CPU quote while printing `hardware_verified` would claim more
+  than was checked. A passing hop 2 therefore proves "this evidence is internally
+  consistent and matches reviewed pins", not "this silicon is genuine".
 
 - **Verifying one hop says nothing about the other.** The provider verifiers
   answer "did the upstream model provider run my request in an enclave?".
@@ -117,6 +135,23 @@ route.
   gateway, run Tinfoil's own verifier (the optional `tinfoil` dependency, exposed
   here as `verifyTinfoilEnclave`) in your process. Tinfoil is also a TEE route, so
   it is attested but not content-private from AnonRouter.
+
+- **A collateral fetch tells Intel which platform you are verifying.** The DCAP
+  engine performs no network access on purpose, so the SDK acquires the
+  Intel-signed TCB info, QE identity and CRLs and hands them in. That request
+  discloses the platform's FMSPC and the time to Intel. Supplying `collateral`
+  yourself, from a mirror or from a cache, avoids it; the engine revalidates every
+  byte under its pinned Intel root either way, so a mirror is not a party you have
+  to trust.
+
+- **`anonrouter-verify` observes TLS on its own connection.** The command compares
+  the origin's leaf SPKI against the one the TD attests, but it opens its own TLS
+  connection to do so, because `fetch` does not expose the certificate of the
+  connection that carried the attestation request. Against a single origin
+  terminating TLS inside one TD those are the same certificate, and a mismatch is
+  still conclusive. Against a fleet presenting different keys per connection,
+  agreement is weaker than a same-connection observation would be. The command says
+  so in its output (`tlsSpki.source`) rather than leaving it to be assumed.
 
 If any of these boundaries matters for your use case, prefer an E2EE provider for
 confidentiality, treat NEAR/Venice response integrity as relay-trusting, and open
