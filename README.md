@@ -350,6 +350,13 @@ against the working tree, which says nothing about whether the published
 resolve, a `bin` that is not executable, or a wheel that omits the measurement
 pins are all invisible until somebody installs the thing.
 
+## What has actually been verified
+
+[`docs/release-readiness.md`](docs/release-readiness.md) records every gate with
+exact counts, what a live run against real TDX hardware establishes, and, more
+usefully, what a green run does **not** cover. A list of green checks is easy; the
+second list is what makes the first one worth anything.
+
 ## Contributing and security
 
 See `CONTRIBUTING.md` for dev setup and how the pins are maintained, and
