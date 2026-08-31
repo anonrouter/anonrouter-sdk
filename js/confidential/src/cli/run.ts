@@ -315,6 +315,20 @@ export async function runCli(argv: string[], io: CliIo = PROCESS_IO): Promise<nu
     throw error;
   }
 
+  try {
+    return await runResolved(options, io);
+  } catch (error) {
+    // A bad --policy or --collateral file is the command's inputs being wrong,
+    // which is exit 2 with the usage text, not a verification answer.
+    if (error instanceof UsageError) {
+      io.err(`${error.message}\n`);
+      return EXIT_USAGE;
+    }
+    throw error;
+  }
+}
+
+async function runResolved(options: Options, io: CliIo): Promise<number> {
   const notes: string[] = [];
   const engineReport = describeDcapInstallation({ binaryPath: options.dcapBinary ?? undefined });
   const engine = {
@@ -397,7 +411,13 @@ export async function runCli(argv: string[], io: CliIo = PROCESS_IO): Promise<nu
   const gatewayOption: Omit<VerifyGatewayInput, "signal"> = {
     ...(policy ? { policy } : {}),
     allowCandidatePolicy: options.allowCandidate,
-    ...(options.tlsCheck ? { observedTlsSpkiSha256: observedSpki } : {}),
+    // Only when an observation actually succeeded. Passing null would mean
+    // "observed, and there is no certificate", which is a MISMATCH and a required
+    // failure; a handshake this command could not complete is a gap, recorded as
+    // advisory and called out in `notes`. The Python command does the same, and
+    // getting this wrong would make the two disagree about a live origin while
+    // agreeing on every offline case the parity gate can reach.
+    ...(options.tlsCheck && observedSpki !== null ? { observedTlsSpkiSha256: observedSpki } : {}),
     ...(chainVerifier ? { chainVerifier } : {})
   };
 
@@ -442,7 +462,6 @@ export async function runCli(argv: string[], io: CliIo = PROCESS_IO): Promise<nu
 
     let providerHop = hopNotRequested();
     let attestation: Awaited<ReturnType<typeof client.verifyAttestation>> | null = null;
-    let providerError: string | null = null;
     if (options.command === "route") {
       try {
         attestation = await client.verifyAttestation({
@@ -456,7 +475,7 @@ export async function runCli(argv: string[], io: CliIo = PROCESS_IO): Promise<nu
         // The CODE is the stable machine-readable name and the MESSAGE says what
         // to do about it. Reporting only the code turns "your key was refused"
         // and "this origin does not serve the route" into the same word.
-        providerError = error instanceof ConfidentialError ? error.code : "provider_verification_failed";
+        const providerError = error instanceof ConfidentialError ? error.code : "provider_verification_failed";
         providerHop = {
           requested: true,
           state: "untrusted",

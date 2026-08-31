@@ -39,7 +39,7 @@
 
 import { execFile } from "node:child_process";
 import { accessSync, constants, readFileSync } from "node:fs";
-import { delimiter, isAbsolute, join } from "node:path";
+import { delimiter, join } from "node:path";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex } from "../../bytes.js";
 import { parseTdxQuote } from "../../verify/tdx.js";
@@ -558,9 +558,4 @@ function refusingVerifier(quoteHex: string, reason: string, implementation: stri
     },
     implementation
   );
-}
-
-/** True when `path` looks like an absolute filesystem path (for CLI diagnostics). */
-export function isAbsolutePath(path: string): boolean {
-  return isAbsolute(path);
 }

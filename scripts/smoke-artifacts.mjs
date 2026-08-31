@@ -153,7 +153,11 @@ console.log(JSON.stringify(report));
     () => assert(probeOutput.providerPinsPresent, "no provider measurement pins found after install"));
 
   // The command, run from the installed bin rather than from the repo.
-  const doctor = runAllowingFailure("npx", ["--no-install", "anonrouter-verify", "doctor", "--compact"], { cwd: jsHome });
+  // The installed bin itself, not `npx`: this is the symlink npm creates from the
+  // package's `bin` entry, and whether it exists and is executable is part of what
+  // is being checked.
+  const installedBin = join(jsHome, "node_modules", ".bin", "anonrouter-verify");
+  const doctor = runAllowingFailure(installedBin, ["doctor", "--compact"], { cwd: jsHome });
   check("the installed anonrouter-verify command runs", () => {
     assert(doctor.code === 0, `doctor exited ${doctor.code}`);
     const document = JSON.parse(doctor.stdout);
@@ -161,9 +165,8 @@ console.log(JSON.stringify(report));
     assert(document.command === "doctor", "doctor did not report itself");
   });
 
-  const unpinned = runAllowingFailure("npx", [
-    "--no-install", "anonrouter-verify", "gateway",
-    "--origin", "https://nothing-is-pinned-for-this.example", "--compact"
+  const unpinned = runAllowingFailure(installedBin, [
+    "gateway", "--origin", "https://nothing-is-pinned-for-this.example", "--compact"
   ], { cwd: jsHome });
   check("the installed command exits nonzero when nothing was established", () => {
     assert(unpinned.code === 1, `expected exit 1, got ${unpinned.code}`);
@@ -242,7 +245,9 @@ if (!python) {
     });
 
     check("twine accepts the distribution metadata", () => {
-      run(python, ["-m", "twine", "check", join(buildDir, "*")], { shell: true });
+      // Explicit paths rather than a shell glob: a temporary directory with a
+      // space in it would otherwise silently check nothing.
+      run(python, ["-m", "twine", "check", ...artifacts.map((name) => join(buildDir, name))]);
     });
 
     // Install each artifact into its OWN empty virtualenv. The sdist is checked

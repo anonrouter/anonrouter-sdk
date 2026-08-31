@@ -321,9 +321,11 @@ def fetch_intel_collateral(
     certs = cert_base.rstrip("/")
     client = http_client or httpx.Client(timeout=timeout_seconds)
     try:
-        tcb = _get(client, f"{base}/tdx/certification/v4/tcb?fmspc={fmspc}")
-        qe = _get(client, f"{base}/tdx/certification/v4/qe/identity")
-        # `encoding=der` returns raw binary, not hex text.
+        tcb = _get(client, f"{base}/tdx/certification/v4/tcb?fmspc={fmspc}", json=True)
+        qe = _get(client, f"{base}/tdx/certification/v4/qe/identity", json=True)
+        # `encoding=der` returns raw binary, not hex text, so it is NOT asked for
+        # JSON: the accept header is the one input that could make Intel answer
+        # with a different representation than the one being parsed.
         pck_crl = _get(client, f"{base}/sgx/certification/v4/pckcrl?ca=platform&encoding=der")
         # IntelSGXRootCA.der is the root CA's CRL, despite the name.
         root_crl = _get(client, f"{certs}/IntelSGXRootCA.der")
@@ -337,8 +339,8 @@ def fetch_intel_collateral(
     return AcquiredCollateral(
         collateral=DcapCollateral(
             pck_crl_issuer_chain=_require_header(pck_crl.headers, "SGX-PCK-CRL-Issuer-Chain"),
-            root_ca_crl=pck_crl_bytes_to_hex(root_crl.content),
-            pck_crl=pck_crl_bytes_to_hex(pck_crl.content),
+            root_ca_crl=der_to_hex(root_crl.content),
+            pck_crl=der_to_hex(pck_crl.content),
             tcb_info_issuer_chain=_require_header(tcb.headers, "TCB-Info-Issuer-Chain"),
             tcb_info=tcb_info,
             tcb_info_signature=read_signed_document_signature(tcb.text),
@@ -355,18 +357,18 @@ def fetch_intel_collateral(
     )
 
 
-def pck_crl_bytes_to_hex(content: bytes) -> str:
+def der_to_hex(content: bytes) -> str:
     """Hex-encode a DER response, bounded."""
     if len(content) > MAX_RESPONSE_CHARS:
         raise CollateralError("Intel response exceeds the maximum size")
     return content.hex()
 
 
-def _get(client: Any, url: str) -> Any:
+def _get(client: Any, url: str, *, json: bool = False) -> Any:
     import httpx
 
     try:
-        response = client.get(url, headers={"accept": "application/json"})
+        response = client.get(url, headers={"accept": "application/json"} if json else {})
     except httpx.HTTPError as exc:
         raise CollateralError(f"could not reach {httpx.URL(url).host}") from exc
     if response.status_code >= 400:

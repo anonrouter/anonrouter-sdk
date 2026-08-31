@@ -9,9 +9,11 @@ bit-for-bit.
 
 ## Install
 
-**Not on PyPI yet.** The JavaScript packages are published; this one is still
-working through PyPI onboarding. Until it lands, install from a clone of the
-[monorepo](https://github.com/anonrouter/anonrouter-sdk):
+**Not on PyPI yet**, and neither are the JavaScript packages. Install from a clone
+of the [monorepo](https://github.com/anonrouter/anonrouter-sdk). The wheel and the
+sdist are built and installed into clean virtualenvs on every CI run, so what PyPI
+would carry is the thing already being tested; publishing is an owner decision
+rather than a technical gap.
 
 ```
 pip install ./python                  # verify + NEAR/Venice E2EE + TDX

@@ -21,6 +21,11 @@ lives here in the open.
 Both `@anonrouter/confidential` and `anonrouter-confidential` also install an
 `anonrouter-verify` command. See [Verify from a terminal](#verify-from-a-terminal).
 
+**None of the three is on a registry yet.** The registry column above is where each
+one is headed. Install from a clone until then; the artifacts are built and used
+from empty environments on every CI run, so publishing is an owner decision rather
+than a technical gap.
+
 Layout:
 
 ```
@@ -187,7 +192,11 @@ The SDK reports a `verification_level` and never inflates it:
 ## Quickstart: `@anonrouter/confidential` (JavaScript)
 
 ```bash
-npm install @anonrouter/confidential
+# Once it is on npm:
+# npm install @anonrouter/confidential
+
+# Until then, from a clone of this repo:
+cd js && npm ci && npm run build
 ```
 
 Node 22 or newer. The verification core and the E2EE transports are browser-safe
@@ -230,10 +239,13 @@ console.log(reply.content);
 
 ## Quickstart: `anonrouter-confidential` (Python)
 
-> **Not on PyPI yet.** The JavaScript packages are published; the Python package
-> is still working through PyPI onboarding. Until it lands, install it from a
-> clone of this repository. The code, the pins, and the test vectors are the same
-> ones the published release will carry.
+> **Not published yet.** None of the three packages is on a registry at the time of
+> writing (`@anonrouter/confidential`, `@anonrouter/client` and
+> `anonrouter-confidential` all 404). Install from a clone. The artifacts are built
+> and exercised on every CI run by `scripts/smoke-artifacts.mjs`, which installs
+> them into empty environments and uses them there, so what a registry would carry
+> is the thing that is already being tested; publishing is an owner decision, not a
+> technical gap.
 
 ```bash
 # From a clone of this repo:

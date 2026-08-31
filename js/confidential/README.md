@@ -12,8 +12,16 @@ For the plaintext API surface, see `@anonrouter/client`.
 ## Install
 
 ```bash
-npm install @anonrouter/confidential
+# Once it is on npm:
+# npm install @anonrouter/confidential
+
+# Until then, from a clone of the monorepo:
+cd js && npm ci && npm run build
 ```
+
+Not on npm yet. The tarball is built and installed into an empty environment on
+every CI run, so what npm would carry is already exercised; publishing is an owner
+decision rather than a technical gap.
 
 Node 22 or newer. Four runtime dependencies, all `@noble` audited crypto
 (`ciphers`, `curves`, `hashes`, `post-quantum`) and nothing else.
