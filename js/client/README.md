@@ -6,11 +6,14 @@ and targets the plaintext, TEE, and private routes.
 
 Part of the [AnonRouter SDK monorepo](https://github.com/anonrouter/anonrouter-sdk).
 
-> This is **not** the confidential client. On these routes AnonRouter's gateway can
-> still see request content (a TEE protects content from the host, not from the
-> gateway). For content AnonRouter must never see, use
-> [`@anonrouter/confidential`](https://www.npmjs.com/package/@anonrouter/confidential),
-> which end-to-end-encrypts to independently attested keys.
+> This is **not** the confidential client. It sends your prompt as plaintext, so
+> AnonRouter's relay software handles it to route and meter the request. On the
+> production confidential origin that relay runs inside an attested Intel TDX CVM,
+> so the plaintext does not reach ordinary AnonRouter infrastructure — but this
+> package neither verifies that nor encrypts anything, so nothing here proves it
+> to you. To check the claim rather than take it, or to keep content opaque to
+> AnonRouter's build entirely, use
+> [`@anonrouter/confidential`](https://github.com/anonrouter/anonrouter-sdk/tree/main/js/confidential).
 
 The one thing this client enforces for you: the stable API key is sent only on the
 control-plane ticket request, never on the request that carries content. Content is

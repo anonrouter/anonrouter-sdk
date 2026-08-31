@@ -47,22 +47,30 @@ scripts/                  # sync, parity gates, artifact smoke installs
 AnonRouter offers routes at different privacy levels. Read this before you rely
 on any of them, because the words matter.
 
-- **TEE (Trusted Execution Environment) is NOT content-private from AnonRouter.**
-  A TEE protects your content from the infrastructure host and proves which code
-  is running inside the enclave. It does not hide your content from AnonRouter's
-  own gateway, which sees the plaintext in order to route and meter the request.
-  Use a TEE route when you want a hardware attestation of the serving stack, not
-  when you need AnonRouter itself to be unable to read the content.
-- **Only E2EE (end-to-end encryption) hides content from AnonRouter.** On the
-  E2EE providers (`near-ai`, `venice`, `chutes`), the SDK encrypts your request
-  to a key bound to the attested enclave and relays only ciphertext. AnonRouter's
-  relay never sees plaintext. This is the mode to use when the requirement is
-  that AnonRouter cannot read your content.
+- **Your plaintext does not reach ordinary AnonRouter infrastructure.** All
+  content now goes to the confidential origin, `api.private.anonrouter.ai`, whose
+  relay runs inside an attested Intel TDX CVM and terminates TLS *in-enclave*. The
+  shipped policy makes `transport_terminates_in_tee` and
+  `tls_certificate_bound_to_quote` REQUIRED checks, so the attested TD provably
+  holds the key for the connection carrying your request. The control origin
+  (`api.anonrouter.ai`) serves no content at all — it answers 404 for
+  `/v1/chat/completions` and 503 for media.
+- **A TEE route still asks you to trust our reviewed build.** Inside that enclave,
+  the relay handles your plaintext to route and meter it. What keeps that from
+  being a matter of faith is that a build changed to exfiltrate it would change
+  the measurements, so hop 1 stops verifying. Cheating is *detectable* — provided
+  you actually verify, which is what this SDK is for.
+- **E2EE removes us from the trust set entirely.** On the E2EE providers
+  (`near-ai`, `venice`, `chutes`) the SDK encrypts your request to a key bound to
+  the *provider's* attested enclave, so AnonRouter's relay holds ciphertext
+  whatever code it happens to be running. Use this when the requirement is that
+  AnonRouter cannot read your content **even if we wanted to and shipped code to
+  try**, rather than that we would be caught doing so.
 - **`@anonrouter/client` is the plaintext client.** It speaks the ordinary
-  OpenAI-style chat surface over AnonRouter's ticketed flow. Content on these
-  routes is visible to the gateway. It is here for convenience and for the
-  plaintext / TEE / private routes, and it is explicitly not the confidential
-  package.
+  OpenAI-style chat surface over the ticketed flow, and it neither verifies the
+  plane nor encrypts anything — so while it benefits from the same in-enclave
+  termination, nothing in it proves that to you. It is explicitly not the
+  confidential package.
 
 ### Two hops, verified separately
 
@@ -179,8 +187,9 @@ The SDK reports a `verification_level` and never inflates it:
   reviewed pins. The DCAP / NRAS chain all the way to the silicon vendor roots is
   deliberately not wired here, because faking that chain would be dishonest.
 - `sdk-verified` for `tinfoil`, via Tinfoil's official verifier (an optional
-  dependency: `tinfoil` on npm, `tinfoil` on PyPI). Tinfoil is a TEE route, so it
-  is attested but not content-private from AnonRouter.
+  dependency: `tinfoil` on npm, `tinfoil` on PyPI). Tinfoil is a TEE route, so our
+  attested relay handles the plaintext in-enclave rather than ciphertext: the
+  route asks you to trust our reviewed build, where an E2EE route does not.
 - `hardware-verified` is reachable **on hop 1**, and only with a real engine. The
   Intel chain is wired: install `anonrouter-dcap-verifier` and hop 1's verdict can
   reach it, having actually chained the quote's ECDSA signature to Intel's roots

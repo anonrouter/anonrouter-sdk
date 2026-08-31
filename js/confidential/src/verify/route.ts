@@ -90,9 +90,31 @@ export interface RouteVerdict {
    */
   bindingMismatches: RouteBindingMismatch[];
   /**
-   * True on a `tee` route: execution ran in a verified enclave, but AnonRouter's
-   * gateway still sees plaintext to route and meter. Only `e2ee` keeps content
-   * opaque to AnonRouter.
+   * True on a `tee` route: AnonRouter's relay handles your PLAINTEXT in order to
+   * route and meter it. False on `e2ee`, where the relay only ever holds
+   * ciphertext.
+   *
+   * WHAT THIS DOES AND DOES NOT MEAN. It is not "AnonRouter reads your prompts".
+   * On the production confidential origin the relay runs inside an attested Intel
+   * TDX CVM and terminates TLS in-enclave (the shipped policy makes
+   * `transport_terminates_in_tee` and `tls_certificate_bound_to_quote` required
+   * checks), so plaintext never reaches ordinary AnonRouter infrastructure and no
+   * operator can read it out of a running host.
+   *
+   * The difference this flag marks is about the TRUST SET, not about exposure to
+   * normal servers:
+   *
+   *   tee    the plaintext is processed by AnonRouter's relay SOFTWARE, inside
+   *          the enclave. You are trusting the reviewed build. A build that
+   *          changed to exfiltrate it would change the measurements, so hop 1
+   *          would stop verifying -- cheating is DETECTABLE, provided you check.
+   *   e2ee   the request is encrypted to the PROVIDER's attested key, so the
+   *          relay holds ciphertext whatever code it is running. AnonRouter's
+   *          build is not in your trust set at all.
+   *
+   * So `true` means "this route requires you to trust our attested build";
+   * `false` means "it does not". The name predates the confidential data plane
+   * and is kept for compatibility.
    */
   contentVisibleToAnonRouter: boolean;
 }

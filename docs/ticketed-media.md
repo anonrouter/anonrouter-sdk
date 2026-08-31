@@ -51,10 +51,15 @@ as **plaintext**. What protects it is:
    verify yourself with `verifyGateway()` / `verify_gateway()` before you send
    anything, against the same origin the content goes to.
 
-That is a real and strong property, and it is a weaker one than E2EE chat. If
-your threat model requires that AnonRouter cannot read the content even in
-principle, media does not meet it today. Verify hop 1 first and decide with the
-verdict in hand:
+That is a real and strong property, and it is a weaker one than E2EE chat. The
+difference is what it would take for AnonRouter to read a media prompt: shipping a
+different build into the CVM. That is not undetectable — the measurements would
+change and `verifyGateway()` would stop passing — but it is possible, whereas on
+an E2EE route the relay holds ciphertext no matter what code it runs. If your
+threat model requires that AnonRouter cannot read the content **even if we shipped
+code to try**, rather than that we would be caught, media does not meet it today.
+
+Verify hop 1 first and decide with the verdict in hand:
 
 ```ts
 const verdict = await client.verifyGateway({ chainVerifier: createAnonRouterDcapVerifier() });

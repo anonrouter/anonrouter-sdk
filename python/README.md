@@ -277,8 +277,18 @@ Hop 1 can reach `hardware_verified`, and only with a real engine that actually
 chained the quote to Intel's roots with an accepted TCB status. Nothing here emits
 that state on its own.
 
-A TEE route is enclave-verified but AnonRouter's gateway may still see plaintext;
-only the E2EE routes keep content opaque to the gateway.
+On the production confidential origin your plaintext never reaches ordinary
+AnonRouter infrastructure: the relay runs inside an attested Intel TDX CVM and
+terminates TLS in-enclave (`transport_terminates_in_tee` and
+`tls_certificate_bound_to_quote` are required checks in the shipped policy).
+
+What still differs between the modalities is the TRUST SET. On a `tee` route the
+relay handles your plaintext inside that enclave, so you are trusting the reviewed
+build — a build changed to exfiltrate it would change the measurements and hop 1
+would stop verifying, which makes cheating detectable rather than impossible. On an
+`e2ee` route the request is encrypted to the provider's attested key, so the relay
+holds ciphertext whatever code it runs and our build is not in your trust set at
+all. That is what `content_visible_to_anonrouter` marks.
 
 ## License
 

@@ -346,11 +346,16 @@ export interface VerificationReport {
     upstreamModel: string;
     privacyModality: PrivacyModality;
     /**
-     * True on a `tee` route: execution ran in a verified enclave, but AnonRouter's
-     * gateway still sees your plaintext to route and meter it. Only an `e2ee`
-     * route keeps content opaque to AnonRouter. This is the single most
-     * misunderstood fact about TEE routing, so it is stated as a fact and not
-     * left to be inferred from a modality string.
+     * True on a `tee` route: AnonRouter's relay handles your plaintext to route
+     * and meter it, inside the attested enclave. False on `e2ee`, where the relay
+     * only ever holds ciphertext.
+     *
+     * This marks which routes require trusting AnonRouter's reviewed build, not
+     * which routes expose plaintext to ordinary infrastructure -- on the
+     * confidential origin, none do. See `RouteVerdict.contentVisibleToAnonRouter`
+     * for the full statement. Reported as a fact rather than left to be inferred
+     * from a modality string, because it is the most misunderstood part of TEE
+     * routing in both directions.
      */
     contentVisibleToAnonRouter: boolean;
   };

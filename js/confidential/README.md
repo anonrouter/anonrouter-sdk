@@ -259,12 +259,22 @@ Two things to know about the pin this package ships today:
 
 ## What "confidential" means here, honestly
 
-- **TEE is not content-private from AnonRouter.** A TEE proves which code runs in
-  the enclave and protects content from the infrastructure host, but AnonRouter's
-  gateway still sees the plaintext to route and meter the request.
-- **Only E2EE hides content from AnonRouter.** On the E2EE providers (`near-ai`,
-  `venice`, `chutes`) this package encrypts your request to a key bound to the
-  attested enclave and relays only ciphertext.
+- **Your plaintext does not reach ordinary AnonRouter infrastructure.** On the
+  production confidential origin the relay runs inside an attested Intel TDX CVM
+  and terminates TLS *in-enclave*: the shipped policy makes
+  `transport_terminates_in_tee` and `tls_certificate_bound_to_quote` required
+  checks, so the attested TD provably holds the key for the connection carrying
+  your request. No operator can read it off a running host.
+- **A TEE route still asks you to trust our reviewed build.** Inside the enclave,
+  the relay handles your plaintext to route and meter it. What stops that being a
+  matter of faith is that a build changed to exfiltrate it would change the
+  measurements, so hop 1 stops verifying — cheating is *detectable*, provided you
+  actually check.
+- **E2EE removes us from the trust set entirely.** On `near-ai`, `venice` and
+  `chutes` this package encrypts to a key bound to the *provider's* attested
+  enclave, so the relay holds ciphertext whatever code it happens to be running.
+  That is the difference `contentVisibleToAnonRouter` marks — which routes require
+  trusting our build, not which routes leak plaintext to normal servers.
 - **The SDK never inflates its verdict.** It reports `provider-attested` for
   `near-ai` / `venice` / `chutes` and `sdk-verified` for `tinfoil`. It never emits
   `hardware-verified` on its own: the DCAP / NRAS chain to the silicon vendor
