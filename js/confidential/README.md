@@ -42,9 +42,11 @@ advisory gap rather than assumed away.
 
 ```ts
 import { createClient, atLeast } from "@anonrouter/confidential";
+import { createAnonRouterDcapVerifier } from "@anonrouter/confidential/dcap";
 
 const client = createClient({
-  baseUrl: "https://api.anonrouter.ai",
+  baseUrl: "https://api.private.anonrouter.ai",
+  controlBaseUrl: "https://api.anonrouter.ai",
   apiKey: process.env.ANONROUTER_API_KEY!
 });
 
@@ -52,7 +54,7 @@ const client = createClient({
 const verdict = await client.verifyRoute({
   model: "openai/gpt-oss-120b",
   provider: "near-ai",
-  gateway: { allowCandidatePolicy: true }   // omit `gateway` to skip hop 1
+  gateway: { chainVerifier: createAnonRouterDcapVerifier() }
 });
 if (!atLeast(verdict.overallState, "cryptographically_checked")) {
   throw new Error(`route not established: ${verdict.reason}`);
@@ -67,7 +69,7 @@ const reply = await client.chat({
   provider: "near-ai",
   messages: [{ role: "user", content: "Draft a private message." }],
   maxOutputTokens: 512,
-  requireGateway: { allowCandidatePolicy: true }
+  requireGateway: { chainVerifier: createAnonRouterDcapVerifier() }
 });
 console.log(reply.content);
 ```
@@ -79,7 +81,8 @@ and exits nonzero unless the assurance you asked for was established:
 
 ```bash
 npx anonrouter-verify doctor --origin https://api.private.anonrouter.ai
-npx anonrouter-verify gateway --origin https://api.private.anonrouter.ai --allow-candidate
+npx anonrouter-verify gateway --origin https://api.private.anonrouter.ai --dcap \
+  --require hardware_verified
 echo $?   # 0 met, 1 not met, 2 the command itself was wrong
 ```
 
@@ -188,12 +191,13 @@ await client.verifyGateway({ policy: loadGatewayPolicy(myReviewedPolicy) });
 
 Two things to know about the pin this package ships today:
 
-- It is marked `candidate`, because the confidential plane is pre-release and its
-  measurements move on every release. Resolving it takes an explicit
-  `allowCandidatePolicy: true`.
+- It is marked `published` from the independently retained production release
+  manifest. A different app id, compose hash or platform measurement fails
+  closed until a newly reviewed policy ships.
 - It sets `requireHardwareVerified`, and this package bundles no engine. So
   `verifyGateway()` fails closed with reason `quote_signature_chain` until you
-  install one (see above). That is the honest answer, not a bug: without chaining
+  install the separate reproducible engine (see above). That is the honest answer,
+  not a bug: without chaining
   the quote's signature to Intel's roots, nobody has checked that the quote came
   from real silicon.
 

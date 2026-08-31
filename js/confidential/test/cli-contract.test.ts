@@ -62,6 +62,14 @@ describe("parsed options", () => {
     expect(parseArgs(["gateway", "--origin", "https://x.example"]).require).toBe(contract.defaultRequire);
   });
 
+  it("accepts a separate content-free control origin", () => {
+    expect(parseArgs([
+      "route", "--origin", "https://confidential.example",
+      "--control-origin", "https://control.example",
+      "--provider", "venice", "--model", "model"
+    ]).controlOrigin).toBe("https://control.example");
+  });
+
   it("--dcap-binary implies --dcap, so naming an engine is enough to use it", () => {
     const options = parseArgs(["gateway", "--origin", "https://x.example", "--dcap-binary", "/opt/engine"]);
     expect(options.dcap).toBe(true);
@@ -95,13 +103,13 @@ describe("doctor", () => {
     expect(Object.keys(document.pin)).toEqual(contract.pinKeys);
   });
 
-  it("reports the shipped candidate pin as needing an explicit opt-in", async () => {
+  it("reports the reviewed production pin as published and enabled by default", async () => {
     const io = capture();
     await runCli(["doctor", "--origin", "https://api.private.anonrouter.ai", "--compact"], io);
     const document = JSON.parse(io.stdout);
     expect(document.pin.present).toBe(true);
-    expect(document.pin.status).toBe("candidate");
-    expect(document.pin.requiresOptIn).toBe(true);
+    expect(document.pin.status).toBe("published");
+    expect(document.pin.requiresOptIn).toBe(false);
   });
 
   it("reports no pin for an origin this package does not cover", async () => {

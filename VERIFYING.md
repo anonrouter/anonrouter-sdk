@@ -22,7 +22,11 @@ says nothing about where inference actually ran.
 ```ts
 import { createClient, atLeast } from "@anonrouter/confidential";
 
-const client = createClient({ baseUrl: "https://api.anonrouter.ai", apiKey: KEY });
+const client = createClient({
+  baseUrl: "https://api.private.anonrouter.ai",
+  controlBaseUrl: "https://api.anonrouter.ai",
+  apiKey: KEY
+});
 
 const verdict = await client.verifyRoute({
   model: "openai/gpt-oss-120b",
@@ -38,7 +42,11 @@ if (!atLeast(verdict.overallState, "cryptographically_checked")) {
 ```python
 from anonrouter_confidential import create_client, at_least
 
-with create_client("https://api.anonrouter.ai", api_key=KEY) as client:
+with create_client(
+    "https://api.private.anonrouter.ai",
+    api_key=KEY,
+    control_base_url="https://api.anonrouter.ai",
+) as client:
     verdict = client.verify_route(
         model="openai/gpt-oss-120b", provider="near-ai", gateway=True
     )
@@ -216,6 +224,9 @@ detect for you.
 anonrouter-verify doctor  --origin https://api.private.anonrouter.ai
 anonrouter-verify gateway --origin https://api.private.anonrouter.ai \
   --policy ./reviewed-policy.json --dcap --require hardware_verified
+anonrouter-verify route --origin https://api.private.anonrouter.ai \
+  --control-origin https://api.anonrouter.ai --provider venice --model MODEL \
+  --policy ./reviewed-policy.json --dcap --require cryptographically_checked
 echo $?
 ```
 
@@ -276,23 +287,20 @@ What each field needs:
 - **`tls_spki_sha256`** should be compared against the certificate actually served
   on that origin, observed by you.
 
-The pin shipped today is `candidate` and its refresh was reviewed on 2026-08-29
-and **rejected**, then reconfirmed as rejected on 2026-08-30. The measurement
-identity was corroborated, but every reviewed record covering that CVM names a
-preproduction hostname, and no release manifest exists for the deployed release
-id. `reviewedRefreshAttempt` in `shared/gateway-policies.json` records exactly what
-was and was not established, and what would be needed to promote it.
-
-The reconfirmation found the fact that settles it. Between the two dates the
-plane's `compose_hash` moved while `release_id` stayed `anonrouter-tee@xl-7b1b12a`.
-A release id that does not move when the measured configuration does is not an
-identity, and pinning it would authorize every future build deployed under the
-same environment variable.
+The shipped production pin comes from the independently retained release manifest
+with SHA-256
+`46da4d4210c21ea76681ef044dd2da29d8a3a4cff135348ef9f168f6a09c6bf4`.
+It binds the production origin, reviewed source, measured app-compose, image,
+app/instance identity, TLS SPKI and platform measurements. The earlier rejected
+refresh is retained in `shared/gateway-policies.json` as review history: it lacked
+this production-origin manifest. A `release_id` is never accepted by itself;
+the app id, compose hash and every platform measurement must also match.
 
 Which origin serves what, and what each answer means, is inventoried in
 [`docs/live-contract-inventory.md`](docs/live-contract-inventory.md). The short
-version: hop 1 exists only on the confidential origin today, and this SDK
-deliberately offers no way to verify one origin while sending content to another.
+version: both evidence hops and encrypted content stay on the confidential
+origin, while `controlBaseUrl`/`--control-origin` sends only content-free ticket
+and catalog operations to the public control plane.
 
 ## Testing against a real confidential VM
 

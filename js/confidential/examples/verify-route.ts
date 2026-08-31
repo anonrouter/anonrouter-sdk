@@ -8,8 +8,10 @@
 
 import "./_env.js";
 import { createClient, atLeast, describeState, type RouteVerificationState } from "../src/index.js";
+import { createAnonRouterDcapVerifier } from "../src/gateway/dcap/index.js";
 
-const BASE_URL = process.env.ANONROUTER_BASE_URL ?? "https://api.anonrouter.ai";
+const BASE_URL = process.env.ANONROUTER_BASE_URL ?? "https://api.private.anonrouter.ai";
+const CONTROL_URL = process.env.ANONROUTER_CONTROL_URL ?? "https://api.anonrouter.ai";
 const MODEL = process.env.ANONROUTER_MODEL ?? "venice-uncensored";
 const PROVIDER = process.env.ANONROUTER_PROVIDER ?? "venice";
 
@@ -23,14 +25,13 @@ if (!apiKey) {
   process.exit(2);
 }
 
-const client = createClient({ baseUrl: BASE_URL, apiKey });
+const client = createClient({ baseUrl: BASE_URL, controlBaseUrl: CONTROL_URL, apiKey });
 
 const verdict = await client.verifyRoute({
   model: MODEL,
   provider: PROVIDER,
-  // Ask about AnonRouter's own plane too. Against a deployment that does not run
-  // in a CVM this reports `unavailable`, which is untrusted, not a pass.
-  gateway: { allowCandidatePolicy: true }
+  // Ask about AnonRouter's own plane too and chain its quote to Intel.
+  gateway: { chainVerifier: createAnonRouterDcapVerifier() }
 });
 
 console.log(`route      ${verdict.route.provider}/${verdict.route.model}`);

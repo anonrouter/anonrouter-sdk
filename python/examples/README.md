@@ -17,7 +17,8 @@ Runs `verify_route()` and prints what each hop established, what it did not, and
 why, then exits nonzero if the route did not reach the threshold. Attestation
 only, so it spends nothing.
 
-Env: `ANONROUTER_BASE_URL` (default `https://api.anonrouter.ai`),
+Env: `ANONROUTER_BASE_URL` (default `https://api.private.anonrouter.ai`),
+`ANONROUTER_CONTROL_URL` (default `https://api.anonrouter.ai`),
 `ANONROUTER_MODEL`, `ANONROUTER_PROVIDER`.
 
 ## 2. Verify, then call (real gateway, your key, BILLABLE)
@@ -40,7 +41,10 @@ Env: everything from example 1, plus `ANONROUTER_REQUIRE` (default
 
 - The API key needs the `inference` scope. It is sent only on the authenticated,
   content-free control requests, never to the relay.
+- Gateway evidence, provider evidence and encrypted inference stay on
+  `ANONROUTER_BASE_URL`; `ANONROUTER_CONTROL_URL` is used only to mint tickets
+  and read content-free catalog metadata.
 - To check a deployment without any key at all, use the command instead:
-  `anonrouter-verify gateway --origin https://your-cvm.example --allow-candidate`.
+  `anonrouter-verify gateway --origin https://your-cvm.example --dcap`.
   Hop 1 is credential-free by design, because a client verifies the plane before
   it trusts the endpoint with anything.

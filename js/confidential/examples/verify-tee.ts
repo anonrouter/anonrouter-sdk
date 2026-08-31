@@ -6,7 +6,8 @@
 // Run (from js/confidential):
 //   ANONROUTER_API_KEY=ar_... npm run example:verify-tee
 // Optional env:
-//   ANONROUTER_BASE_URL   default https://api.anonrouter.ai (override for a local backend)
+//   ANONROUTER_BASE_URL   default https://api.private.anonrouter.ai
+//   ANONROUTER_CONTROL_URL default https://api.anonrouter.ai
 //   TEE_MODEL             default openai/gpt-oss-120b
 //   TEE_PROVIDER          default tinfoil   (try: tinfoil | near-ai | venice | chutes)
 
@@ -18,11 +19,12 @@ if (!apiKey) {
   console.error("Set ANONROUTER_API_KEY to your AnonRouter API key (inference scope).");
   process.exit(2);
 }
-const baseUrl = process.env.ANONROUTER_BASE_URL ?? "https://api.anonrouter.ai";
+const baseUrl = process.env.ANONROUTER_BASE_URL ?? "https://api.private.anonrouter.ai";
+const controlBaseUrl = process.env.ANONROUTER_CONTROL_URL ?? "https://api.anonrouter.ai";
 const model = process.env.TEE_MODEL ?? "openai/gpt-oss-120b";
 const provider = process.env.TEE_PROVIDER ?? "tinfoil";
 
-const client = createClient({ baseUrl, apiKey });
+const client = createClient({ baseUrl, controlBaseUrl, apiKey });
 
 const res = await client.verifyAttestation({ model, provider });
 

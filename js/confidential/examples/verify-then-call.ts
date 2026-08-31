@@ -35,7 +35,8 @@ import {
 } from "../src/index.js";
 import { createAnonRouterDcapVerifier, describeDcapInstallation } from "../src/gateway/dcap/index.js";
 
-const BASE_URL = process.env.ANONROUTER_BASE_URL ?? "https://api.anonrouter.ai";
+const BASE_URL = process.env.ANONROUTER_BASE_URL ?? "https://api.private.anonrouter.ai";
+const CONTROL_URL = process.env.ANONROUTER_CONTROL_URL ?? "https://api.anonrouter.ai";
 const MODEL = process.env.ANONROUTER_MODEL ?? "openai/gpt-oss-120b";
 const PROVIDER = process.env.ANONROUTER_PROVIDER ?? "near-ai";
 const PROMPT = process.env.PROMPT ?? "In one sentence: what does attestation prove?";
@@ -53,7 +54,7 @@ if (!apiKey) {
   process.exit(2);
 }
 
-const client = createClient({ baseUrl: BASE_URL, apiKey });
+const client = createClient({ baseUrl: BASE_URL, controlBaseUrl: CONTROL_URL, apiKey });
 
 // The chain verifier is what makes `hardware_verified` reachable. Supplying it
 // unconditionally is the right default: with no engine installed it fails the
@@ -61,7 +62,6 @@ const client = createClient({ baseUrl: BASE_URL, apiKey });
 // require hardware verification is unaffected either way.
 const engine = describeDcapInstallation();
 const gateway = {
-  allowCandidatePolicy: true,
   chainVerifier: createAnonRouterDcapVerifier()
 };
 console.log(engine.available

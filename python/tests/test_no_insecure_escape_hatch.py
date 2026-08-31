@@ -149,12 +149,14 @@ def test_hardware_requirement_still_fails_closed_with_no_engine(
     assert relaxed.verification_level == "provider-attested"
 
 
-def test_a_candidate_pin_does_not_resolve_through_the_environment() -> None:
+def test_the_published_pin_cannot_be_changed_through_the_environment() -> None:
     origin = "https://api.private.anonrouter.ai"
+    normal = pinned_gateway_policy_for(origin)
     with hostile_env():
-        assert pinned_gateway_policy_for(origin) is None
-    # ...and still resolves when the CALLER asks, so this is about who decides.
-    assert pinned_gateway_policy_for(origin, allow_candidate=True) is not None
+        hostile = pinned_gateway_policy_for(origin)
+    assert normal is not None
+    assert normal.status == "published"
+    assert hostile == normal
 
 
 def test_a_plaintext_remote_origin_is_refused_however_the_environment_is_set() -> None:
@@ -183,9 +185,7 @@ def test_the_command_still_refuses_hardware_verified_without_dcap() -> None:
     assert "needs --dcap" in io.stderr
 
 
-def test_the_command_still_needs_allow_candidate() -> None:
-    # With the flag absent the origin has no resolvable policy, which is
-    # `unavailable`: we could not look, rather than we looked and it passed.
+def test_the_published_pin_still_fails_closed_without_the_required_dcap_engine() -> None:
     io = Capture()
     with hostile_env():
         code = run_cli(
@@ -198,7 +198,7 @@ def test_the_command_still_needs_allow_candidate() -> None:
     assert code != 0
     document = json.loads(io.stdout)
     assert document["outcome"]["met"] is False
-    assert "pinned gateway policy" in str(document["gateway"]["reason"])
+    assert "quote_signature_chain" in document["gateway"]["failedChecks"]
 
 
 def test_the_deciding_modules_never_read_the_environment() -> None:

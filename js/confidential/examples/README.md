@@ -22,7 +22,8 @@ Independently verifies a route's enclave attestation against the real gateway,
 running OUR verifier over the raw evidence (it does not just trust the gateway's
 verdict). This is attestation only, so it does not spend anything.
 
-Env: `ANONROUTER_BASE_URL` (default `https://api.anonrouter.ai`), `TEE_MODEL`
+Env: `ANONROUTER_BASE_URL` (default `https://api.private.anonrouter.ai`),
+`ANONROUTER_CONTROL_URL` (default `https://api.anonrouter.ai`), `TEE_MODEL`
 (default `openai/gpt-oss-120b`), `TEE_PROVIDER` (default `tinfoil`; also try
 `near-ai`, `venice`, `chutes`).
 
@@ -34,7 +35,8 @@ Runs `verifyRoute()` and prints what each hop established, what it did not, and
 why, then exits nonzero if the route did not reach the threshold. This is the
 smallest complete picture of the contract.
 
-Env: `ANONROUTER_BASE_URL`, `ANONROUTER_MODEL`, `ANONROUTER_PROVIDER`.
+Env: `ANONROUTER_BASE_URL`, `ANONROUTER_CONTROL_URL`, `ANONROUTER_MODEL`,
+`ANONROUTER_PROVIDER`.
 
 ## 4. Verify, then call (real gateway, your key, BILLABLE)
 ```bash
@@ -64,9 +66,10 @@ Env: `E2EE_MODEL` (default `openai/gpt-oss-120b`), `E2EE_PROVIDER`
 (default 32), `PROMPT`, `ANONROUTER_BASE_URL`.
 
 ## Notes
-- `ANONROUTER_BASE_URL` is the AnonRouter API origin. It defaults to
-  `https://api.anonrouter.ai`; point it at `http://127.0.0.1:3000` for a local
-  dev backend.
+- `ANONROUTER_BASE_URL` is the confidential inference origin and defaults to
+  `https://api.private.anonrouter.ai`. `ANONROUTER_CONTROL_URL` is the
+  content-free identity/billing origin and defaults to `https://api.anonrouter.ai`.
+  Both may point at one loopback origin for a monolithic local deployment.
 - The API key needs the `inference` scope. It is sent only on the authenticated,
   content-free control requests, never to the relay.
 - These examples import from `../src` so they run without a build step. A real

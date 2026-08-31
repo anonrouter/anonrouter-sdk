@@ -181,7 +181,13 @@ def _gateway_option_to_kwargs(option: bool | dict[str, Any] | None) -> dict[str,
 
 
 def create_client(base_url: str, api_key: str | None = None, **kwargs: Any) -> ConfidentialClient:
-    """Construct a client. ``base_url`` is the AnonRouter API origin."""
+    """Construct a client.
+
+    ``base_url`` is the confidential inference origin. Split production callers
+    pass ``control_base_url="https://api.anonrouter.ai"`` so API-key and
+    content-free ticket operations use the control tier while both attestation
+    hops and encrypted request content remain on ``base_url``.
+    """
     return ConfidentialClient(base_url=base_url, api_key=api_key, **kwargs)
 
 
@@ -191,6 +197,7 @@ class ConfidentialClient:
         base_url: str,
         api_key: str | None = None,
         *,
+        control_base_url: str | None = None,
         http_client: httpx.Client | None = None,
         timeout: float = 300.0,
         allow_insecure_http: bool = False,
@@ -208,6 +215,9 @@ class ConfidentialClient:
         # against; `base_url` stays as the (identical) string used to build URLs.
         self.origin = _normalize_api_origin(base_url, allow_insecure_http)
         self.base_url = self.origin
+        self.control_origin = _normalize_api_origin(
+            control_base_url or base_url, allow_insecure_http
+        )
         self.api_key = api_key
         self._owns_client = http_client is None
         self._http = http_client or httpx.Client(timeout=httpx.Timeout(timeout, connect=10.0))
@@ -667,7 +677,7 @@ class ConfidentialClient:
     # -- control requests --------------------------------------------------
     def _mint_attestation_ticket(self, model: str, provider: str) -> str:
         resp = self._http.post(
-            self._url("/v1/inference/attestation-tickets"),
+            self._control_url("/v1/inference/attestation-tickets"),
             headers=self._auth_headers(),
             json={"model": model, "provider": provider},
         )
@@ -700,6 +710,12 @@ class ConfidentialClient:
         try:
             ticket = self._mint_attestation_ticket(model, provider)
         except ConfidentialError:
+            # In the split production architecture the account key belongs only
+            # to the control origin. A failed ticket mint must therefore fail
+            # closed; the legacy key-authenticated fallback below is safe only
+            # when both roles are served by the same origin.
+            if self.control_origin != self.origin:
+                raise
             # A TEE-only route cannot be issued an attestation ticket. Fall through
             # to the key-authenticated path rather than failing hard.
             ticket = None
@@ -716,6 +732,11 @@ class ConfidentialClient:
             # attestation failure should surface as itself.
             if resp.status_code not in (401, 404):
                 self._raise_for_status(resp, "attestation")
+            if self.control_origin != self.origin:
+                raise ConfidentialError(
+                    "the confidential origin rejected the single-use attestation "
+                    f"ticket with status {resp.status_code}; the API key was not sent there"
+                )
 
         resp = self._http.get(
             self._url("/v1/tee/attestation"),
@@ -759,7 +780,7 @@ class ConfidentialClient:
         Only the opaque (non-streaming) transport needs this. Streaming routes are
         metered as they go and reserve exactly what the caller asked for.
         """
-        resp = self._http.get(self._url("/v1/models"), headers=self._auth_headers())
+        resp = self._http.get(self._control_url("/v1/models"), headers=self._auth_headers())
         self._raise_for_status(resp, "model catalog")
         entry = next(
             (m for m in as_list(as_dict(resp.json()).get("data")) if as_dict(m).get("id") == model),
@@ -788,7 +809,7 @@ class ConfidentialClient:
 
     def _mint_inference_ticket(self, model: str, provider: str, max_output_tokens: int) -> str:
         resp = self._http.post(
-            self._url("/v1/inference/tickets"),
+            self._control_url("/v1/inference/tickets"),
             headers=self._auth_headers(),
             json={
                 "model": model,
@@ -968,6 +989,10 @@ class ConfidentialClient:
 
     def _url(self, path: str) -> str:
         return f"{self.base_url}{path}"
+
+    def _control_url(self, path: str) -> str:
+        """URL for content-free identity, catalog, and ticket operations."""
+        return f"{self.control_origin}{path}"
 
     @staticmethod
     def _raise_for_status(resp: httpx.Response, what: str) -> None:

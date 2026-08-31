@@ -497,31 +497,18 @@ describeLive("live confidential VM, negatives", () => {
 describeLive("the shipped pin against the live plane", () => {
   const origin = LIVE_ORIGIN!;
 
-  it("does not resolve without the explicit candidate opt-in", () => {
-    expect(pinnedGatewayPolicyFor(origin)).toBeUndefined();
+  it("resolves the reviewed production pin by default", () => {
+    expect(pinnedGatewayPolicyFor(origin)?.status).toBe("published");
   });
 
-  it("every CRYPTOGRAPHIC check passes under the shipped pin, whether or not the pin is current", () => {
-    // The invariant worth asserting live, and it survives a future pin refresh:
-    // a stale pin must fail ONLY on the policy checks. If a structural or
-    // cryptographic check ever failed against real hardware, the verifier and the
-    // hardware disagree, which is a defect rather than a stale allowlist.
-    const entry = pinnedGatewayPolicyFor(origin, { allowCandidate: true });
+  it("matches every shipped production identity pin", () => {
+    const entry = pinnedGatewayPolicyFor(origin);
     if (!entry) return; // nothing shipped for this origin; the case above covers that
     const result = verifyGatewayAttestation(first.doc, {
       nonce: first.nonce, origin, policy: entry.policy, now: Date.now()
     });
-    const policyChecks = new Set([
-      "app_id_pinned", "compose_hash_pinned", "release_pinned", "origin_pinned",
-      "platform_measurements_pinned", "os_image_pinned", "key_provider_pinned",
-      // Not a policy pin, but not a hardware disagreement either: the package
-      // ships no engine, so this fails by construction unless one was supplied.
-      "quote_signature_chain", "tcb_status_acceptable"
-    ]);
-    const unexpected = result.checks
-      .filter((c) => c.required && !c.passed && !policyChecks.has(c.name))
-      .map((c) => `${c.name}${c.detail ? ` (${c.detail})` : ""}`);
-    expect(unexpected).toEqual([]);
+    const failed = result.checks.filter((c) => c.required && !c.passed).map((c) => c.name);
+    expect(failed).toEqual(["quote_signature_chain", "tcb_status_acceptable"]);
   });
 });
 
@@ -531,7 +518,9 @@ describeHardware("live confidential VM with the reviewed DCAP engine", () => {
   const origin = LIVE_ORIGIN!;
 
   it("reaches hardware_verified with an acceptable TCB", async () => {
-    const policy = policyFrom(first.binding, { requireHardwareVerified: true });
+    const entry = pinnedGatewayPolicyFor(origin);
+    expect(entry?.status).toBe("published");
+    const policy = entry!.policy;
     const verifier = await createAnonRouterDcapVerifier().prepare(String(first.doc.quote), {
       acceptedTcbStatuses: policy.acceptableTcbStatuses,
       nowMs: Date.now()

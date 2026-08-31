@@ -23,7 +23,8 @@ proves nothing about that server. See `VERIFYING.md` for what a refresh requires
 | TLS issuer | Let's Encrypt YE1 | Let's Encrypt YE2 |
 | Leaf SPKI SHA-256 (observed with `openssl`) | `416e1196…4bf61d5e` | `b5d2f366…e2ac0a47` |
 
-**The headline: hop 1 and hop 2 are not both reachable at one origin today.**
+**The headline: both evidence hops and encrypted inference share the confidential
+origin; content-free ticket minting and catalog lookup use the control origin.**
 
 - Hop 1 (`GET /v1/gateway/attestation`) exists **only** on the confidential origin.
   The public API answers 404, which the SDK reports as `unavailable`, meaning "we
@@ -38,27 +39,31 @@ unauthenticated caller, while the confidential origin did not recognize them at
 all. Both `/v1/tee/attestation` variants answer 401 on the confidential origin, so
 that route does exist there.
 
-This matches the product handoff, which records that the public API still uses the
-legacy path and that customer routing has deliberately not been moved. It is the
-current deployment shape rather than a defect.
+This is the production trust split, not a missing route. The API key and
+identity/billing metadata go to the public control plane. The resulting
+single-use ticket is presented to the confidential plane, where both attestation
+hops and encrypted request content stay on one exact, attested origin.
 
 ### What that means for `verifyRoute`
 
-Against either origin today, one hop is `unavailable` and the SDK says so:
+Use the confidential origin as `--origin` and the public control plane as
+`--control-origin`:
 
 ```
-anonrouter-verify gateway --origin https://api.private.anonrouter.ai --allow-candidate
-  gateway  -> verifiable (see below)
+anonrouter-verify gateway --origin https://api.private.anonrouter.ai --dcap \
+  --require hardware_verified
+  gateway  -> hardware_verified
   provider -> not requested
 
-anonrouter-verify route --origin https://api.anonrouter.ai --provider venice --model …
-  gateway  -> unavailable: no pinned gateway policy for this origin
-  provider -> reachable, subject to your API key
+anonrouter-verify route --origin https://api.private.anonrouter.ai \
+  --control-origin https://api.anonrouter.ai --provider venice --model …
+  gateway  -> verified on the same confidential origin used for content
+  provider -> verified from raw provider evidence, subject to your API key
 ```
 
-The SDK deliberately offers **no way to verify hop 1 at one origin while sending
-content to another**. That configuration would produce a verdict about a machine
-that is not on your request path, which is worse than no verdict at all.
+`--control-origin` does not split verification from content. It only moves the
+content-free API-key operations. The SDK deliberately offers **no way to verify
+one inference origin while sending content to another**.
 
 ## What the confidential origin returns
 
@@ -75,31 +80,29 @@ SDK verifies all of it. Two properties were confirmed independently on the day:
   `debug: false`. The engine's own view of `mr_td`, the RTMRs and `report_data`
   agrees with the SDK's parse of the same bytes.
 
-## Why the shipped pin still does not match, and why that is correct
+## Why the shipped pin now matches
 
-The shipped `candidate` pin fails against the live plane on `app_id_pinned`,
-`compose_hash_pinned`, `release_pinned` and `platform_measurements_pinned`, and on
-nothing else. Every structural and cryptographic check passes. That is a stale
-allowlist, not a broken verifier, and the live suites assert exactly that
-distinction.
+The SDK now ships the production policy derived from the independently retained
+release manifest whose SHA-256 is
+`46da4d4210c21ea76681ef044dd2da29d8a3a4cff135348ef9f168f6a09c6bf4`.
+The manifest binds the production origin, reviewed source, exact measured
+app-compose, content-plane image, app and instance ids, TLS SPKI and platform
+measurements. A live fresh-nonce run matches every pin and reaches
+`hardware_verified` with Intel TCB status `UpToDate`.
 
-One new fact strengthens the 2026-08-29 decision to reject the refresh rather than
-weakening it. Between 2026-08-29 and 2026-08-30 the plane's `compose_hash` changed
-(`d5fc4ac2…` to `07d803b3…`) while `release_id` stayed **`anonrouter-tee@xl-7b1b12a`**.
-The release id is injected by an environment variable and carries no measurements,
-so it did not move when the measured configuration did. Pinning a public SDK's
-trust anchor to a release id that demonstrably does not track the measurements
-would pin nothing.
+The earlier 2026-08-29 refresh remains recorded as rejected because that review
+did not have a production-origin manifest. That gap was later closed. The
+`release_id` still is not considered sufficient identity by itself: app id,
+compose hash and every platform measurement are also pinned. The manifest names
+three third-party source-to-digest provenance gaps; those remain explicit
+supply-chain limitations rather than being rounded up to verified.
 
 ## What this inventory does not establish
 
-- **Whether hop 2 works end to end.** Confirming that needs a real API key, which
-  is the one input an owner has to supply. With a fabricated key both origins
-  answer as expected for an unauthorized caller, so "the route is absent" and
-  "your key was refused" cannot be told apart from outside. `ANONROUTER_API_KEY`
-  plus a callable `(provider, model)` pair would close it.
-- **Whether the confidential origin can mint attestation tickets for an
-  authorized caller.** The 404s above were observed without credentials.
+- **Whether hop 2 works for a particular account and model.** That final check
+  needs a real inference-scoped API key and a callable `(provider, model)` pair.
+  The key is used only at the control origin to mint a single-use ticket; it is
+  never sent to the confidential relay or provider.
 - **Anything about the code behind the measurements.** Attestation names the
   build; reviewing the source behind that compose hash is a separate act.
 
@@ -110,7 +113,10 @@ reproduces the interesting parts:
 
 ```bash
 anonrouter-verify doctor --origin https://api.private.anonrouter.ai
-anonrouter-verify gateway --origin https://api.private.anonrouter.ai --allow-candidate
+anonrouter-verify gateway --origin https://api.private.anonrouter.ai --dcap \
+  --require hardware_verified
+anonrouter-verify route --origin https://api.private.anonrouter.ai \
+  --control-origin https://api.anonrouter.ai --provider venice --model MODEL
 node scripts/capture-gateway-pins.mjs https://api.private.anonrouter.ai
 ```
 

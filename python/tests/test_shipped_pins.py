@@ -24,15 +24,21 @@ def test_parses_every_shipped_entry_under_the_same_rules_as_a_user_policy() -> N
         assert len(entry.notes) > 40
 
 
-def test_ships_no_published_pins_so_the_default_path_resolves_nothing() -> None:
-    # As of the 2026-08-29 review the only entry is a candidate whose refresh was
-    # examined and rejected: measurement identity corroborated, origin covered
-    # only by preproduction records. Promoting it must update this assertion too.
+def test_ships_the_manifest_bound_production_pin_and_resolves_it_by_default() -> None:
+    # The 2026-08-30 production-origin manifest closed the earlier review gap.
+    # Pin its digest here so changing the default trust anchor is deliberate.
     registry = gateway_policy_registry()
-    assert [e for e in registry if e.status == "published"] == []
-    for entry in registry:
+    published = [entry for entry in registry if entry.status == "published"]
+    assert len(published) == 1
+    assert published[0].policy.source == (
+        "anonrouter-release-manifest-sha256:"
+        "46da4d4210c21ea76681ef044dd2da29d8a3a4cff135348ef9f168f6a09c6bf4"
+    )
+    for entry in published:
         for origin in entry.policy.origins:
-            assert pinned_gateway_policy_for(origin) is None, f"{origin} must not resolve by default"
+            resolved = pinned_gateway_policy_for(origin)
+            assert resolved is not None, f"{origin} must resolve by default"
+            assert resolved.status == "published"
 
 
 def test_resolves_a_candidate_only_behind_the_explicit_opt_in() -> None:

@@ -59,10 +59,24 @@ import { validateE2eeMessages, validateE2eeRequest, type RawTurnMessage } from "
 import { joinUrl, type FetchLike, type HttpContext } from "./transport/types.js";
 
 export interface CreateClientOptions {
-  /** AnonRouter API origin, e.g. "https://api.anonrouter.ai". Must be an origin
+  /** Confidential inference origin, e.g. "https://api.private.anonrouter.ai".
+   *  Gateway/provider evidence and encrypted request content all use this exact
+   *  origin, so verification can never be detached from the route it protects.
+   *  Must be an origin
    *  (scheme + host + optional port), not a path, and must be https unless the
    *  host is loopback and `allowInsecureHttp` is set. */
   baseUrl: string;
+  /**
+   * Identity/billing control origin. The split production architecture mints
+   * content-free single-use tickets at https://api.anonrouter.ai while evidence
+   * and encrypted inference stay on the confidential `baseUrl`. Defaults to
+   * `baseUrl` for monolithic/local deployments.
+   *
+   * This does NOT permit split verification: both attestation hops and all
+   * request content remain on `baseUrl`. Only the API key, route metadata, and
+   * ticket operations use this origin.
+   */
+  controlBaseUrl?: string;
   /** Your AnonRouter API key. Sent as `Authorization: Bearer <apiKey>` on the
    *  authenticated control requests only, never to the credential-isolated relay. */
   apiKey: string;
@@ -465,6 +479,10 @@ interface AttestationResponse {
 
 export function createClient(options: CreateClientOptions): AnonRouterClient {
   const origin = normalizeApiOrigin(options.baseUrl, options.allowInsecureHttp === true);
+  const controlOrigin = normalizeApiOrigin(
+    options.controlBaseUrl ?? options.baseUrl,
+    options.allowInsecureHttp === true
+  );
   if (typeof options.apiKey !== "string" || options.apiKey.length === 0) {
     throw new ConfidentialError("unsupported_request", "createClient needs an apiKey.");
   }
@@ -520,10 +538,22 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
       );
       ticket = typeof issued.ticket === "string" && issued.ticket.length > 0 ? issued.ticket : null;
     } catch (cause) {
+      // In the split production architecture the account key belongs only to
+      // the control origin. A failed ticket mint must therefore fail closed;
+      // the legacy key-authenticated fallback below is safe only when both
+      // roles are served by the same origin.
+      if (controlOrigin !== origin) throw cause;
       // A TEE-only route cannot be issued an attestation ticket. Fall through to
       // the key-authenticated path rather than reporting it as a hard failure.
       if (cause instanceof ConfidentialError && cause.code === "cancelled") throw cause;
       ticket = null;
+    }
+
+    if (!ticket && controlOrigin !== origin) {
+      throw new ConfidentialError(
+        "attestation_ticket_failed",
+        "The control origin returned an invalid attestation ticket; the API key was not sent to the confidential origin."
+      );
     }
 
     if (ticket) {
@@ -546,6 +576,12 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
       // attestation failure should surface as itself.
       if (response.status !== 401 && response.status !== 404) {
         throw new ConfidentialError("attestation_failed", `Attestation failed with status ${response.status}.`);
+      }
+      if (controlOrigin !== origin) {
+        throw new ConfidentialError(
+          "attestation_failed",
+          `The confidential origin rejected the single-use attestation ticket with status ${response.status}; the API key was not sent there.`
+        );
       }
     }
 
@@ -932,7 +968,7 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
   async function postJson<T>(path: string, payload: unknown, signal?: AbortSignal, failCode: ConfidentialError["code"] = "transport_failed"): Promise<T> {
     let response: Response;
     try {
-      response = await fetchImpl(joinUrl(origin, path), {
+      response = await fetchImpl(joinUrl(controlOrigin, path), {
         method: "POST",
         credentials: "omit",
         cache: "no-store",
@@ -963,7 +999,7 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
   async function resolveOutputCeiling(model: string, provider: string, signal?: AbortSignal): Promise<number> {
     let response: Response;
     try {
-      response = await fetchImpl(joinUrl(origin, "/v1/models"), {
+      response = await fetchImpl(joinUrl(controlOrigin, "/v1/models"), {
         method: "GET",
         credentials: "omit",
         cache: "no-store",

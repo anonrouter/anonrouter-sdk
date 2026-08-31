@@ -15,20 +15,20 @@ file lands with.
 | Gate | Command | Result |
 | --- | --- | --- |
 | JS typecheck | `npm run typecheck` (in `js/`) | clean, covering `src`, `test`, `examples` and `scripts` |
-| JS tests, offline | `npm test` (in `js/`) | **294 passed, 31 skipped** in `@anonrouter/confidential`; **6 passed** in `@anonrouter/client` |
+| JS tests, offline | `npm test` (in `js/`) | **299 passed, 31 skipped** in `@anonrouter/confidential`; **6 passed** in `@anonrouter/client` |
 | JS build | `npm run build` (in `js/`) | clean |
 | End-to-end self-test | `npm run example:selftest` | PASS: venice and chutes, verify plus E2EE chat, relay saw ciphertext only |
-| Python tests, offline | `pytest -q` (in `python/`) | **207 passed, 31 skipped** |
+| Python tests, offline | `pytest -q` (in `python/`) | **210 passed, 32 skipped** |
 | Python types | `mypy` (in `python/`) | clean, 32 files, `src` and `examples` |
 | Python lint | `ruff check .` (in `python/`) | clean |
 | Measurement pin parity | `node scripts/check-parity.mjs` | all four per-package copies match `shared/` |
 | Command parity | `node scripts/check-cli-parity.mjs` | 4/4 cases, both real executables, identical documents and exit codes |
 | Artifact installs | `node scripts/smoke-artifacts.mjs` | **21/21** |
-| **Live, JS** | `npm test` with a live origin and an engine | **325 passed, 0 skipped** |
-| **Live, Python** | `pytest -q` with a live origin and an engine | **238 passed, 0 skipped** |
+| **Live, JS** | `npm test` with a live origin and an engine | **330 passed, 0 skipped** |
+| **Live, Python** | `pytest -q` with a live origin and an engine | **241 passed, 1 platform-only skip** |
 
-The 31 skips in each offline run are the opt-in live cases. They skip with a
-stated reason and never fabricate a result. With
+The offline skips are opt-in live/platform cases. They skip with a stated reason
+and never fabricate a result. With
 `ANONROUTER_LIVE_GATEWAY_ORIGIN`, `ANONROUTER_LIVE_PUBLIC_ORIGIN` and
 `ANONROUTER_DCAP_VERIFIER_BIN` set, all 31 run and pass.
 
@@ -67,13 +67,10 @@ structural checking could catch.
   routes run GPU enclaves whose NVIDIA attestation chain is not available to
   verify. Chaining only the CPU quote and printing `hardware_verified` would claim
   more than was checked.
-- **The shipped gateway pin does not match the live plane, on purpose.** Its
-  refresh was reviewed on 2026-08-29 and rejected, and reconfirmed as rejected on
-  2026-08-30 after the plane's `compose_hash` moved again while `release_id` did
-  not. See `reviewedRefreshAttempt` in `shared/gateway-policies.json`. Under that
-  pin the live plane fails only `app_id_pinned`, `compose_hash_pinned`,
-  `release_pinned` and `platform_measurements_pinned`, and the live suites assert
-  that only policy checks may fail.
+- **The shipped gateway pin is release-specific.** It now matches the live plane
+  because the production-origin release manifest was retained independently and
+  reviewed. A later deployment with a different app id, compose hash or platform
+  measurement will fail closed until a new reviewed SDK policy ships.
 - **No package is published.** All three 404 on their registries. The artifacts
   are built and installed into empty environments on every CI run, so what a
   registry would carry is what is being tested; publishing is an owner decision.
@@ -81,10 +78,12 @@ structural checking could catch.
   `hardware_verified` has to install one. `anonrouter-verify doctor` says so and
   says what to do. Without it the ceiling is `cryptographically_checked` and a
   policy requiring hardware verification fails closed.
-- **The engine's build is not yet reproducible.** The digest of the binary used
-  for the runs above is specific to the machine and toolchain that built it. A
-  published digest an operator can pin with `expectedBinarySha256` needs the
-  reproducible-build work tracked on the engine's own side.
+- **The reproducible engine artifact is not yet attached to a public release.**
+  Two clean linux/amd64 builds in the digest-pinned Rust 1.94.1 Bookworm builder
+  are byte-identical at SHA-256
+  `c7d7bc21bf44a1a606e44832b6cbab1f4b74eade06743ee2324edbf396db8d67`,
+  and that ELF verified a fresh live quote. Registry/release publication remains
+  an owner action.
 - **`anonrouter-verify` observes TLS on its own connection**, not the one that
   carried the attestation request, because `fetch` does not expose it. Conclusive
   on a mismatch; weaker than a same-connection observation on agreement. The
@@ -98,7 +97,7 @@ There is no environment variable that weakens a verdict. Twelve plausible spelli
 of an escape hatch (`ANONROUTER_INSECURE`, `ANONROUTER_SKIP_VERIFY`, `NODE_ENV=test`,
 `CI=true`, and so on) are set, and the verdict for the same evidence must come out
 IDENTICAL, not merely also-failing. The deliberate opt-ins are checked from the
-other side: a candidate pin does not resolve through the environment, a plaintext
+other side: the published pin cannot be changed through the environment, a plaintext
 remote origin is refused even with `allowInsecureHttp`, and the command still
 refuses `--require hardware_verified` without `--dcap`.
 
@@ -111,10 +110,10 @@ contain a read of the environment at all, in either language.
 
 | Artifact | Size | Contents |
 | --- | --- | --- |
-| `anonrouter-confidential-0.1.0.tgz` | 255,551 B | 187 files: `dist`, `src`, README, LICENSE |
+| `anonrouter-confidential-0.1.0.tgz` | 256,205 B | `dist`, `src`, README, LICENSE |
 | `anonrouter-client-0.1.0.tgz` | 9,003 B | 6 files |
-| `anonrouter_confidential-0.1.0-py3-none-any.whl` | 112,013 B | package plus the measurement pins as package data |
-| `anonrouter_confidential-0.1.0.tar.gz` | 131,675 B | the same, from an sdist |
+| `anonrouter_confidential-0.1.0-py3-none-any.whl` | 112,223 B | package plus the measurement pins as package data |
+| `anonrouter_confidential-0.1.0.tar.gz` | 233,696 B | source, tests and package data from the sdist |
 
 `src` ships beside `dist` on purpose: this package's whole value is that you can
 read what it checks, and the emitted source maps would otherwise point at files

@@ -20,9 +20,9 @@
   ],
   "policies": [
     {
-      "status": "candidate",
-      "reviewedAt": "2026-08-20",
-      "notes": "AnonRouter confidential data plane on Phala prod5 (Intel TDX, dstack). Reviewed from release manifest anonrouter-tee@731c719, whose deployment reports transport in-tee-tls on a live TDX host. Held at candidate because the plane is pre-release: these pins move on every release, and the residual-work list for the two-plane build is not closed. requireHardwareVerified is true as reviewed, so verification fails closed with reason quote_signature_chain unless you supply your own DCAP chainVerifier; this package deliberately ships none. STALE, AND THE REFRESH WAS REVIEWED AND REJECTED on 2026-08-29: see reviewedRefreshAttempt below. Capture an observation with scripts/capture-gateway-pins.mjs, resolve every item in its reviewChecklist against independent evidence, and only then promote.",
+      "status": "published",
+      "reviewedAt": "2026-08-30",
+      "notes": "AnonRouter confidential data plane on Phala prod5 (Intel TDX, dstack). Published from the independently retained production release manifest with SHA-256 46da4d4210c21ea76681ef044dd2da29d8a3a4cff135348ef9f168f6a09c6bf4. That manifest binds the production origin, source commit, exact measured app-compose, content-plane image digest, app id, instance id, TLS SPKI and platform measurements. The earlier rejected refresh is retained below as history; its missing production-origin manifest was subsequently supplied. The release_id is not treated as sufficient identity: app id, compose hash and every platform measurement remain independently pinned. Three third-party source-to-digest provenance gaps named in the manifest remain supply-chain limitations, not attestation bypasses. requireHardwareVerified remains true, so verification fails closed unless a DCAP chain verifier is supplied.",
       "reviewedRefreshAttempt": {
         "date": "2026-08-29",
         "candidateRelease": "anonrouter-tee@xl-7b1b12a",
@@ -58,19 +58,19 @@
         }
       },
       "policy": {
-        "source": "anonrouter-release-manifest-sha256:25437786094940cc2a9e425c2ea5410e8f0c8c1f11208e444745c98a860b147a",
-        "version": "2026-08-20",
+        "source": "anonrouter-release-manifest-sha256:46da4d4210c21ea76681ef044dd2da29d8a3a4cff135348ef9f168f6a09c6bf4",
+        "version": "2026-08-30-auto",
         "origins": [
           "https://api.private.anonrouter.ai"
         ],
         "appIds": [
-          "8acb516ec057ecfaf87392d616519347676b1b15"
+          "91c6a04ea7044f28d53142449c9badddbc30eff7"
         ],
         "composeHashes": [
-          "fb8d315fa943ad513e378003cf119eee79081713201f393a56c4290a96fc8640"
+          "07d803b31848727ce72600f1a047eac743392e9a1482936ae66672674ffe64d8"
         ],
         "releaseIds": [
-          "anonrouter-tee@731c719"
+          "anonrouter-tee@xl-7b1b12a"
         ],
         "keyProviderId": "3059301306072a8648ce3d020106082a8648ce3d030107034200048844eb42ccdf8c52fd4f174f362fcb9bbd19c45fd48f1edec2d8f1ca23536ec1a74021b4cee610c074f8294d431b2b7fee2c39e5333fdaf0a4522d43fb159d9f",
         "platform": {
@@ -78,10 +78,10 @@
             "f06dfda6dce1cf904d4e2bab1dc370634cf95cefa2ceb2de2eee127c9382698090d7a4a13e14c536ec6c9c3c8fa87077"
           ],
           "mrConfigId": [
-            "02adca616a54f901f1c63463ba50afbad35f2206d8ca92f3afc866f99e26a8d29f000000000000000000000000000000"
+            "0107d803b31848727ce72600f1a047eac743392e9a1482936ae66672674ffe64d8000000000000000000000000000000"
           ],
           "rtmr0": [
-            "027b610ab0555482f8a3868524093bdf3cdbe2539f81dfeeb886864654cb2fe3422f7fc36d4bab6fa46683aad11d1ba7"
+            "ec216f1d1d591468ff4741b9b192f016b26d3f90303bfa9dbb97557273853183981f21a4bcb3ae908247538d371ad072"
           ],
           "rtmr1": [
             "07e6f51aa763abfe75c3ddfbf4f425fe3f0ceff66d807a75e049303dce9addf68e7218729bd419638af63a370f65878c"

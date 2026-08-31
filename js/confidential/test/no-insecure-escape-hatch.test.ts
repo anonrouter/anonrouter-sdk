@@ -127,11 +127,12 @@ describe("no environment variable can weaken a verdict", () => {
 });
 
 describe("the deliberate opt-ins stay deliberate", () => {
-  it("a candidate pin does not resolve through the environment", () => {
+  it("the published pin cannot be changed through the environment", () => {
     const origin = "https://api.private.anonrouter.ai";
-    expect(withEnv(HOSTILE_ENV, () => pinnedGatewayPolicyFor(origin))).toBeUndefined();
-    // ...and still resolves when the CALLER asks, so this is about who decides.
-    expect(pinnedGatewayPolicyFor(origin, { allowCandidate: true })).not.toBeUndefined();
+    const normal = pinnedGatewayPolicyFor(origin);
+    const hostile = withEnv(HOSTILE_ENV, () => pinnedGatewayPolicyFor(origin));
+    expect(normal?.status).toBe("published");
+    expect(hostile).toEqual(normal);
   });
 
   it("a plaintext remote origin is refused however the environment is set", () => {
@@ -160,16 +161,14 @@ describe("the deliberate opt-ins stay deliberate", () => {
     expect(io.stderr).toContain("needs --dcap");
   });
 
-  it("the command still needs --allow-candidate for a candidate pin", async () => {
-    // With the flag absent the origin has no resolvable policy, which is
-    // `unavailable`: we could not look, rather than we looked and it passed.
+  it("the published pin still fails closed without the required DCAP engine", async () => {
     const io = capture();
     const code = await withEnv(HOSTILE_ENV, () =>
       runCli(["gateway", "--origin", "https://api.private.anonrouter.ai", "--compact", "--no-tls-check"], io));
     expect(code).not.toBe(0);
     const document = JSON.parse(io.stdout);
     expect(document.outcome.met).toBe(false);
-    expect(String(document.gateway.reason)).toContain("pinned gateway policy");
+    expect(document.gateway.failedChecks).toContain("quote_signature_chain");
   }, 60_000);
 });
 

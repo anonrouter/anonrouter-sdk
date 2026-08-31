@@ -144,6 +144,9 @@ export function createSubprocessChainVerifier(options: SubprocessChainVerifierOp
       }
       // The quote goes on stdin, never argv: a multi-kilobyte hex blob in a
       // command line is a process-listing leak and an ARG_MAX hazard.
+      child.stdin?.on("error", () => {
+        done({ verified: false, tcbStatus: null, error: "engine stdin could not be written" });
+      });
       try {
         child.stdin?.end(quote);
       } catch {

@@ -3,7 +3,8 @@
     ANONROUTER_API_KEY=ar_... python examples/verify_route.py
 
 Optional env:
-    ANONROUTER_BASE_URL   default https://api.anonrouter.ai
+    ANONROUTER_BASE_URL   default https://api.private.anonrouter.ai
+    ANONROUTER_CONTROL_URL default https://api.anonrouter.ai
     ANONROUTER_MODEL      default venice-uncensored
     ANONROUTER_PROVIDER   default venice
 
@@ -17,8 +18,10 @@ import os
 import sys
 
 from anonrouter_confidential import at_least, create_client, describe_state
+from anonrouter_confidential.gateway.dcap import create_anonrouter_dcap_verifier
 
-BASE_URL = os.environ.get("ANONROUTER_BASE_URL", "https://api.anonrouter.ai")
+BASE_URL = os.environ.get("ANONROUTER_BASE_URL", "https://api.private.anonrouter.ai")
+CONTROL_URL = os.environ.get("ANONROUTER_CONTROL_URL", "https://api.anonrouter.ai")
 MODEL = os.environ.get("ANONROUTER_MODEL", "venice-uncensored")
 PROVIDER = os.environ.get("ANONROUTER_PROVIDER", "venice")
 
@@ -33,13 +36,12 @@ def main() -> int:
         print("Set ANONROUTER_API_KEY to your AnonRouter API key (inference scope).", file=sys.stderr)
         return 2
 
-    with create_client(BASE_URL, api_key=api_key) as client:
+    with create_client(BASE_URL, api_key=api_key, control_base_url=CONTROL_URL) as client:
         verdict = client.verify_route(
             model=MODEL,
             provider=PROVIDER,
-            # Ask about AnonRouter's own plane too. Against a deployment not
-            # running in a CVM this reports `unavailable`: untrusted, not a pass.
-            gateway={"allow_candidate_policy": True},
+            # Ask about AnonRouter's own plane too and chain its quote to Intel.
+            gateway={"chain_verifier": create_anonrouter_dcap_verifier()},
         )
 
     print(f"route      {verdict.route.provider}/{verdict.route.model}")

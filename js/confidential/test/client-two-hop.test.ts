@@ -171,6 +171,90 @@ describe("createClient origin validation", () => {
     expect(() => createClient({ baseUrl: "https://api.anonrouter.ai?x=1", apiKey: "ar_k" })).toThrow(/bare origin/);
     expect(() => createClient({ baseUrl: "https://u:p@api.anonrouter.ai", apiKey: "ar_k" })).toThrow(/bare origin/);
   });
+
+  it("uses a distinct control origin only for authenticated ticket operations", async () => {
+    const inferenceOrigin = "https://confidential.example";
+    const controlOrigin = "https://control.example";
+    const seen: Array<{ origin: string; path: string }> = [];
+    const enclave = createVeniceMockEnclave(MODEL);
+    const fetchImpl: FetchLike = async (url, init) => {
+      const parsed = new URL(url);
+      seen.push({ origin: parsed.origin, path: parsed.pathname });
+      if (parsed.pathname === "/v1/inference/attestation-tickets") {
+        return new Response(JSON.stringify({ ticket: "att-ticket" }), { status: 200 });
+      }
+      if (parsed.pathname === "/v1/tee/attestation") {
+        const nonce = (JSON.parse(String(init?.body)) as { nonce: string }).nonce;
+        return new Response(JSON.stringify(enclave.attestationResponse(nonce)), { status: 200 });
+      }
+      return new Response("not found", { status: 404 });
+    };
+    const c = createClient({
+      baseUrl: inferenceOrigin,
+      controlBaseUrl: controlOrigin,
+      apiKey: "ar_test",
+      fetch: fetchImpl
+    });
+
+    const result = await c.verifyAttestation({ model: MODEL, provider: "venice" });
+    expect(result.verdict.status).toBe("ok");
+    expect(seen).toEqual([
+      { origin: controlOrigin, path: "/v1/inference/attestation-tickets" },
+      { origin: inferenceOrigin, path: "/v1/tee/attestation" }
+    ]);
+  });
+
+  it("never sends the API key to a split confidential origin when ticket minting fails", async () => {
+    const inferenceOrigin = "https://confidential.example";
+    const controlOrigin = "https://control.example";
+    const seen: Array<{ origin: string; authorization: string | null }> = [];
+    const fetchImpl: FetchLike = async (url, init) => {
+      const parsed = new URL(url);
+      const headers = new Headers(init?.headers);
+      seen.push({ origin: parsed.origin, authorization: headers.get("authorization") });
+      return new Response(JSON.stringify({ error: "route unavailable" }), { status: 404 });
+    };
+    const c = createClient({
+      baseUrl: inferenceOrigin,
+      controlBaseUrl: controlOrigin,
+      apiKey: "ar_secret_canary",
+      fetch: fetchImpl
+    });
+
+    await expect(c.verifyAttestation({ model: MODEL, provider: "venice" }))
+      .rejects.toThrow(/ticket/i);
+    expect(seen).toEqual([{ origin: controlOrigin, authorization: "Bearer ar_secret_canary" }]);
+  });
+
+  it("fails closed on a malformed split-origin ticket response", async () => {
+    const seen: string[] = [];
+    const c = createClient({
+      baseUrl: "https://confidential.example",
+      controlBaseUrl: "https://control.example",
+      apiKey: "ar_secret_canary",
+      fetch: async (url) => {
+        seen.push(new URL(url).origin);
+        return new Response(JSON.stringify({ ticket: "" }), { status: 200 });
+      }
+    });
+
+    await expect(c.verifyAttestation({ model: MODEL, provider: "venice" }))
+      .rejects.toThrow(/invalid attestation ticket/i);
+    expect(seen).toEqual(["https://control.example"]);
+  });
+
+  it("validates the control origin as strictly as the confidential origin", () => {
+    expect(() => createClient({
+      baseUrl: "https://api.private.anonrouter.ai",
+      controlBaseUrl: "http://api.anonrouter.ai",
+      apiKey: "ar_k"
+    })).toThrow(/must be https/);
+    expect(() => createClient({
+      baseUrl: "https://api.private.anonrouter.ai",
+      controlBaseUrl: "https://api.anonrouter.ai/v1",
+      apiKey: "ar_k"
+    })).toThrow(/no path/);
+  });
 });
 
 describe("verifyGateway (hop 1)", () => {

@@ -164,6 +164,78 @@ def test_refuses_a_base_url_carrying_a_path_or_credentials() -> None:
         ConfidentialClient("https://u:p@api.anonrouter.ai", "ar_k")
 
 
+def test_split_control_origin_is_validated_and_used_only_for_ticket_mint() -> None:
+    inference_origin = "https://confidential.example"
+    control_origin = "https://control.example"
+    seen: list[tuple[str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((str(request.url.copy_with(path="", query=None)).rstrip("/"), request.url.path))
+        if request.url.path == "/v1/inference/attestation-tickets":
+            return httpx.Response(200, json={"ticket": "att-ticket"})
+        if request.url.path == "/v1/tee/attestation":
+            return httpx.Response(401, json={"error": {"type": "invalid_attestation_ticket"}})
+        return httpx.Response(404)
+
+    client = ConfidentialClient(
+        inference_origin,
+        "ar_k",
+        control_base_url=control_origin,
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    with pytest.raises(ConfidentialError):
+        client.verify_attestation("venice-uncensored", "venice")
+    assert seen == [
+        (control_origin, "/v1/inference/attestation-tickets"),
+        (inference_origin, "/v1/tee/attestation"),
+    ]
+
+    with pytest.raises(ConfidentialError, match="must be https"):
+        ConfidentialClient(
+            inference_origin,
+            "ar_k",
+            control_base_url="http://api.anonrouter.ai",
+        )
+
+
+def test_split_origin_never_sends_api_key_after_ticket_mint_failure() -> None:
+    seen: list[tuple[str, str | None]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((str(request.url.copy_with(path="", query=None)).rstrip("/"), request.headers.get("authorization")))
+        return httpx.Response(404, json={"error": "route unavailable"})
+
+    client = ConfidentialClient(
+        "https://confidential.example",
+        "ar_secret_canary",
+        control_base_url="https://control.example",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    with pytest.raises(ConfidentialError, match="attestation ticket"):
+        client.verify_attestation("venice-uncensored", "venice")
+    assert seen == [("https://control.example", "Bearer ar_secret_canary")]
+
+
+def test_split_origin_fails_closed_on_malformed_ticket_response() -> None:
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(str(request.url.copy_with(path="", query=None)).rstrip("/"))
+        return httpx.Response(200, json={"ticket": ""})
+
+    client = ConfidentialClient(
+        "https://confidential.example",
+        "ar_secret_canary",
+        control_base_url="https://control.example",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    with pytest.raises(ConfidentialError, match="invalid attestation ticket"):
+        client.verify_attestation("venice-uncensored", "venice")
+    assert seen == ["https://control.example"]
+
+
 # ---- verify_gateway (hop 1) --------------------------------------------------
 
 

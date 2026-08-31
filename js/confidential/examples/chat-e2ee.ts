@@ -8,7 +8,8 @@
 // Run (from js/confidential):
 //   ANONROUTER_API_KEY=ar_... npm run example:chat-e2ee
 // Optional env:
-//   ANONROUTER_BASE_URL   default https://api.anonrouter.ai (override for a local backend)
+//   ANONROUTER_BASE_URL   default https://api.private.anonrouter.ai
+//   ANONROUTER_CONTROL_URL default https://api.anonrouter.ai
 //   E2EE_MODEL            default openai/gpt-oss-120b
 //   E2EE_PROVIDER         default near-ai   (E2EE only: near-ai | venice | chutes)
 //   MAX_TOKENS            default 32
@@ -22,7 +23,8 @@ if (!apiKey) {
   console.error("Set ANONROUTER_API_KEY to your AnonRouter API key (inference scope).");
   process.exit(2);
 }
-const baseUrl = process.env.ANONROUTER_BASE_URL ?? "https://api.anonrouter.ai";
+const baseUrl = process.env.ANONROUTER_BASE_URL ?? "https://api.private.anonrouter.ai";
+const controlBaseUrl = process.env.ANONROUTER_CONTROL_URL ?? "https://api.anonrouter.ai";
 const model = process.env.E2EE_MODEL ?? "openai/gpt-oss-120b";
 const provider = process.env.E2EE_PROVIDER ?? "near-ai";
 const maxOutputTokens = Number(process.env.MAX_TOKENS ?? "32");
@@ -47,7 +49,7 @@ const inspectingFetch: FetchLike = async (url, init = {}) => {
   return baseFetch(url, init);
 };
 
-const client = createClient({ baseUrl, apiKey, fetch: inspectingFetch });
+const client = createClient({ baseUrl, controlBaseUrl, apiKey, fetch: inspectingFetch });
 
 console.log(`\nE2EE chat:  ${provider} / ${model}`);
 console.log(`Gateway:    ${baseUrl}`);

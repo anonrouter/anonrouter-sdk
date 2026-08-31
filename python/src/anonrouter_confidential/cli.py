@@ -75,6 +75,9 @@ USAGE = f"""anonrouter-verify: independently verify an AnonRouter route.
 
 Options
   --origin <url>            The origin to verify. Required for gateway/route.
+  --control-origin <url>    Identity/billing origin for content-free ticket
+                            operations. Defaults to --origin. Production uses
+                            https://api.anonrouter.ai.
   --require <state>         Minimum assurance to exit 0. One of:
                             {", ".join(TRUSTED_STATES)}.
                             Default: cryptographically_checked.
@@ -107,6 +110,7 @@ class UsageError(Exception):
 
 _FLAGS_WITH_VALUES = {
     "--origin": "origin",
+    "--control-origin": "control_origin",
     "--require": "require",
     "--policy": "policy_file",
     "--dcap-binary": "dcap_binary",
@@ -124,6 +128,7 @@ def parse_args(argv: list[str]) -> dict[str, Any]:
     options: dict[str, Any] = {
         "command": "doctor",
         "origin": None,
+        "control_origin": None,
         "require": "cryptographically_checked",
         "policy_file": None,
         "allow_candidate": False,
@@ -464,7 +469,12 @@ def _verify(options: dict[str, Any], io: CliIo) -> int:
     # unauthenticated attestation fetch. Running the full route here would mint an
     # attestation ticket with the real key against an origin the operator has not
     # verified yet, which inverts the trust order this command exists to keep.
-    client = create_client(origin, api_key or None, timeout=timeout_seconds)
+    client = create_client(
+        origin,
+        api_key or None,
+        control_base_url=options["control_origin"],
+        timeout=timeout_seconds,
+    )
     try:
         # Hop 1 not being ATTEMPTABLE (no pin for this origin, no attestation
         # route here) must not stop hop 2 from being reported. They are separate

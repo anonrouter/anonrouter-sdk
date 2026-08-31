@@ -24,16 +24,18 @@ describe("shipped gateway pins", () => {
     }
   });
 
-  it("ships NO published pins today, so the default path resolves nothing", () => {
-    // As of the 2026-08-29 review the only entry is a candidate whose refresh was
-    // examined and rejected: its measurement identity is corroborated but the
-    // origin is covered only by preproduction records. Promoting it must be a
-    // deliberate act that updates this assertion too.
+  it("ships the manifest-bound production pin and resolves it by default", () => {
+    // The 2026-08-30 production-origin manifest closed the gap that caused the
+    // earlier refresh to be rejected. Pin the source digest here too, so changing
+    // the default trust anchor is always a deliberate test update.
     const published = registry.filter((e) => e.status === "published");
-    expect(published).toEqual([]);
-    for (const entry of registry) {
+    expect(published).toHaveLength(1);
+    expect(published[0]?.policy.source).toBe(
+      "anonrouter-release-manifest-sha256:46da4d4210c21ea76681ef044dd2da29d8a3a4cff135348ef9f168f6a09c6bf4"
+    );
+    for (const entry of published) {
       for (const origin of entry.policy.origins) {
-        expect(pinnedGatewayPolicyFor(origin), `${origin} must not resolve by default`).toBeUndefined();
+        expect(pinnedGatewayPolicyFor(origin)?.status, `${origin} must resolve by default`).toBe("published");
       }
     }
   });

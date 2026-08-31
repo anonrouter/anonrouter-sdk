@@ -101,7 +101,8 @@ it can gate a deploy rather than only inform one:
 
 ```bash
 anonrouter-verify doctor --origin https://api.private.anonrouter.ai
-anonrouter-verify gateway --origin https://api.private.anonrouter.ai --allow-candidate
+anonrouter-verify gateway --origin https://api.private.anonrouter.ai --dcap \
+  --require hardware_verified
 echo $?    # 0 met, 1 not met, 2 the command itself was wrong
 ```
 
@@ -207,9 +208,11 @@ the engine must fail closed rather than silently verify less.
 
 ```ts
 import { createClient, atLeast } from "@anonrouter/confidential";
+import { createAnonRouterDcapVerifier } from "@anonrouter/confidential/dcap";
 
 const client = createClient({
-  baseUrl: "https://api.anonrouter.ai",
+  baseUrl: "https://api.private.anonrouter.ai",
+  controlBaseUrl: "https://api.anonrouter.ai",
   apiKey: process.env.ANONROUTER_API_KEY!
 });
 
@@ -218,7 +221,7 @@ const client = createClient({
 const verdict = await client.verifyRoute({
   model: "openai/gpt-oss-120b",
   provider: "near-ai",
-  gateway: { allowCandidatePolicy: true }   // omit `gateway` to skip hop 1 entirely
+  gateway: { chainVerifier: createAnonRouterDcapVerifier() }
 });
 if (!atLeast(verdict.overallState, "cryptographically_checked")) {
   throw new Error(`route not established: ${verdict.reason}`);
@@ -232,7 +235,7 @@ const reply = await client.chat({
   provider: "near-ai",
   messages: [{ role: "user", content: "Draft a private message." }],
   maxOutputTokens: 512,
-  requireGateway: { allowCandidatePolicy: true }
+  requireGateway: { chainVerifier: createAnonRouterDcapVerifier() }
 });
 console.log(reply.content);
 ```
@@ -261,9 +264,11 @@ Python 3.10 or newer. CI runs the suite on 3.10, 3.11, 3.12 and 3.13.
 import os
 
 from anonrouter_confidential import at_least, create_client
+from anonrouter_confidential.gateway.dcap import create_anonrouter_dcap_verifier
 
 client = create_client(
-    base_url="https://api.anonrouter.ai",
+    base_url="https://api.private.anonrouter.ai",
+    control_base_url="https://api.anonrouter.ai",
     api_key=os.environ["ANONROUTER_API_KEY"],
 )
 
@@ -272,7 +277,7 @@ client = create_client(
 verdict = client.verify_route(
     model="openai/gpt-oss-120b",
     provider="near-ai",
-    gateway={"allow_candidate_policy": True},   # omit `gateway` to skip hop 1
+    gateway={"chain_verifier": create_anonrouter_dcap_verifier()},
 )
 if not at_least(verdict.overall_state, "cryptographically_checked"):
     raise SystemExit(f"route not established: {verdict.reason}")
@@ -296,7 +301,8 @@ npm install @anonrouter/client
 import { createClient } from "@anonrouter/client";
 
 const client = createClient({
-  baseUrl: "https://api.anonrouter.ai",
+  baseUrl: "https://api.private.anonrouter.ai",
+  controlBaseUrl: "https://api.anonrouter.ai",
   apiKey: process.env.ANONROUTER_API_KEY!
 });
 

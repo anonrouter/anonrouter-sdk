@@ -95,6 +95,15 @@ def test_default_assurance(cli_contract: dict[str, Any]) -> None:
     assert options["require"] == cli_contract["defaultRequire"]
 
 
+def test_accepts_a_separate_content_free_control_origin() -> None:
+    options = parse_args([
+        "route", "--origin", "https://confidential.example",
+        "--control-origin", "https://control.example",
+        "--provider", "venice", "--model", "model",
+    ])
+    assert options["control_origin"] == "https://control.example"
+
+
 def test_dcap_binary_implies_dcap() -> None:
     options = parse_args(["gateway", "--origin", "https://x.example", "--dcap-binary", "/opt/engine"])
     assert options["dcap"] is True
@@ -131,13 +140,13 @@ def test_doctor_document_keys(cli_contract: dict[str, Any]) -> None:
     assert list(document["pin"].keys()) == cli_contract["pinKeys"]
 
 
-def test_doctor_reports_the_candidate_pin_as_opt_in() -> None:
+def test_doctor_reports_the_reviewed_production_pin_as_published() -> None:
     io = Capture()
     run_cli(["doctor", "--origin", "https://api.private.anonrouter.ai", "--compact"], io)
     document = json.loads(io.stdout)
     assert document["pin"]["present"] is True
-    assert document["pin"]["status"] == "candidate"
-    assert document["pin"]["requiresOptIn"] is True
+    assert document["pin"]["status"] == "published"
+    assert document["pin"]["requiresOptIn"] is False
 
 
 def test_doctor_reports_no_pin_for_an_uncovered_origin() -> None:

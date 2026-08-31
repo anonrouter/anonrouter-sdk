@@ -67,7 +67,11 @@ the other:
 ```python
 from anonrouter_confidential import create_client
 
-with create_client("https://api.anonrouter.ai", api_key="...") as client:
+with create_client(
+    "https://api.private.anonrouter.ai",
+    api_key="...",
+    control_base_url="https://api.anonrouter.ai",
+) as client:
     result = client.verify_attestation(model="venice-uncensored", provider="venice")
     verdict = result["verdict"]            # OUR independent NormalizedVerdict
     assert verdict.status == "ok"
@@ -88,21 +92,18 @@ could hand you the list of builds you accept could always name itself. So the pi
 ship inside this package, and an origin with no pin raises rather than falling back
 to whatever the server claims.
 
-Two things to know about the pin shipped today. It is marked `candidate`, because
-the confidential plane is pre-release and its measurements move on every release,
-so resolving it takes `allow_candidate_policy=True`. And it sets
-`requireHardwareVerified` while this package bundles no engine, so verification
-fails closed with reason `quote_signature_chain` until you install one (see
-below). That is the honest answer: without chaining the quote's signature to
-Intel's roots, nobody has checked it came from real silicon.
+The production pin ships as `published` from an independently retained release
+manifest. It sets `requireHardwareVerified` while this package bundles no native
+engine, so verification fails closed with reason `quote_signature_chain` until
+you install one (see below). That is the honest answer: without chaining the
+quote's signature to Intel's roots, nobody has checked it came from real silicon.
 
 ## Reaching `hardware_verified`
 
-This package bundles **no DCAP engine**, on purpose: shipping prebuilt binaries
-would mean asserting that a binary we did not build reproducibly is the reviewed
-one, and a hand-rolled Python reimplementation would be an unreviewed version of
-the single component whose failure mode is reporting `hardware_verified` for a
-forged quote.
+This package bundles **no DCAP engine** inside the pure-Python wheel. The official
+linux/amd64 engine is built reproducibly in a digest-pinned container and can be
+installed separately; keeping it separate also makes the executable digest an
+explicit operator choice rather than an opaque wheel payload.
 
 What ships instead is a strict adapter to the reviewed engine, plus the
 Intel-signed collateral it needs (the engine performs no network access, on
@@ -137,7 +138,8 @@ chaining only the CPU quote would claim more than was checked.
 
 ```bash
 anonrouter-verify doctor --origin https://api.private.anonrouter.ai
-anonrouter-verify gateway --origin https://api.private.anonrouter.ai --allow-candidate
+anonrouter-verify gateway --origin https://api.private.anonrouter.ai --dcap \
+  --require hardware_verified
 echo $?   # 0 met, 1 not met, 2 the command itself was wrong
 ```
 

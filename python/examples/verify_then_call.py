@@ -20,7 +20,8 @@ than one:
    there. This program prints that distinction instead of hiding it.
 
 Optional env:
-    ANONROUTER_BASE_URL   default https://api.anonrouter.ai
+    ANONROUTER_BASE_URL   default https://api.private.anonrouter.ai
+    ANONROUTER_CONTROL_URL default https://api.anonrouter.ai
     ANONROUTER_MODEL      default openai/gpt-oss-120b
     ANONROUTER_PROVIDER   default near-ai
     ANONROUTER_REQUIRE    default cryptographically_checked
@@ -47,7 +48,8 @@ from anonrouter_confidential.gateway.dcap import (
     describe_dcap_installation,
 )
 
-BASE_URL = os.environ.get("ANONROUTER_BASE_URL", "https://api.anonrouter.ai")
+BASE_URL = os.environ.get("ANONROUTER_BASE_URL", "https://api.private.anonrouter.ai")
+CONTROL_URL = os.environ.get("ANONROUTER_CONTROL_URL", "https://api.anonrouter.ai")
 MODEL = os.environ.get("ANONROUTER_MODEL", "openai/gpt-oss-120b")
 PROVIDER = os.environ.get("ANONROUTER_PROVIDER", "near-ai")
 PROMPT = os.environ.get("PROMPT", "In one sentence: what does attestation prove?")
@@ -70,7 +72,6 @@ def main() -> int:
     # require hardware verification is unaffected either way.
     engine = describe_dcap_installation()
     gateway = {
-        "allow_candidate_policy": True,
         "chain_verifier": create_anonrouter_dcap_verifier(),
     }
     if engine.available:
@@ -78,7 +79,7 @@ def main() -> int:
     else:
         print(f"DCAP engine: none installed, so hardware_verified is out of reach here ({engine.reason})")
 
-    with create_client(BASE_URL, api_key=api_key) as client:
+    with create_client(BASE_URL, api_key=api_key, control_base_url=CONTROL_URL) as client:
         # ---- 1. Verify, and stop here if it does not clear the bar -----------
         verdict = client.verify_route(model=MODEL, provider=PROVIDER, gateway=gateway)
 

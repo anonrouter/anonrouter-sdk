@@ -62,6 +62,9 @@ export const USAGE = `anonrouter-verify: independently verify an AnonRouter rout
 
 Options
   --origin <url>            The origin to verify. Required for gateway/route.
+  --control-origin <url>    Identity/billing origin for content-free ticket
+                            operations. Defaults to --origin. Production uses
+                            https://api.anonrouter.ai.
   --require <state>         Minimum assurance to exit 0. One of:
                             ${TRUSTED_STATES.join(", ")}.
                             Default: cryptographically_checked.
@@ -90,6 +93,7 @@ Exit codes
 export interface Options {
   command: "gateway" | "route" | "doctor";
   origin: string | null;
+  controlOrigin: string | null;
   require: RouteVerificationState;
   policyFile: string | null;
   allowCandidate: boolean;
@@ -113,6 +117,7 @@ export function parseArgs(argv: string[]): Options {
   const options: Options = {
     command: "doctor",
     origin: null,
+    controlOrigin: null,
     require: "cryptographically_checked",
     policyFile: null,
     allowCandidate: false,
@@ -150,6 +155,7 @@ export function parseArgs(argv: string[]): Options {
     switch (flag) {
       case "-h": case "--help": throw new UsageError("");
       case "--origin": options.origin = value(i, flag); i += 1; break;
+      case "--control-origin": options.controlOrigin = value(i, flag); i += 1; break;
       case "--require": options.require = value(i, flag) as RouteVerificationState; i += 1; break;
       case "--policy": options.policyFile = value(i, flag); i += 1; break;
       case "--allow-candidate": options.allowCandidate = true; break;
@@ -442,6 +448,7 @@ async function runResolved(options: Options, io: CliIo): Promise<number> {
     // the trust order this whole command exists to keep.
     const client = createClient({
       baseUrl: origin,
+      ...(options.controlOrigin ? { controlBaseUrl: options.controlOrigin } : {}),
       apiKey: apiKey && apiKey.length > 0 ? apiKey : "unused-for-gateway-verification"
     });
 
@@ -583,4 +590,3 @@ async function runResolved(options: Options, io: CliIo): Promise<number> {
     clearTimeout(timer);
   }
 }
-

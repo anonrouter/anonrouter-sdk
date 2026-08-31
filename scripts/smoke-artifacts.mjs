@@ -128,8 +128,7 @@ const report = {
   clientExports: typeof createPlainClient === "function",
   // The shipped pins have to be present in the installed package, or the whole
   // "don't trust us, verify" arrangement has no allowlist on the user's disk.
-  gatewayPinPresent: pinnedGatewayPolicyFor("https://api.private.anonrouter.ai", { allowCandidate: true }) !== undefined,
-  gatewayPinNeedsOptIn: pinnedGatewayPolicyFor("https://api.private.anonrouter.ai") === undefined,
+  gatewayPinPresent: pinnedGatewayPolicyFor("https://api.private.anonrouter.ai")?.status === "published",
   providerPinsPresent: Object.keys(measurementPolicyDocument().providers ?? {}).length > 0,
   engineDetected: describeDcapInstallation().available
 };
@@ -147,8 +146,8 @@ console.log(JSON.stringify(report));
     () => assert(probeOutput.clientExports, "the client package did not resolve"));
   check("the shipped gateway pin is present in the installed package",
     () => assert(probeOutput.gatewayPinPresent, "no gateway pin found after install"));
-  check("the shipped gateway pin still requires an explicit opt-in",
-    () => assert(probeOutput.gatewayPinNeedsOptIn, "a candidate pin resolved without allowCandidate"));
+  check("the reviewed production gateway pin resolves by default",
+    () => assert(probeOutput.gatewayPinPresent, "the published pin did not resolve by default"));
   check("the shipped provider pins are present in the installed package",
     () => assert(probeOutput.providerPinsPresent, "no provider measurement pins found after install"));
 
@@ -287,10 +286,10 @@ print(json.dumps({
     "cliImportable": callable(run_cli),
     # The pins have to travel INSIDE the distribution: they are package data, not
     # repo files, and a wheel that omitted them would verify nothing.
-    "gatewayPinPresent": pinned_gateway_policy_for(
-        "https://api.private.anonrouter.ai", allow_candidate=True) is not None,
-    "gatewayPinNeedsOptIn": pinned_gateway_policy_for(
-        "https://api.private.anonrouter.ai") is None,
+    "gatewayPinPresent": (
+        pinned_gateway_policy_for("https://api.private.anonrouter.ai") is not None
+        and pinned_gateway_policy_for("https://api.private.anonrouter.ai").status == "published"
+    ),
     "providerPinsPresent": len(load_measurements().get("providers", {})) > 0,
 }))
 `);
@@ -302,7 +301,7 @@ print(json.dumps({
       });
       check(`${label}: the shipped pins travel inside the distribution`, () => {
         assert(probeOutput.gatewayPinPresent, "no gateway pin found after install");
-        assert(probeOutput.gatewayPinNeedsOptIn, "a candidate pin resolved without the opt-in");
+        assert(probeOutput.gatewayPinPresent, "the published pin did not resolve by default");
         assert(probeOutput.providerPinsPresent, "no provider measurement pins found after install");
       });
 

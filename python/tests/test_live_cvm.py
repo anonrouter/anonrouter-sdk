@@ -583,17 +583,15 @@ def test_wrong_platform_pin_is_refused(live_document: Any) -> None:
 
 
 @requires_live
-def test_the_shipped_pin_does_not_resolve_without_the_opt_in() -> None:
-    assert pinned_gateway_policy_for(str(LIVE_ORIGIN)) is None
+def test_the_reviewed_production_pin_resolves_by_default() -> None:
+    entry = pinned_gateway_policy_for(str(LIVE_ORIGIN))
+    assert entry is not None
+    assert entry.status == "published"
 
 
 @requires_live
-def test_only_policy_checks_may_fail_under_the_shipped_pin() -> None:
-    # The invariant worth asserting live, and it survives a future pin refresh: a
-    # stale pin must fail ONLY on the policy checks. If a structural or
-    # cryptographic check ever failed against real hardware, the verifier and the
-    # hardware disagree, which is a defect rather than a stale allowlist.
-    entry = pinned_gateway_policy_for(str(LIVE_ORIGIN), allow_candidate=True)
+def test_every_shipped_production_identity_pin_matches() -> None:
+    entry = pinned_gateway_policy_for(str(LIVE_ORIGIN))
     if entry is None:
         pytest.skip("this package ships no pin for the configured live origin")
     result = verify_gateway_attestation(
@@ -603,25 +601,8 @@ def test_only_policy_checks_may_fail_under_the_shipped_pin() -> None:
         policy=entry.policy,
         now_ms=time.time() * 1000.0,
     )
-    policy_checks = {
-        "app_id_pinned",
-        "compose_hash_pinned",
-        "release_pinned",
-        "origin_pinned",
-        "platform_measurements_pinned",
-        "os_image_pinned",
-        "key_provider_pinned",
-        # Not a policy pin, but not a hardware disagreement either: the package
-        # ships no engine, so this fails by construction unless one was supplied.
-        "quote_signature_chain",
-        "tcb_status_acceptable",
-    }
-    unexpected = [
-        f"{c.name} ({c.detail})" if c.detail else c.name
-        for c in result.checks
-        if c.required and not c.passed and c.name not in policy_checks
-    ]
-    assert unexpected == []
+    failed = [check.name for check in result.checks if check.required and not check.passed]
+    assert failed == ["quote_signature_chain", "tcb_status_acceptable"]
 
 
 # ---- Live + engine: the full chain to Intel's roots --------------------------
@@ -629,7 +610,10 @@ def test_only_policy_checks_may_fail_under_the_shipped_pin() -> None:
 
 @requires_hardware
 def test_reaches_hardware_verified_with_an_acceptable_tcb() -> None:
-    policy = policy_from(first().binding, requireHardwareVerified=True)
+    entry = pinned_gateway_policy_for(str(LIVE_ORIGIN))
+    assert entry is not None
+    assert entry.status == "published"
+    policy = entry.policy
     verifier = create_anonrouter_dcap_verifier().prepare(
         str(first().doc["quote"]),
         accepted_tcb_statuses=list(policy.acceptable_tcb_statuses),
