@@ -297,12 +297,12 @@ export function describeDcapInstallation(
     ? [
       `Engine resolved from ${resolved.origin}: ${resolved.path}`,
       "Compare its SHA-256 against the digest published with the release you intend to run.",
-      `Pin it in code with expectedBinarySha256 so a swapped binary fails closed.`
+      "Pin its digest when constructing the verifier so a swapped binary fails closed."
     ]
     : [
       `This package bundles no DCAP engine, by design: it cannot honestly assert that a binary it did not build reproducibly is the reviewed one.`,
       `Install the ${DCAP_ENGINE_PROGRAM} release artifact for ${target ?? `${process.platform}/${process.arch} (not a named target)`}.`,
-      `Then either put it on PATH under the name ${DCAP_ENGINE_PROGRAM}, or set ${DCAP_ENGINE_ENV} to its absolute path, or pass binaryPath explicitly.`,
+      `Then either put it on PATH under the name ${DCAP_ENGINE_PROGRAM}, or set ${DCAP_ENGINE_ENV} to its absolute path, or name it explicitly when constructing the verifier.`,
       `Verify the artifact's SHA-256 against the digest published alongside it, obtained independently of the gateway you are verifying.`,
       `Without an engine, verification is capped at cryptographically_checked and a policy requiring hardware verification fails closed. It never silently downgrades.`
     ];

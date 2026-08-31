@@ -24,6 +24,11 @@ dependencies = [
   "pycryptodome>=3.20",
 ]
 
+[project.scripts]
+# The operator command. Exits nonzero unless the requested assurance was
+# established, so it can gate a deploy or a CI job rather than only inform one.
+anonrouter-verify = "anonrouter_confidential.cli:main"
+
 [project.urls]
 Homepage = "https://github.com/anonrouter/anonrouter-sdk"
 Repository = "https://github.com/anonrouter/anonrouter-sdk"

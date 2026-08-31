@@ -26,6 +26,7 @@
     },
     "./package.json": "./package.json"
   },
+  "bin": { "anonrouter-verify": "./dist/cli.js" },
   "files": ["dist", "src/measurements.json", "src/gateway/gateway-policies.json", "README.md", "LICENSE"],
   "sideEffects": false,
   "engines": { "node": ">=22" },

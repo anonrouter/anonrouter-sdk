@@ -1,0 +1,165 @@
+{
+  "_readme": [
+    "The anonrouter-verify command's contract, loaded identically by the JS and Python",
+    "suites. Two commands with the same name that disagreed about their exit codes or",
+    "their JSON shape would be worse than having only one, because a script written",
+    "against either would silently mean something different under the other.",
+    "",
+    "What is pinned here:",
+    "",
+    "  exitCodes     0 met, 1 not met, 2 the command itself was wrong. The distinction",
+    "                between 1 and 2 is load-bearing: a crashed or mistyped command must",
+    "                never be mistaken for a verification answer.",
+    "  documentKeys  The exact top-level keys each command prints, in order. Adding one",
+    "                in a single language is drift.",
+    "  hopKeys       The keys of a hop object, and the extra keys hop 1 carries.",
+    "  usageCases    Inputs that must be REFUSED before anything is contacted, with the",
+    "                phrase the operator has to see. Several of these are security",
+    "                decisions, not ergonomics: --api-key on argv, and requiring",
+    "                hardware_verified without an engine to establish it.",
+    "  neverPrinted  Substrings that must not appear in any document. The evidence body",
+    "                is ~66 KB of internal compose topology and an API key is a",
+    "                credential; neither belongs in a CI log.",
+    "  offlineCase   An origin nothing is pinned for. Both commands must refuse it",
+    "                without a network call and emit the full document shape, which is",
+    "                what makes the shape testable with no gateway."
+  ],
+  "schema": "anonrouter-verify/1",
+  "exitCodes": {
+    "met": 0,
+    "notMet": 1,
+    "usage": 2
+  },
+  "commands": ["gateway", "route", "doctor"],
+  "defaultRequire": "cryptographically_checked",
+  "documentKeys": {
+    "verify": [
+      "schema",
+      "command",
+      "origin",
+      "requested",
+      "outcome",
+      "gateway",
+      "provider",
+      "bindingMismatches",
+      "contentVisibleToAnonRouter",
+      "engine",
+      "notes"
+    ],
+    "doctor": ["schema", "command", "origin", "engine", "pin", "notes"]
+  },
+  "hopKeys": ["requested", "state", "meaning", "reason", "failedChecks", "advisoryGaps"],
+  "gatewayExtraKeys": ["policy", "identity", "measurements", "tcbStatus", "tlsSpki"],
+  "requestedKeys": ["assurance", "gateway", "provider", "model"],
+  "outcomeKeys": ["met", "state", "reason"],
+  "engineKeys": ["requested", "available", "binaryPath", "binarySha256", "origin", "target", "reason"],
+  "pinKeys": [
+    "present",
+    "status",
+    "reviewedAt",
+    "source",
+    "version",
+    "requiresOptIn",
+    "requireHardwareVerified"
+  ],
+  "tlsSpkiKeys": ["observed", "source", "matchesAttested"],
+  "identityKeys": [
+    "appId",
+    "instanceId",
+    "composeHash",
+    "releaseId",
+    "origin",
+    "transport",
+    "attestedTlsSpkiSha256"
+  ],
+  "usageCases": [
+    {
+      "name": "no arguments prints usage",
+      "argv": [],
+      "exitCode": 2,
+      "stderrContains": "anonrouter-verify"
+    },
+    {
+      "name": "an unknown command is refused",
+      "argv": ["verify-everything"],
+      "exitCode": 2,
+      "stderrContains": "unknown command"
+    },
+    {
+      "name": "an unknown option is refused rather than ignored",
+      "argv": ["gateway", "--origin", "https://x.example", "--yolo"],
+      "exitCode": 2,
+      "stderrContains": "unknown option"
+    },
+    {
+      "name": "gateway needs an origin",
+      "argv": ["gateway"],
+      "exitCode": 2,
+      "stderrContains": "needs --origin"
+    },
+    {
+      "name": "route needs a provider and a model",
+      "argv": ["route", "--origin", "https://x.example"],
+      "exitCode": 2,
+      "stderrContains": "needs --provider and --model"
+    },
+    {
+      "name": "an API key on argv is refused by name, not silently ignored",
+      "argv": ["gateway", "--origin", "https://x.example", "--api-key", "ar_secret"],
+      "exitCode": 2,
+      "stderrContains": "--api-key is refused"
+    },
+    {
+      "name": "requiring hardware_verified without an engine is refused up front",
+      "argv": ["gateway", "--origin", "https://x.example", "--require", "hardware_verified"],
+      "exitCode": 2,
+      "stderrContains": "needs --dcap"
+    },
+    {
+      "name": "an unknown assurance state is refused",
+      "argv": ["gateway", "--origin", "https://x.example", "--require", "probably_fine"],
+      "exitCode": 2,
+      "stderrContains": "--require must be one of"
+    },
+    {
+      "name": "untrusted is not a threshold anyone may require",
+      "argv": ["gateway", "--origin", "https://x.example", "--require", "untrusted"],
+      "exitCode": 2,
+      "stderrContains": "--require must be one of"
+    },
+    {
+      "name": "a flag missing its value is refused",
+      "argv": ["gateway", "--origin"],
+      "exitCode": 2,
+      "stderrContains": "needs a value"
+    },
+    {
+      "name": "a non-numeric timeout is refused",
+      "argv": ["gateway", "--origin", "https://x.example", "--timeout", "soon"],
+      "exitCode": 2,
+      "stderrContains": "--timeout must be"
+    },
+    {
+      "name": "refusing to fetch collateral without supplying any is refused",
+      "argv": ["gateway", "--origin", "https://x.example", "--no-collateral-fetch"],
+      "exitCode": 2,
+      "stderrContains": "needs --collateral"
+    }
+  ],
+  "offlineCase": {
+    "name": "an origin with no pin fails closed without contacting anything",
+    "argv": ["gateway", "--origin", "https://nothing-is-pinned-for-this.example", "--compact"],
+    "exitCode": 1,
+    "outcome": { "met": false, "state": "unavailable" },
+    "gatewayState": "unavailable",
+    "providerRequested": false,
+    "reasonContains": "pinned gateway policy"
+  },
+  "neverPrinted": [
+    "app_compose",
+    "event_log",
+    "authorization",
+    "Bearer ",
+    "x-anonrouter-ticket"
+  ]
+}

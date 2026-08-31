@@ -285,7 +285,7 @@ def describe_dcap_installation(
         instructions = [
             f"Engine resolved from {resolved.origin}: {resolved.path}",
             "Compare its SHA-256 against the digest published with the release you intend to run.",
-            "Pin it in code with expected_binary_sha256 so a swapped binary fails closed.",
+            "Pin its digest when constructing the verifier so a swapped binary fails closed.",
         ]
     else:
         where = target or f"{sys.platform}/{_platform.machine()} (not a named target)"
@@ -297,7 +297,8 @@ def describe_dcap_installation(
             f"Install the {DCAP_ENGINE_PROGRAM} release artifact for {where}.",
             (
                 f"Then either put it on PATH under the name {DCAP_ENGINE_PROGRAM}, or set "
-                f"{DCAP_ENGINE_ENV} to its absolute path, or pass binary_path explicitly."
+                f"{DCAP_ENGINE_ENV} to its absolute path, or name it explicitly when "
+                "constructing the verifier."
             ),
             (
                 "Verify the artifact's SHA-256 against the digest published alongside it, "

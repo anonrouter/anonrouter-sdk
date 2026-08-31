@@ -120,6 +120,34 @@ jobs:
       - name: Check pin parity
         run: node scripts/check-parity.mjs
 
+  # Both packages ship a command called `anonrouter-verify`. This runs BOTH real
+  # executables over inputs that need no network and requires the JSON they print
+  # and the codes they exit with to be identical. The shared vectors pin the shape
+  # from inside each test suite; this pins what a user actually runs.
+  cli-parity:
+    name: anonrouter-verify cross-language parity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: js/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Build the JS command
+        working-directory: js
+        run: |
+          npm ci
+          npm run build
+      - name: Install the Python command
+        working-directory: python
+        run: pip install -e "."
+      - name: Compare both commands
+        run: node scripts/check-cli-parity.mjs
+
   # Confirms the published artifacts are well formed before a release, not after.
   packaging:
     name: Package artifacts
