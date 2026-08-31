@@ -129,6 +129,46 @@ def _normalize_api_origin(base_url: str, allow_insecure_http: bool) -> str:
     return origin
 
 
+def _prepare_chain_verifier(
+    supplied: Any,
+    quote: Any,
+    policy: GatewayMeasurementPolicy,
+    now_ms: float,
+) -> Any:
+    """Resolve whichever form the caller supplied into a verifier bound to THIS quote.
+
+    A FACTORY (anything exposing ``prepare``) does its I/O here and is handed the
+    resolved policy's accepted TCB statuses, so the engine and the local policy
+    cannot disagree about what "acceptable" means. An already-prepared verifier is
+    passed through untouched.
+
+    A factory that raises is turned into a refusal rather than an exception: an
+    engine that could not run is a failed ``quote_signature_chain`` check, which is
+    a verdict the caller can read, not a crash that loses every other check.
+    """
+    if supplied is None:
+        return None
+    prepare = getattr(supplied, "prepare", None)
+    if not callable(prepare):
+        return supplied
+    try:
+        return prepare(
+            str(quote or ""),
+            accepted_tcb_statuses=list(policy.acceptable_tcb_statuses),
+            now_ms=now_ms,
+        )
+    except Exception as exc:  # noqa: BLE001 - any preparation failure is a refusal
+        detail = str(exc) or "chain verifier could not be prepared"
+
+        class _Refused:
+            implementation = "unavailable"
+
+            def verify_chain(self, quote: str, collateral: Any = None) -> tuple[bool, None, str]:
+                return False, None, detail
+
+        return _Refused()
+
+
 def _gateway_option_to_kwargs(option: bool | dict[str, Any] | None) -> dict[str, Any] | None:
     """Normalize the ``gateway`` / ``require_gateway`` option into explicit kwargs."""
     if option is None or option is False:
@@ -295,15 +335,18 @@ class ConfidentialClient:
                 f"{self.origin} does not expose gateway attestation, so it cannot be shown to "
                 "run inside a confidential VM"
             )
+        now_ms = time.time() * 1000.0
         verdict = verify_gateway_attestation(
             evidence,
             nonce=nonce,
             origin=self.origin,
             policy=active,
-            now_ms=time.time() * 1000.0,
+            now_ms=now_ms,
             observed_tls_spki_sha256=observed_tls_spki_sha256,
             observed_tls_spki_supplied=observed_tls_spki_supplied,
-            chain_verifier=chain_verifier,
+            chain_verifier=_prepare_chain_verifier(
+                chain_verifier, evidence.get("quote"), active, now_ms
+            ),
         )
         return {
             "origin": self.origin,
@@ -530,15 +573,18 @@ class ConfidentialClient:
                 "reason": "this deployment does not expose gateway attestation",
                 "policy": provenance,
             }
+        now_ms = time.time() * 1000.0
         verdict = verify_gateway_attestation(
             evidence,
             nonce=nonce,
             origin=self.origin,
             policy=active,
-            now_ms=time.time() * 1000.0,
+            now_ms=now_ms,
             observed_tls_spki_sha256=options.get("observed_tls_spki_sha256"),
             observed_tls_spki_supplied=bool(options.get("observed_tls_spki_supplied")),
-            chain_verifier=options.get("chain_verifier"),
+            chain_verifier=_prepare_chain_verifier(
+                options.get("chain_verifier"), evidence.get("quote"), active, now_ms
+            ),
         )
         return {
             "requested": True,

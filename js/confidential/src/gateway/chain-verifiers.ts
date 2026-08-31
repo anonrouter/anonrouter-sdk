@@ -1,20 +1,27 @@
-// Reference DCAP chain-verifier adapters. NODE ONLY.
+// Generic DCAP chain-verifier adapters, for an engine you wrote yourself. NODE ONLY.
 //
-// This package deliberately ships no DCAP engine: a real one needs Intel's QVL
-// and collateral, which cannot be vendored into a browser-safe library, and
-// pretending otherwise would let the SDK print `hardware_verified` for work it
-// never did. `verifyGatewayAttestation` therefore takes a `TdxChainVerifier`
-// port, and these are the two maintained ways to fill it.
+// FOR THE OFFICIAL PATH, USE `@anonrouter/confidential/dcap` INSTEAD.
+// `createAnonRouterDcapVerifier()` there speaks the exact wire contract of
+// AnonRouter's reviewed offline engine, acquires the Intel-signed collateral that
+// engine requires, and cross-checks the engine's report against the quote. This
+// module deliberately does NOT: it speaks a minimal contract of its own, so an
+// operator who already has some verification service or wrapper script can plug
+// it in without writing an adapter.
 //
-//   createSubprocessChainVerifier  spawn a DCAP verifier executable you control
-//                                  and read its JSON verdict. This is the strong
-//                                  option: the trust stays on your machine.
+//   createSubprocessChainVerifier  spawn an executable you control. It receives
+//                                  the raw quote hex on stdin and must print
+//                                  `{"verified":bool,"tcbStatus":"..."}`. This is
+//                                  NOT the AnonRouter engine's contract, which
+//                                  takes a JSON request including collateral;
+//                                  point this at your own wrapper, not at
+//                                  `anonrouter-dcap-verifier` directly.
 //
-//   createRemoteChainVerifier      POST the quote to a Quote Verification Service.
+//   createRemoteChainVerifier      POST `{quote}` to a Quote Verification Service.
 //                                  Convenient, and a REAL trust transfer: you are
 //                                  now trusting that service's answer about
 //                                  whether the hardware is genuine. Never point it
-//                                  at a service run by the party you are verifying.
+//                                  at a service run by the party you are verifying,
+//                                  which the SDK cannot detect for you.
 //
 // FAIL CLOSED, ALWAYS. Every failure mode here means "not verified": a missing
 // binary, a timeout, a crash, a non-zero exit, output that is not JSON, output
@@ -34,9 +41,12 @@ const MAX_OUTPUT_BYTES = 256 * 1024;
 const DEFAULT_TIMEOUT_MS = 10_000;
 
 /**
- * The JSON an engine must print on stdout. Matches the shape AnonRouter's own
- * `native/dcap-verifier` emits, so an operator can point either at the same
- * binary and get the same answer.
+ * The JSON an engine wired through THIS module must print on stdout.
+ *
+ * Note the spelling: `tcbStatus`, camelCase. AnonRouter's own reviewed engine
+ * emits `tcb_status` and reads a JSON request rather than a bare quote, so it is
+ * not compatible with this adapter. Use `@anonrouter/confidential/dcap` for that
+ * engine; this shape is for a wrapper you control.
  */
 export interface DcapEngineVerdict {
   verified: boolean;
@@ -221,11 +231,12 @@ export function preparedChainVerifier(
     implementation,
     verifyChain(rawQuote: string) {
       if (typeof rawQuote !== "string" || rawQuote.toLowerCase() !== expected) {
-        return { verified: false, tcbStatus: undefined };
+        return { verified: false, detail: "this verifier was prepared for a different quote" };
       }
       return {
         verified: verdict.verified === true,
-        ...(verdict.tcbStatus ? { tcbStatus: verdict.tcbStatus } : {})
+        ...(verdict.tcbStatus ? { tcbStatus: verdict.tcbStatus } : {}),
+        ...(verdict.verified ? {} : { detail: verdict.error ?? "engine refused the quote" })
       };
     }
   };

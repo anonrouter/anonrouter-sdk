@@ -52,15 +52,61 @@ import type { GatewayMeasurementPolicy } from "./policy.js";
 /** A vm_config blob is bounded so a hostile response cannot pin the CPU parsing it. */
 const MAX_VM_CONFIG_CHARS = 65_536;
 
+/** What a chain verifier reports back about one quote. */
+export interface TdxChainOutcome {
+  verified: boolean;
+  /** The platform's TCB status, when the engine reported one. */
+  tcbStatus?: string;
+  /**
+   * Content-free explanation, carried into the check's detail so a refusal names
+   * itself. Never include the quote, collateral, or any caller input.
+   */
+  detail?: string;
+}
+
 /**
  * The pluggable port for chaining a TDX quote's ECDSA signature to Intel's roots.
- * This package ships no implementation: supply one (a native DCAP verifier, a
- * remote QVS you trust, Intel's own QVL) to reach `hardware-verified`.
+ *
+ * This package ships no engine (see gateway/dcap for why, and for the official
+ * adapter to the reviewed one). Supply an implementation to reach
+ * `hardware-verified`; supply none and a policy demanding it fails closed.
+ *
+ * Deliberately SYNCHRONOUS, because `verifyGatewayAttestation` is pure and
+ * synchronous. Anything that needs I/O (a subprocess, a network call, collateral)
+ * runs in a `TdxChainVerifierFactory.prepare()` first, and hands the finished
+ * verdict in bound to the exact quote it ran on.
  */
 export interface TdxChainVerifier {
   /** Free-form name of the engine, carried into the verdict for the audit trail. */
   readonly implementation: string;
-  verifyChain(quote: string, collateral?: unknown): { verified: boolean; tcbStatus?: string };
+  verifyChain(quote: string, collateral?: unknown): TdxChainOutcome;
+}
+
+/** What the caller knows at prepare time and the engine should be told. */
+export interface TdxChainVerifierContext {
+  /**
+   * The TCB statuses the resolved policy accepts.
+   *
+   * Passed through so the engine and the local policy cannot disagree about what
+   * "acceptable" means. An engine gating on `UpToDate` while the policy also
+   * accepts `SWHardeningNeeded` would refuse quotes the policy allows, and the
+   * reverse would be worse.
+   */
+  acceptedTcbStatuses?: readonly string[];
+  /** The verification time the caller will use, epoch ms. */
+  nowMs?: number;
+  signal?: AbortSignal;
+}
+
+/**
+ * An engine that needs I/O before it can answer.
+ *
+ * `prepare()` does the work (spawn, fetch collateral, call a service) and returns
+ * a verifier bound to that one quote. A prepared verifier refuses any other
+ * quote, so one quote's pass can never be replayed onto another.
+ */
+export interface TdxChainVerifierFactory {
+  prepare(quote: string, context?: TdxChainVerifierContext): Promise<TdxChainVerifier>;
 }
 
 /**
@@ -456,7 +502,10 @@ export function verifyGatewayAttestation(
       "quote_signature_chain",
       outcome.verified,
       true,
-      tcbStatus ? `tcb=${tcbStatus}` : "chain verifier reported no TCB status"
+      // The engine's own reason first: "engine binary not found" and "the
+      // signature is invalid" are very different problems and a bare
+      // "no TCB status" would hide which one a reader is looking at.
+      outcome.detail ?? (tcbStatus ? `tcb=${tcbStatus}` : "chain verifier reported no TCB status")
     ));
     checks.push(check(
       "tcb_status_acceptable",

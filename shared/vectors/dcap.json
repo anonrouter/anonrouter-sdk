@@ -1,0 +1,309 @@
+{
+  "_readme": [
+    "Known-answer vectors for the DCAP layer, loaded identically by the JS and Python",
+    "suites. Three contracts are pinned here, and a divergence in any of them means the",
+    "two languages would verify DIFFERENT things while printing the same verdict shape.",
+    "",
+    "1. quoteParsing   Locating the PCK certificate chain inside a quote and reading the",
+    "                  FMSPC out of its leaf. The FMSPC selects which Intel TCB info",
+    "                  applies, so reading the wrong one points the whole check at a",
+    "                  different platform. The decoy case matters: the same OID appears",
+    "                  with a 4-byte OCTET STRING, which is NOT an FMSPC.",
+    "",
+    "2. signedDocuments  Slicing the exact signed bytes out of an Intel PCS response.",
+    "                  Intel signs the inner object verbatim, so a parse-and-reserialize",
+    "                  would produce different bytes and a signature that no longer",
+    "                  verifies. Brace matching must handle braces inside strings and",
+    "                  escaped quotes.",
+    "",
+    "3. engineWire     The request the reviewed engine reads on stdin and the verdict it",
+    "                  prints on stdout. `verified` must be a real boolean: the rejected",
+    "                  cases are the ways a malformed verdict could otherwise be coerced",
+    "                  into a pass.",
+    "",
+    "Regenerate with: npx tsx scripts/gen-dcap-vectors.ts (in js/confidential)."
+  ],
+  "engineRequestVersion": 1,
+  "quoteParsing": {
+    "fixtures": {
+      "quoteWithPckChain": "04000000810000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666662d2d2d2d2d424547494e2043455254494649434154452d2d2d2d2d0a4d4949424145464351305246526b64495355704c5445314f54314252556c4e5556565a585741594b4b6f5a496876684e41513042424151453371322b3777594b0a4b6f5a496876684e4151304242415147494b4276414141414d4445794d7a51314e6a63344f5441784d6a4d304e513d3d0a2d2d2d2d2d454e442043455254494649434154452d2d2d2d2d0a2d2d2d2d2d424547494e2043455254494649434154452d2d2d2d2d0a4d4949424145464351305246526b64495355704c5445314f54314252556c4e5556565a585741594b4b6f5a496876684e41513042424151472f2f2f2f2f2f2f2f0a4d4445794d7a51314e6a63344f5441784d6a4d304e513d3d0a2d2d2d2d2d454e442043455254494649434154452d2d2d2d2d0a0000000000000000",
+      "quoteWithoutPckChain": "04000000810000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "pckChain": "-----BEGIN CERTIFICATE-----\nMIIBAEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWAYKKoZIhvhNAQ0BBAQE3q2+7wYK\nKoZIhvhNAQ0BBAQGIKBvAAAAMDEyMzQ1Njc4OTAxMjM0NQ==\n-----END CERTIFICATE-----\n-----BEGIN CERTIFICATE-----\nMIIBAEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWAYKKoZIhvhNAQ0BBAQG////////\nMDEyMzQ1Njc4OTAxMjM0NQ==\n-----END CERTIFICATE-----",
+      "leafFmspc": "20a06f000000"
+    },
+    "cases": [
+      {
+        "name": "reads the chain and the leaf FMSPC out of a quote",
+        "quote": "04000000810000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666662d2d2d2d2d424547494e2043455254494649434154452d2d2d2d2d0a4d4949424145464351305246526b64495355704c5445314f54314252556c4e5556565a585741594b4b6f5a496876684e41513042424151453371322b3777594b0a4b6f5a496876684e4151304242415147494b4276414141414d4445794d7a51314e6a63344f5441784d6a4d304e513d3d0a2d2d2d2d2d454e442043455254494649434154452d2d2d2d2d0a2d2d2d2d2d424547494e2043455254494649434154452d2d2d2d2d0a4d4949424145464351305246526b64495355704c5445314f54314252556c4e5556565a585741594b4b6f5a496876684e41513042424151472f2f2f2f2f2f2f2f0a4d4445794d7a51314e6a63344f5441784d6a4d304e513d3d0a2d2d2d2d2d454e442043455254494649434154452d2d2d2d2d0a0000000000000000",
+        "expectedChain": "-----BEGIN CERTIFICATE-----\nMIIBAEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWAYKKoZIhvhNAQ0BBAQE3q2+7wYK\nKoZIhvhNAQ0BBAQGIKBvAAAAMDEyMzQ1Njc4OTAxMjM0NQ==\n-----END CERTIFICATE-----\n-----BEGIN CERTIFICATE-----\nMIIBAEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWAYKKoZIhvhNAQ0BBAQG////////\nMDEyMzQ1Njc4OTAxMjM0NQ==\n-----END CERTIFICATE-----",
+        "expectedFmspc": "20a06f000000"
+      },
+      {
+        "name": "the same quote given as base64 yields the identical result",
+        "quote": "BAAAAIEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABEREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIjMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzM0RERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVWZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmYtLS0tLUJFR0lOIENFUlRJRklDQVRFLS0tLS0KTUlJQkFFRkNRMFJGUmtkSVNVcExURTFPVDFCUlVsTlVWVlpYV0FZS0tvWklodmhOQVEwQkJBUUUzcTIrN3dZSwpLb1pJaHZoTkFRMEJCQVFHSUtCdkFBQUFNREV5TXpRMU5qYzRPVEF4TWpNME5RPT0KLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQotLS0tLUJFR0lOIENFUlRJRklDQVRFLS0tLS0KTUlJQkFFRkNRMFJGUmtkSVNVcExURTFPVDFCUlVsTlVWVlpYV0FZS0tvWklodmhOQVEwQkJBUUcvLy8vLy8vLwpNREV5TXpRMU5qYzRPVEF4TWpNME5RPT0KLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQoAAAAAAAAAAA==",
+        "expectedChain": "-----BEGIN CERTIFICATE-----\nMIIBAEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWAYKKoZIhvhNAQ0BBAQE3q2+7wYK\nKoZIhvhNAQ0BBAQGIKBvAAAAMDEyMzQ1Njc4OTAxMjM0NQ==\n-----END CERTIFICATE-----\n-----BEGIN CERTIFICATE-----\nMIIBAEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWAYKKoZIhvhNAQ0BBAQG////////\nMDEyMzQ1Njc4OTAxMjM0NQ==\n-----END CERTIFICATE-----",
+        "expectedFmspc": "20a06f000000"
+      },
+      {
+        "name": "a quote with no PEM armour has no chain and no FMSPC",
+        "quote": "04000000810000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "expectedChain": null,
+        "expectedFmspc": null
+      },
+      {
+        "name": "input that is neither hex nor base64 is refused, not guessed at",
+        "quote": "not a quote!!",
+        "expectedChain": null,
+        "expectedFmspc": null
+      },
+      {
+        "name": "the FMSPC comes from the LEAF, so the second certificate's value is ignored",
+        "quote": "04000000810000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666662d2d2d2d2d424547494e2043455254494649434154452d2d2d2d2d0a4d4949424145464351305246526b64495355704c5445314f54314252556c4e5556565a585741594b4b6f5a496876684e41513042424151472f2f2f2f2f2f2f2f0a4d4445794d7a51314e6a63344f5441784d6a4d304e513d3d0a2d2d2d2d2d454e442043455254494649434154452d2d2d2d2d0a2d2d2d2d2d424547494e2043455254494649434154452d2d2d2d2d0a4d4949424145464351305246526b64495355704c5445314f54314252556c4e5556565a585741594b4b6f5a496876684e41513042424151453371322b3777594b0a4b6f5a496876684e4151304242415147494b4276414141414d4445794d7a51314e6a63344f5441784d6a4d304e513d3d0a2d2d2d2d2d454e442043455254494649434154452d2d2d2d2d0a0000000000000000",
+        "expectedChain": "-----BEGIN CERTIFICATE-----\nMIIBAEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWAYKKoZIhvhNAQ0BBAQG////////\nMDEyMzQ1Njc4OTAxMjM0NQ==\n-----END CERTIFICATE-----\n-----BEGIN CERTIFICATE-----\nMIIBAEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWAYKKoZIhvhNAQ0BBAQE3q2+7wYK\nKoZIhvhNAQ0BBAQGIKBvAAAAMDEyMzQ1Njc4OTAxMjM0NQ==\n-----END CERTIFICATE-----",
+        "expectedFmspc": "ffffffffffff"
+      }
+    ]
+  },
+  "signedDocuments": [
+    {
+      "name": "slices the signed sub-object verbatim",
+      "body": "{\"tcbInfo\":{\"id\":\"TDX\",\"nextUpdate\":\"2026-09-29T23:23:57Z\"},\"signature\":\"AABBCC\"}",
+      "key": "tcbInfo",
+      "expectedDocument": "{\"id\":\"TDX\",\"nextUpdate\":\"2026-09-29T23:23:57Z\"}",
+      "expectedSignature": "aabbcc",
+      "expectedNextUpdateMs": 1790724237000
+    },
+    {
+      "name": "a brace inside a string does not end the object",
+      "body": "{\"enclaveIdentity\":{\"note\":\"a } brace\",\"n\":1},\"signature\":\"01ff\"}",
+      "key": "enclaveIdentity",
+      "expectedDocument": "{\"note\":\"a } brace\",\"n\":1}",
+      "expectedSignature": "01ff",
+      "expectedNextUpdateMs": null
+    },
+    {
+      "name": "an escaped quote inside a string does not end the string",
+      "body": "{\"tcbInfo\":{\"note\":\"say \\\" then }\",\"nextUpdate\":\"2027-01-02T03:04:05Z\"},\"signature\":\"ab\"}",
+      "key": "tcbInfo",
+      "expectedDocument": "{\"note\":\"say \\\" then }\",\"nextUpdate\":\"2027-01-02T03:04:05Z\"}",
+      "expectedSignature": "ab",
+      "expectedNextUpdateMs": 1798859045000
+    },
+    {
+      "name": "a missing key is an error, never an empty document",
+      "body": "{\"other\":{}}",
+      "key": "tcbInfo",
+      "expectedDocument": null,
+      "expectedSignature": null,
+      "expectedNextUpdateMs": null
+    },
+    {
+      "name": "an unbalanced object is an error",
+      "body": "{\"tcbInfo\":{\"id\":\"TDX\"",
+      "key": "tcbInfo",
+      "expectedDocument": null,
+      "expectedSignature": null,
+      "expectedNextUpdateMs": null
+    }
+  ],
+  "engineWire": {
+    "collateral": {
+      "pck_crl_issuer_chain": "-----BEGIN CERTIFICATE-----\nQUJD\n-----END CERTIFICATE-----\n",
+      "root_ca_crl": "3081aa",
+      "pck_crl": "3081bb",
+      "tcb_info_issuer_chain": "-----BEGIN CERTIFICATE-----\nREVG\n-----END CERTIFICATE-----\n",
+      "tcb_info": "{\"id\":\"TDX\",\"nextUpdate\":\"2026-09-29T23:23:57Z\"}",
+      "tcb_info_signature": "aabbcc",
+      "qe_identity_issuer_chain": "-----BEGIN CERTIFICATE-----\nR0hJ\n-----END CERTIFICATE-----\n",
+      "qe_identity": "{\"id\":\"TD_QE\",\"version\":2}",
+      "qe_identity_signature": "ddeeff",
+      "pck_certificate_chain": "-----BEGIN CERTIFICATE-----\nMIIBAEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWAYKKoZIhvhNAQ0BBAQE3q2+7wYK\nKoZIhvhNAQ0BBAQGIKBvAAAAMDEyMzQ1Njc4OTAxMjM0NQ==\n-----END CERTIFICATE-----\n-----BEGIN CERTIFICATE-----\nMIIBAEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWAYKKoZIhvhNAQ0BBAQG////////\nMDEyMzQ1Njc4OTAxMjM0NQ==\n-----END CERTIFICATE-----"
+    },
+    "requests": [
+      {
+        "name": "omits accepted_tcb_statuses when the caller pinned none",
+        "quote": "abcdef",
+        "nowSecs": 1788000000,
+        "acceptedTcbStatuses": null,
+        "expected": {
+          "v": 1,
+          "quote": "abcdef",
+          "collateral": {
+            "pck_crl_issuer_chain": "-----BEGIN CERTIFICATE-----\nQUJD\n-----END CERTIFICATE-----\n",
+            "root_ca_crl": "3081aa",
+            "pck_crl": "3081bb",
+            "tcb_info_issuer_chain": "-----BEGIN CERTIFICATE-----\nREVG\n-----END CERTIFICATE-----\n",
+            "tcb_info": "{\"id\":\"TDX\",\"nextUpdate\":\"2026-09-29T23:23:57Z\"}",
+            "tcb_info_signature": "aabbcc",
+            "qe_identity_issuer_chain": "-----BEGIN CERTIFICATE-----\nR0hJ\n-----END CERTIFICATE-----\n",
+            "qe_identity": "{\"id\":\"TD_QE\",\"version\":2}",
+            "qe_identity_signature": "ddeeff",
+            "pck_certificate_chain": "-----BEGIN CERTIFICATE-----\nMIIBAEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWAYKKoZIhvhNAQ0BBAQE3q2+7wYK\nKoZIhvhNAQ0BBAQGIKBvAAAAMDEyMzQ1Njc4OTAxMjM0NQ==\n-----END CERTIFICATE-----\n-----BEGIN CERTIFICATE-----\nMIIBAEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWAYKKoZIhvhNAQ0BBAQG////////\nMDEyMzQ1Njc4OTAxMjM0NQ==\n-----END CERTIFICATE-----"
+          },
+          "now_secs": 1788000000
+        }
+      },
+      {
+        "name": "carries the policy's accepted statuses so the engine and the policy agree",
+        "quote": "0011ff",
+        "nowSecs": 1788000123,
+        "acceptedTcbStatuses": [
+          "UpToDate",
+          "SWHardeningNeeded"
+        ],
+        "expected": {
+          "v": 1,
+          "quote": "0011ff",
+          "collateral": {
+            "pck_crl_issuer_chain": "-----BEGIN CERTIFICATE-----\nQUJD\n-----END CERTIFICATE-----\n",
+            "root_ca_crl": "3081aa",
+            "pck_crl": "3081bb",
+            "tcb_info_issuer_chain": "-----BEGIN CERTIFICATE-----\nREVG\n-----END CERTIFICATE-----\n",
+            "tcb_info": "{\"id\":\"TDX\",\"nextUpdate\":\"2026-09-29T23:23:57Z\"}",
+            "tcb_info_signature": "aabbcc",
+            "qe_identity_issuer_chain": "-----BEGIN CERTIFICATE-----\nR0hJ\n-----END CERTIFICATE-----\n",
+            "qe_identity": "{\"id\":\"TD_QE\",\"version\":2}",
+            "qe_identity_signature": "ddeeff",
+            "pck_certificate_chain": "-----BEGIN CERTIFICATE-----\nMIIBAEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWAYKKoZIhvhNAQ0BBAQE3q2+7wYK\nKoZIhvhNAQ0BBAQGIKBvAAAAMDEyMzQ1Njc4OTAxMjM0NQ==\n-----END CERTIFICATE-----\n-----BEGIN CERTIFICATE-----\nMIIBAEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWAYKKoZIhvhNAQ0BBAQG////////\nMDEyMzQ1Njc4OTAxMjM0NQ==\n-----END CERTIFICATE-----"
+          },
+          "now_secs": 1788000123,
+          "accepted_tcb_statuses": [
+            "UpToDate",
+            "SWHardeningNeeded"
+          ]
+        }
+      },
+      {
+        "name": "an empty accepted list is treated as unset, not as accept-nothing",
+        "quote": "00",
+        "nowSecs": 1788000000,
+        "acceptedTcbStatuses": [],
+        "expected": {
+          "v": 1,
+          "quote": "00",
+          "collateral": {
+            "pck_crl_issuer_chain": "-----BEGIN CERTIFICATE-----\nQUJD\n-----END CERTIFICATE-----\n",
+            "root_ca_crl": "3081aa",
+            "pck_crl": "3081bb",
+            "tcb_info_issuer_chain": "-----BEGIN CERTIFICATE-----\nREVG\n-----END CERTIFICATE-----\n",
+            "tcb_info": "{\"id\":\"TDX\",\"nextUpdate\":\"2026-09-29T23:23:57Z\"}",
+            "tcb_info_signature": "aabbcc",
+            "qe_identity_issuer_chain": "-----BEGIN CERTIFICATE-----\nR0hJ\n-----END CERTIFICATE-----\n",
+            "qe_identity": "{\"id\":\"TD_QE\",\"version\":2}",
+            "qe_identity_signature": "ddeeff",
+            "pck_certificate_chain": "-----BEGIN CERTIFICATE-----\nMIIBAEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWAYKKoZIhvhNAQ0BBAQE3q2+7wYK\nKoZIhvhNAQ0BBAQGIKBvAAAAMDEyMzQ1Njc4OTAxMjM0NQ==\n-----END CERTIFICATE-----\n-----BEGIN CERTIFICATE-----\nMIIBAEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWAYKKoZIhvhNAQ0BBAQG////////\nMDEyMzQ1Njc4OTAxMjM0NQ==\n-----END CERTIFICATE-----"
+          },
+          "now_secs": 1788000000
+        }
+      }
+    ],
+    "verdicts": [
+      {
+        "name": "a verified verdict",
+        "stdout": "{\"v\":1,\"verified\":true,\"tcb_status\":\"UpToDate\",\"qe_tcb_status\":\"UpToDate\",\"platform_tcb_status\":\"UpToDate\",\"advisory_ids\":[],\"engine\":\"anonrouter-dcap-verifier/0.1.0 dcap-qvl/0.6.1\"}",
+        "expected": {
+          "verified": true,
+          "tcbStatus": "UpToDate",
+          "qeTcbStatus": "UpToDate",
+          "platformTcbStatus": "UpToDate",
+          "advisoryIds": [],
+          "hasReport": false,
+          "error": null,
+          "engine": "anonrouter-dcap-verifier/0.1.0 dcap-qvl/0.6.1"
+        }
+      },
+      {
+        "name": "a refusal carries its content-free reason and the statuses it did read",
+        "stdout": "{\"v\":1,\"verified\":false,\"tcb_status\":\"OutOfDate\",\"qe_tcb_status\":\"UpToDate\",\"platform_tcb_status\":\"OutOfDate\",\"advisory_ids\":[\"INTEL-SA-00001\"],\"error\":\"tcb status OutOfDate is not accepted\",\"engine\":\"anonrouter-dcap-verifier/0.1.0 dcap-qvl/0.6.1\"}",
+        "expected": {
+          "verified": false,
+          "tcbStatus": "OutOfDate",
+          "qeTcbStatus": "UpToDate",
+          "platformTcbStatus": "OutOfDate",
+          "advisoryIds": [
+            "INTEL-SA-00001"
+          ],
+          "hasReport": false,
+          "error": "tcb status OutOfDate is not accepted",
+          "engine": "anonrouter-dcap-verifier/0.1.0 dcap-qvl/0.6.1"
+        }
+      },
+      {
+        "name": "an unknown engine name still parses; the field is an audit label, not a gate",
+        "stdout": "{\"verified\":true}",
+        "expected": {
+          "verified": true,
+          "tcbStatus": null,
+          "qeTcbStatus": null,
+          "platformTcbStatus": null,
+          "advisoryIds": [],
+          "hasReport": false,
+          "error": null,
+          "engine": "unknown"
+        }
+      },
+      {
+        "name": "REJECTED: verified is the string \"true\"",
+        "stdout": "{\"verified\":\"true\"}",
+        "expected": null
+      },
+      {
+        "name": "REJECTED: verified is 1",
+        "stdout": "{\"verified\":1}",
+        "expected": null
+      },
+      {
+        "name": "REJECTED: verified is missing entirely",
+        "stdout": "{\"tcb_status\":\"UpToDate\"}",
+        "expected": null
+      },
+      {
+        "name": "REJECTED: the verdict is an array",
+        "stdout": "[{\"verified\":true}]",
+        "expected": null
+      },
+      {
+        "name": "REJECTED: output is not JSON",
+        "stdout": "verified",
+        "expected": null
+      },
+      {
+        "name": "REJECTED: no output at all (a crashed or absent engine)",
+        "stdout": "",
+        "expected": null
+      }
+    ]
+  },
+  "platformTargets": [
+    {
+      "platform": "linux",
+      "arch": "x64",
+      "target": "x86_64-unknown-linux-gnu"
+    },
+    {
+      "platform": "linux",
+      "arch": "arm64",
+      "target": "aarch64-unknown-linux-gnu"
+    },
+    {
+      "platform": "darwin",
+      "arch": "x64",
+      "target": "x86_64-apple-darwin"
+    },
+    {
+      "platform": "darwin",
+      "arch": "arm64",
+      "target": "aarch64-apple-darwin"
+    },
+    {
+      "platform": "win32",
+      "arch": "x64",
+      "target": "x86_64-pc-windows-msvc"
+    },
+    {
+      "platform": "linux",
+      "arch": "ia32",
+      "target": null
+    }
+  ]
+}

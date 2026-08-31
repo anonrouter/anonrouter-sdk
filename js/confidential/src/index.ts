@@ -38,7 +38,10 @@ export {
   type GatewayAttestationEvidence,
   type GatewayVerificationExpectations,
   type GatewayVerificationResult,
-  type TdxChainVerifier
+  type TdxChainVerifier,
+  type TdxChainVerifierFactory,
+  type TdxChainVerifierContext,
+  type TdxChainOutcome
 } from "./gateway/verify.js";
 export {
   canonicalGatewayBindingJson,

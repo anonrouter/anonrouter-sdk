@@ -40,3 +40,9 @@ def gateway_binding_vectors() -> dict[str, Any]:
 def state_vectors() -> Any:
     """The stable verdict contract: level mapping and the at_least matrix."""
     return _load("verification-states.json")
+
+
+@pytest.fixture(scope="session")
+def dcap_vectors() -> dict[str, Any]:
+    """The DCAP layer's parity contract: quote parsing, collateral, engine wire."""
+    return _load("dcap.json")

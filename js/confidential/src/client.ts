@@ -51,7 +51,8 @@ import {
   verifyGatewayAttestation,
   type GatewayAttestationEvidence,
   type GatewayVerificationResult,
-  type TdxChainVerifier
+  type TdxChainVerifier,
+  type TdxChainVerifierFactory
 } from "./gateway/verify.js";
 import { transportFor } from "./transport/index.js";
 import { validateE2eeMessages, validateE2eeRequest, type RawTurnMessage } from "./transport/validation.js";
@@ -178,12 +179,58 @@ export interface VerifyGatewayInput {
    */
   observedTlsSpkiSha256?: string | null;
   /**
-   * A DCAP engine that chains the quote's ECDSA signature to Intel's roots. This
-   * package ships none, so without one the honest ceiling is `provider-attested`
-   * and a policy with `requireHardwareVerified` fails closed.
+   * A DCAP engine that chains the quote's ECDSA signature to Intel's roots.
+   *
+   * Pass a FACTORY (the usual case, and what
+   * `createAnonRouterDcapVerifier()` from `@anonrouter/confidential/dcap`
+   * returns) and the client prepares it against the exact quote it just fetched,
+   * handing it the resolved policy's accepted TCB statuses so the engine and the
+   * policy cannot disagree about what "acceptable" means. Pass an already
+   * prepared verifier when you ran the engine yourself.
+   *
+   * This package ships no engine, so without one the honest ceiling is
+   * `provider-attested` and a policy with `requireHardwareVerified` fails closed.
    */
-  chainVerifier?: TdxChainVerifier;
+  chainVerifier?: TdxChainVerifier | TdxChainVerifierFactory;
   signal?: AbortSignal;
+}
+
+/** A factory does I/O before it can answer; a prepared verifier already has. */
+function isChainVerifierFactory(
+  value: TdxChainVerifier | TdxChainVerifierFactory | undefined
+): value is TdxChainVerifierFactory {
+  return value !== undefined && typeof (value as TdxChainVerifierFactory).prepare === "function";
+}
+
+/**
+ * Resolve whichever form the caller supplied into a verifier bound to THIS quote.
+ *
+ * A factory that throws is turned into a refusal rather than an exception: an
+ * engine that could not run is a failed `quote_signature_chain` check, which is
+ * a verdict the caller can read, not a crash that loses every other check.
+ */
+async function prepareChainVerifier(
+  supplied: TdxChainVerifier | TdxChainVerifierFactory | undefined,
+  quote: string,
+  policy: GatewayMeasurementPolicy,
+  nowMs: number,
+  signal?: AbortSignal
+): Promise<TdxChainVerifier | undefined> {
+  if (supplied === undefined) return undefined;
+  if (!isChainVerifierFactory(supplied)) return supplied;
+  try {
+    return await supplied.prepare(quote, {
+      acceptedTcbStatuses: policy.acceptableTcbStatuses,
+      nowMs,
+      signal
+    });
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "chain verifier could not be prepared";
+    return {
+      implementation: "unavailable",
+      verifyChain: () => ({ verified: false, detail })
+    };
+  }
 }
 
 /** Where the policy used for a gateway verdict came from. */
@@ -679,13 +726,21 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
         `${origin} does not expose gateway attestation, so it cannot be shown to run inside a confidential VM.`
       );
     }
+    const now = Date.now();
+    const chainVerifier = await prepareChainVerifier(
+      input.chainVerifier,
+      typeof evidence.quote === "string" ? evidence.quote : "",
+      resolved.policy,
+      now,
+      input.signal
+    );
     const verdict = verifyGatewayAttestation(evidence, {
       nonce,
       origin,
       policy: resolved.policy,
-      now: Date.now(),
+      now,
       observedTlsSpkiSha256: input.observedTlsSpkiSha256,
-      chainVerifier: input.chainVerifier
+      chainVerifier
     });
     return { origin, policy: resolved.provenance, verdict, rawEvidence: evidence };
   }
@@ -718,13 +773,21 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
         policy: resolved.provenance
       };
     }
+    const now = Date.now();
+    const chainVerifier = await prepareChainVerifier(
+      option.chainVerifier,
+      typeof evidence.quote === "string" ? evidence.quote : "",
+      resolved.policy,
+      now,
+      signal
+    );
     const verdict = verifyGatewayAttestation(evidence, {
       nonce,
       origin,
       policy: resolved.policy,
-      now: Date.now(),
+      now,
       observedTlsSpkiSha256: option.observedTlsSpkiSha256,
-      chainVerifier: option.chainVerifier
+      chainVerifier
     });
     return {
       requested: true,

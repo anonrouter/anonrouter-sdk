@@ -61,16 +61,42 @@ _MAX_VM_CONFIG_CHARS = 65_536
 
 
 class TdxChainVerifier(Protocol):
-    """The pluggable port for chaining a TDX quote's ECDSA signature to Intel's
-    roots. This package ships no implementation: supply one (a native DCAP
-    verifier, a remote QVS you trust, Intel's own QVL) to reach
-    ``hardware-verified``."""
+    """The pluggable port for chaining a TDX quote's ECDSA signature to Intel's roots.
+
+    This package ships no engine (see ``gateway.dcap`` for why, and for the official
+    adapter to the reviewed one). Supply an implementation to reach
+    ``hardware-verified``; supply none and a policy demanding it fails closed.
+    """
 
     implementation: str
 
-    def verify_chain(self, quote: str, collateral: Any = None) -> tuple[bool, str | None]:
-        """Return ``(verified, tcb_status)``."""
+    def verify_chain(self, quote: str, collateral: Any = None) -> Any:
+        """Return ``(verified, tcb_status)`` or ``(verified, tcb_status, detail)``.
+
+        The optional third element is a content-free explanation carried into the
+        check's detail, so a refusal names itself: "engine binary not found" and
+        "the signature is invalid" are very different problems.
+        """
         ...
+
+
+def _normalize_chain_outcome(outcome: Any) -> tuple[bool, str | None, str | None]:
+    """Accept a 2- or 3-tuple from a chain verifier.
+
+    The third element was added after the port shipped, so a 2-tuple from an older
+    implementation stays valid. Anything else is a refusal rather than a crash:
+    a malformed outcome must not read as a pass.
+    """
+    if isinstance(outcome, tuple) and len(outcome) >= 2:
+        verified = outcome[0]
+        status = outcome[1]
+        detail = outcome[2] if len(outcome) >= 3 else None
+        return (
+            verified is True,
+            status if isinstance(status, str) else None,
+            detail if isinstance(detail, str) else None,
+        )
+    return False, None, "chain verifier returned a malformed outcome"
 
 
 @dataclass
@@ -489,7 +515,9 @@ def verify_gateway_attestation(
     tcb_status: str | None = None
     chain_verified = False
     if chain_verifier is not None:
-        engine_verified, tcb_status = chain_verifier.verify_chain(str(doc.get("quote")), None)
+        engine_verified, tcb_status, chain_detail = _normalize_chain_outcome(
+            chain_verifier.verify_chain(str(doc.get("quote")), None)
+        )
         # The TCB status is enforced against the policy EVEN WHEN the verifier said
         # verified. A quote can chain perfectly to Intel's roots while the platform
         # holding your data has known unpatched vulnerabilities, and an engine's own
@@ -503,7 +531,11 @@ def verify_gateway_attestation(
                 "quote_signature_chain",
                 bool(engine_verified),
                 True,
-                f"tcb={tcb_status}" if tcb_status else "chain verifier reported no TCB status",
+                # The engine's own reason first: "engine binary not found" and "the
+                # signature is invalid" are very different problems and a bare
+                # "no TCB status" would hide which one a reader is looking at.
+                chain_detail
+                or (f"tcb={tcb_status}" if tcb_status else "chain verifier reported no TCB status"),
             )
         )
         checks.append(
