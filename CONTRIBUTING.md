@@ -124,14 +124,23 @@ engine, not a test fixup.
 
 ### Regenerating the verdict vectors
 
-`shared/vectors/attestation.json` is generated, not hand-written. Every case is run
-through the real verifier and whatever it returns is recorded, so the file always
-describes actual behavior:
+`shared/vectors/attestation.json` (hop 2) and `shared/vectors/gateway-verdicts.json`
+(hop 1) are generated, not hand-written. Every case is run through the real
+verifier and whatever it returns is recorded, so the files always describe actual
+behavior:
 
 ```bash
 cd js/confidential
-npm run gen:attestation-vectors   # requires openssl on PATH
+npm run gen:attestation-vectors        # hop 2; requires openssl on PATH
+npm run gen:gateway-verdict-vectors    # hop 1
 ```
+
+`gateway-verdicts.json` stores each case as a DIFF from one base document, and the
+generator asserts that merging the diff reproduces the exact bytes it verified, so
+the merge rule the two suites implement is pinned by construction. Forty cases: the
+baseline, the V2 event-log form, every tamper, every policy pin, and the chain and
+TCB outcomes. Cases that PASS are as load-bearing as the failures, because they are
+what stops a change from making everything fail.
 
 Read the resulting diff carefully. A changed expectation is a changed security
 decision, not a test fixup. If a case flips from `failed` to `ok`, or a check

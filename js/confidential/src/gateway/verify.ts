@@ -46,7 +46,13 @@ import {
   type GatewayAttestationBinding
 } from "./binding.js";
 import { readAttestedAppCompose, type AttestedAppCompose } from "./appCompose.js";
-import { inconsistentRtmr3Events, parseEventLog, replayRtmrs, singleEventPayload } from "./eventLog.js";
+import {
+  inconsistentRtmr3Events,
+  parseEventLog,
+  replayRtmrs,
+  singleEventPayload,
+  type DstackEventLogEntry
+} from "./eventLog.js";
 import type { GatewayMeasurementPolicy } from "./policy.js";
 
 /** A vm_config blob is bounded so a hostile response cannot pin the CPU parsing it. */
@@ -283,8 +289,9 @@ export function verifyGatewayAttestation(
   let keyProviderEvent: string | null = null;
   let osImageHashEvent: string | null = null;
   let eventLogRead = false;
+  let events: DstackEventLogEntry[] | null = null;
   try {
-    const events = parseEventLog(evidence.event_log);
+    events = parseEventLog(evidence.event_log);
     const replayed = replayRtmrs(events);
     const replays = hexEqual(replayed[0], quote.rtmr0)
       && hexEqual(replayed[1], quote.rtmr1)
@@ -303,17 +310,38 @@ export function verifyGatewayAttestation(
       true,
       inconsistent.length > 0 ? `${inconsistent.length} RTMR3 event(s) with a non-committing digest` : undefined
     ));
-
-    composeHashEvent = singleEventPayload(events, "compose-hash");
-    instanceIdEvent = singleEventPayload(events, "instance-id");
-    appIdEvent = singleEventPayload(events, "app-id");
-    keyProviderEvent = singleEventPayload(events, "key-provider");
-    osImageHashEvent = singleEventPayload(events, "os-image-hash");
-    eventLogRead = true;
   } catch (error) {
     const detail = error instanceof Error ? error.message : undefined;
     checks.push(check("event_log_replays_rtmrs", false, true, detail));
     checks.push(check("event_digests_commit_to_payloads", false, true, detail));
+    events = null;
+  }
+
+  // Reading the named identities is a SEPARATE step with its own failure mode.
+  // `singleEventPayload` throws when an event appears twice, and folding that into
+  // the block above pushed `event_log_replays_rtmrs` a second time, so a verdict
+  // could carry the same check name twice with different outcomes. A caller
+  // looking one up by name would find the passing copy and never see the failure.
+  if (events !== null) {
+    try {
+      composeHashEvent = singleEventPayload(events, "compose-hash");
+      instanceIdEvent = singleEventPayload(events, "instance-id");
+      appIdEvent = singleEventPayload(events, "app-id");
+      keyProviderEvent = singleEventPayload(events, "key-provider");
+      osImageHashEvent = singleEventPayload(events, "os-image-hash");
+      eventLogRead = true;
+    } catch {
+      // A duplicated or self-inconsistent named event makes EVERY identity read
+      // out of this log unusable, not just the one that threw. Leaving them null
+      // with `eventLogRead` false is what makes the dependent checks fail rather
+      // than treating an absence as agreement.
+      composeHashEvent = null;
+      instanceIdEvent = null;
+      appIdEvent = null;
+      keyProviderEvent = null;
+      osImageHashEvent = null;
+      eventLogRead = false;
+    }
   }
 
   // The compose hash the TD asserted in the binding must be the one hardware

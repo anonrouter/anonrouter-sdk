@@ -43,7 +43,9 @@
     "example:verify-then-call": "tsx examples/verify-then-call.ts",
     "example:chat-e2ee": "tsx examples/chat-e2ee.ts",
     "gen:attestation-vectors": "tsx scripts/gen-attestation-vectors.ts",
-    "gen:gateway-binding-vectors": "tsx scripts/gen-gateway-binding-vectors.ts"
+    "gen:gateway-binding-vectors": "tsx scripts/gen-gateway-binding-vectors.ts",
+    "gen:gateway-verdict-vectors": "tsx scripts/gen-gateway-verdict-vectors.ts",
+    "gen:dcap-vectors": "tsx scripts/gen-dcap-vectors.ts"
   },
   "keywords": ["anonrouter", "tee", "e2ee", "attestation", "confidential", "tdx", "ml-kem", "verify"],
   "dependencies": {

@@ -61,20 +61,23 @@ function freshNonce(): string {
 }
 
 /**
- * Fetch one evidence document, retrying only TRANSPORT failures.
+ * Fetch one evidence document, retrying only what is safe to retry.
  *
- * A confidential VM is a small machine and a suite this size opens a lot of TLS
- * connections in a few seconds; a dropped handshake is a fact about the network,
- * not about the evidence. Retrying it is safe precisely because nothing about the
- * verification is relaxed: the nonce still has to come back inside the quote, so
- * a retry that produced a document for a different challenge would fail exactly
- * as it should. An HTTP error status is NOT retried, because that is the server
- * answering.
+ * Two things are retried and nothing else. A dropped connection is a fact about
+ * the network, not about the evidence: a suite this size opens many TLS
+ * connections in a few seconds against a 2-vCPU machine. And a 429 is the server
+ * explicitly saying "later", which is a scheduling answer rather than a
+ * verification one.
+ *
+ * Retrying is safe precisely because nothing about the verification is relaxed:
+ * the nonce still has to come back inside the quote, so a retry that produced a
+ * document for a different challenge would fail exactly as it should. Every other
+ * status is the server answering and is thrown.
  */
-async function fetchLive(origin: string, nonce: string, attempts = 3): Promise<GatewayAttestationEvidence> {
+async function fetchLive(origin: string, nonce: string, attempts = 5): Promise<GatewayAttestationEvidence> {
   let lastError: unknown;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
-    if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
+    if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 500 * 2 ** attempt));
     let response: Response;
     try {
       response = await fetch(`${origin}/v1/gateway/attestation?nonce=${nonce}`, {
@@ -82,6 +85,14 @@ async function fetchLive(origin: string, nonce: string, attempts = 3): Promise<G
       });
     } catch (error) {
       lastError = error;
+      continue;
+    }
+    if (response.status === 429) {
+      lastError = new Error("rate limited");
+      const retryAfter = Number(response.headers.get("retry-after"));
+      if (Number.isFinite(retryAfter) && retryAfter > 0) {
+        await new Promise((resolve) => setTimeout(resolve, Math.min(retryAfter, 10) * 1000));
+      }
       continue;
     }
     if (!response.ok) throw new Error(`live gateway returned ${response.status}`);
@@ -134,6 +145,40 @@ function setDebugBit(quoteHex: string): string {
   return quoteHex.slice(0, at) + byte.toString(16).padStart(2, "0") + quoteHex.slice(at + 2);
 }
 
+/**
+ * TWO documents for the whole file, fetched once.
+ *
+ * A confidential VM is a small machine, and asking it for a fresh document per
+ * test hammers it hard enough to be rate limited, which tests the network rather
+ * than the verifier. Two is the minimum that keeps every property below
+ * reachable: one to verify and tamper with, and a second bound to a DIFFERENT
+ * challenge, which is what proves the TD quoted each nonce rather than replaying
+ * a recording. Freshness is asserted explicitly rather than assumed from the
+ * number of fetches.
+ */
+interface LiveDocument {
+  nonce: string;
+  doc: GatewayAttestationEvidence;
+  binding: GatewayAttestationBinding;
+}
+
+let first: LiveDocument;
+let second: LiveDocument;
+
+async function loadDocument(origin: string): Promise<LiveDocument> {
+  const nonce = freshNonce();
+  const doc = await fetchLive(origin, nonce);
+  return { nonce, doc, binding: normalizeGatewayBinding(doc.binding) };
+}
+
+if (LIVE_ORIGIN) {
+  beforeAll(async () => {
+    // Sequential on purpose: parallel requests test the network, not the property.
+    first = await loadDocument(LIVE_ORIGIN);
+    second = await loadDocument(LIVE_ORIGIN);
+  }, 120_000);
+}
+
 // ---- Readiness: always runs, no hardware required ---------------------------
 
 describe("live-CVM readiness", () => {
@@ -180,92 +225,78 @@ describe("live-CVM readiness", () => {
 describeLive("live confidential VM", () => {
   const origin = LIVE_ORIGIN!;
 
-  it("serves a document bound to OUR fresh nonce", async () => {
-    const nonce = freshNonce();
-    const doc = await fetchLive(origin, nonce);
-    const binding = normalizeGatewayBinding(doc.binding);
-    expect(binding.nonce).toBe(nonce);
-    expect(binding.origin).toBe(origin);
-  }, 30_000);
+  it("serves a document bound to OUR fresh nonce", () => {
+    expect(first.binding.nonce).toBe(first.nonce);
+    expect(first.binding.origin).toBe(origin);
+    expect(second.binding.nonce).toBe(second.nonce);
+    expect(first.nonce).not.toBe(second.nonce);
+  });
 
-  it("answers two different challenges with two different documents", async () => {
-    // A recorded document replayed to everyone would answer the first case above
-    // just as well. Two fresh nonces must produce two different report_data
-    // values, which is only possible if the TD quoted each challenge.
-    // Sequential on purpose: a CVM is a small machine, and hammering it in
-    // parallel tests the network rather than the property.
-    const first = await fetchLive(origin, freshNonce());
-    const second = await fetchLive(origin, freshNonce());
-    const a = parseTdxQuote(first.quote)!;
-    const b = parseTdxQuote(second.quote)!;
+  it("answers two different challenges with two different documents", () => {
+    // A recorded document replayed to everyone would answer the case above just
+    // as well. Two nonces must produce two different report_data values, which is
+    // only possible if the TD quoted each challenge.
+    const a = parseTdxQuote(first.doc.quote)!;
+    const b = parseTdxQuote(second.doc.quote)!;
     expect(a.reportData).not.toBe(b.reportData);
     // ...while the MEASUREMENTS stay identical, because it is the same TD.
     expect(a.mrTd).toBe(b.mrTd);
     expect(a.rtmr0).toBe(b.rtmr0);
-  }, 30_000);
+    expect(a.rtmr3).toBe(b.rtmr3);
+  });
 
-  it("returns a real, non-debug Intel TDX quote whose report_data commits to the binding", async () => {
-    const nonce = freshNonce();
-    const doc = await fetchLive(origin, nonce);
-    const quote = parseTdxQuote(doc.quote);
-    expect(quote).not.toBeNull();
-    expect(quote!.teeType).toBe(TDX_TEE_TYPE);
-    expect(quote!.debugEnabled).toBe(false);
-    // The load-bearing one: our canonical serialization must reproduce exactly
-    // what the TD hashed into report_data, on real hardware output.
-    expect(quote!.reportData).toBe(gatewayBindingHash(normalizeGatewayBinding(doc.binding)));
-  }, 30_000);
+  it("returns a real, non-debug Intel TDX quote whose report_data commits to the binding", () => {
+    for (const document of [first, second]) {
+      const quote = parseTdxQuote(document.doc.quote);
+      expect(quote).not.toBeNull();
+      expect(quote!.teeType).toBe(TDX_TEE_TYPE);
+      expect(quote!.debugEnabled).toBe(false);
+      // The load-bearing one: our canonical serialization must reproduce exactly
+      // what the TD hashed into report_data, on real hardware output.
+      expect(quote!.reportData).toBe(gatewayBindingHash(document.binding));
+    }
+  });
 
-  it("has an event log that replays to the hardware registers", async () => {
-    const nonce = freshNonce();
-    const doc = await fetchLive(origin, nonce);
-    const quote = parseTdxQuote(doc.quote)!;
-    const replayed = replayRtmrs(parseEventLog(doc.event_log));
+  it("has an event log that replays to the hardware registers", () => {
+    const quote = parseTdxQuote(first.doc.quote)!;
+    const replayed = replayRtmrs(parseEventLog(first.doc.event_log));
     expect(replayed[0]).toBe(quote.rtmr0);
     expect(replayed[1]).toBe(quote.rtmr1);
     expect(replayed[2]).toBe(quote.rtmr2);
     expect(replayed[3]).toBe(quote.rtmr3);
-  }, 30_000);
+  });
 
-  it("caps the verdict at cryptographically_checked without a DCAP engine", async () => {
+  it("caps the verdict at cryptographically_checked without a DCAP engine", () => {
     // Even against genuine hardware, no vendor-root chain means no
     // hardware_verified. This is the claim discipline the SDK exists to keep.
-    const nonce = freshNonce();
-    const doc = await fetchLive(origin, nonce);
-    const binding = normalizeGatewayBinding(doc.binding);
-    const result = verifyGatewayAttestation(doc, {
-      nonce, origin: binding.origin, policy: policyFrom(binding), now: Date.now()
+    const result = verifyGatewayAttestation(first.doc, {
+      nonce: first.nonce, origin: first.binding.origin,
+      policy: policyFrom(first.binding), now: Date.now()
     });
     expect(result.status).toBe("ok");
     expect(result.verificationLevel).toBe("provider-attested");
     expect(result.verificationLevel).not.toBe("hardware-verified");
-  }, 30_000);
+  });
 });
 
 // ---- Live negatives: one genuine document, one change at a time -------------
 
 describeLive("live confidential VM, negatives", () => {
-  const origin = LIVE_ORIGIN!;
-  let nonce: string;
-  let doc: GatewayAttestationEvidence;
-  let binding: GatewayAttestationBinding;
-  let policy: GatewayMeasurementPolicy;
-
-  beforeAll(async () => {
-    nonce = freshNonce();
-    doc = await fetchLive(origin, nonce);
-    binding = normalizeGatewayBinding(doc.binding);
-    policy = policyFrom(binding);
-  }, 30_000);
+  // The same genuine document every case starts from, so a failure below is
+  // caused by the one field that case changed and nothing else.
+  const nonce = () => first.nonce;
+  const doc = () => first.doc;
+  const binding = () => first.binding;
+  const policy = () => policyFrom(first.binding);
 
   /** Verify a locally modified copy of the genuine document. */
   function verifyMutated(
     mutate: (copy: GatewayAttestationEvidence) => GatewayAttestationEvidence,
     expectations: Partial<Parameters<typeof verifyGatewayAttestation>[1]> = {}
   ) {
-    const copy = mutate(JSON.parse(JSON.stringify(doc)) as GatewayAttestationEvidence);
+    const copy = mutate(JSON.parse(JSON.stringify(doc())) as GatewayAttestationEvidence);
     return verifyGatewayAttestation(copy, {
-      nonce, origin: binding.origin, policy, now: Date.now(), ...expectations
+      nonce: nonce(), origin: binding().origin, policy: policy(), now: Date.now(), ...expectations
     });
   }
 
@@ -409,10 +440,10 @@ describeLive("live confidential VM, negatives", () => {
   });
 
   it("STALE EVIDENCE: an old document fails when the policy requires freshness", () => {
-    const result = verifyGatewayAttestation(doc, {
-      nonce,
-      origin: binding.origin,
-      policy: policyFrom(binding, { requireEvidenceExpiry: true, maxEvidenceAgeMs: 1000 }),
+    const result = verifyGatewayAttestation(doc(), {
+      nonce: nonce(),
+      origin: binding().origin,
+      policy: policyFrom(binding(), { requireEvidenceExpiry: true, maxEvidenceAgeMs: 1000 }),
       now: Date.now() + 3_600_000
     });
     expect(result.status).toBe("failed");
@@ -420,10 +451,10 @@ describeLive("live confidential VM, negatives", () => {
   });
 
   it("WRONG CERTIFICATE: an observed SPKI the TD did not attest is refused", () => {
-    const result = verifyGatewayAttestation(doc, {
-      nonce,
-      origin: binding.origin,
-      policy: policyFrom(binding, { requireInTeeTls: true }),
+    const result = verifyGatewayAttestation(doc(), {
+      nonce: nonce(),
+      origin: binding().origin,
+      policy: policyFrom(binding(), { requireInTeeTls: true }),
       now: Date.now(),
       observedTlsSpkiSha256: "cd".repeat(32)
     });
@@ -432,10 +463,10 @@ describeLive("live confidential VM, negatives", () => {
   });
 
   it("WRONG KEY PROVIDER: a different KMS is a different trust domain", () => {
-    const result = verifyGatewayAttestation(doc, {
-      nonce,
-      origin: binding.origin,
-      policy: policyFrom(binding, { keyProviderId: "ab".repeat(32) }),
+    const result = verifyGatewayAttestation(doc(), {
+      nonce: nonce(),
+      origin: binding().origin,
+      policy: policyFrom(binding(), { keyProviderId: "ab".repeat(32) }),
       now: Date.now()
     });
     expect(result.status).toBe("failed");
@@ -443,10 +474,10 @@ describeLive("live confidential VM, negatives", () => {
   });
 
   it("WRONG PLATFORM PIN: measurements that do not match are refused", () => {
-    const result = verifyGatewayAttestation(doc, {
-      nonce,
-      origin: binding.origin,
-      policy: policyFrom(binding, {
+    const result = verifyGatewayAttestation(doc(), {
+      nonce: nonce(),
+      origin: binding().origin,
+      policy: policyFrom(binding(), {
         platform: {
           mrTd: ["ab".repeat(48)], mrConfigId: ["ab".repeat(48)],
           rtmr0: ["ab".repeat(48)], rtmr1: ["ab".repeat(48)], rtmr2: ["ab".repeat(48)],
@@ -470,17 +501,15 @@ describeLive("the shipped pin against the live plane", () => {
     expect(pinnedGatewayPolicyFor(origin)).toBeUndefined();
   });
 
-  it("every CRYPTOGRAPHIC check passes under the shipped pin, whether or not the pin is current", async () => {
+  it("every CRYPTOGRAPHIC check passes under the shipped pin, whether or not the pin is current", () => {
     // The invariant worth asserting live, and it survives a future pin refresh:
     // a stale pin must fail ONLY on the policy checks. If a structural or
     // cryptographic check ever failed against real hardware, the verifier and the
     // hardware disagree, which is a defect rather than a stale allowlist.
     const entry = pinnedGatewayPolicyFor(origin, { allowCandidate: true });
     if (!entry) return; // nothing shipped for this origin; the case above covers that
-    const nonce = freshNonce();
-    const doc = await fetchLive(origin, nonce);
-    const result = verifyGatewayAttestation(doc, {
-      nonce, origin, policy: entry.policy, now: Date.now()
+    const result = verifyGatewayAttestation(first.doc, {
+      nonce: first.nonce, origin, policy: entry.policy, now: Date.now()
     });
     const policyChecks = new Set([
       "app_id_pinned", "compose_hash_pinned", "release_pinned", "origin_pinned",
@@ -493,7 +522,7 @@ describeLive("the shipped pin against the live plane", () => {
       .filter((c) => c.required && !c.passed && !policyChecks.has(c.name))
       .map((c) => `${c.name}${c.detail ? ` (${c.detail})` : ""}`);
     expect(unexpected).toEqual([]);
-  }, 30_000);
+  });
 });
 
 // ---- Live + engine: the full chain to Intel's roots -------------------------
@@ -502,16 +531,13 @@ describeHardware("live confidential VM with the reviewed DCAP engine", () => {
   const origin = LIVE_ORIGIN!;
 
   it("reaches hardware_verified with an acceptable TCB", async () => {
-    const nonce = freshNonce();
-    const doc = await fetchLive(origin, nonce);
-    const binding = normalizeGatewayBinding(doc.binding);
-    const policy = policyFrom(binding, { requireHardwareVerified: true });
-    const verifier = await createAnonRouterDcapVerifier().prepare(String(doc.quote), {
+    const policy = policyFrom(first.binding, { requireHardwareVerified: true });
+    const verifier = await createAnonRouterDcapVerifier().prepare(String(first.doc.quote), {
       acceptedTcbStatuses: policy.acceptableTcbStatuses,
       nowMs: Date.now()
     });
-    const result = verifyGatewayAttestation(doc, {
-      nonce, origin: binding.origin, policy, now: Date.now(), chainVerifier: verifier
+    const result = verifyGatewayAttestation(first.doc, {
+      nonce: first.nonce, origin: first.binding.origin, policy, now: Date.now(), chainVerifier: verifier
     });
     expect(result.status).toBe("ok");
     expect(result.verificationLevel).toBe("hardware-verified");
@@ -522,11 +548,9 @@ describeHardware("live confidential VM with the reviewed DCAP engine", () => {
     // The check no amount of structural verification can make: this quote is
     // internally consistent right up to the ECDSA signature, and only the chain
     // to Intel's roots catches it.
-    const nonce = freshNonce();
-    const doc = await fetchLive(origin, nonce);
-    // Flip a byte in mr_td. report_data still matches the binding, the event log
-    // still replays... no. Flip inside the SIGNED body and let the engine speak.
-    const tampered = flipQuoteByte(String(doc.quote), 184);
+    // Flip a byte inside the SIGNED body and let the engine speak: this quote is
+    // internally consistent to every structural check and only the chain catches it.
+    const tampered = flipQuoteByte(String(first.doc.quote), 184);
     const verifier = await createAnonRouterDcapVerifier().prepare(tampered, {
       acceptedTcbStatuses: ["UpToDate"],
       nowMs: Date.now()
@@ -536,34 +560,30 @@ describeHardware("live confidential VM with the reviewed DCAP engine", () => {
   }, 60_000);
 
   it("a verifier prepared for the live quote refuses a different one", async () => {
-    const nonce = freshNonce();
-    const doc = await fetchLive(origin, nonce);
-    const verifier = await createAnonRouterDcapVerifier().prepare(String(doc.quote), {
+    // Both quotes are genuine and come from the same machine. A prepared verifier
+    // that answered for either would let one challenge's pass launder another's.
+    const verifier = await createAnonRouterDcapVerifier().prepare(String(first.doc.quote), {
       acceptedTcbStatuses: ["UpToDate"],
       nowMs: Date.now()
     });
-    expect(verifier.verifyChain(String(doc.quote)).verified).toBe(true);
-    const other = await fetchLive(origin, freshNonce());
-    expect(verifier.verifyChain(String(other.quote)).verified).toBe(false);
+    expect(verifier.verifyChain(String(first.doc.quote)).verified).toBe(true);
+    expect(verifier.verifyChain(String(second.doc.quote)).verified).toBe(false);
   }, 60_000);
 
   it("refuses when the policy accepts no TCB status the platform can report", async () => {
     // The case that separates "the signature is genuine" from "this machine is
     // safe to hand data to". Both are required; neither implies the other.
-    const nonce = freshNonce();
-    const doc = await fetchLive(origin, nonce);
-    const binding = normalizeGatewayBinding(doc.binding);
-    const policy = policyFrom(binding, {
+    const policy = policyFrom(first.binding, {
       requireHardwareVerified: true,
       acceptableTcbStatuses: ["Revoked"]
     });
-    const verifier = await createAnonRouterDcapVerifier().prepare(String(doc.quote), {
+    const verifier = await createAnonRouterDcapVerifier().prepare(String(first.doc.quote), {
       // The engine is told the same list, so it refuses too. Both layers gate.
       acceptedTcbStatuses: policy.acceptableTcbStatuses,
       nowMs: Date.now()
     });
-    const result = verifyGatewayAttestation(doc, {
-      nonce, origin: binding.origin, policy, now: Date.now(), chainVerifier: verifier
+    const result = verifyGatewayAttestation(first.doc, {
+      nonce: first.nonce, origin: first.binding.origin, policy, now: Date.now(), chainVerifier: verifier
     });
     expect(result.status).toBe("failed");
     expect(result.checks.find((c) => c.name === "tcb_status_acceptable")!.passed).toBe(false);

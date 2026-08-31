@@ -266,6 +266,7 @@ def verify_gateway_attestation(
     key_provider_event: str | None = None
     os_image_hash_event: str | None = None
     event_log_read = False
+    events: list[Any] | None = None
     try:
         events = parse_event_log(doc.get("event_log"))
         replayed = replay_rtmrs(events)
@@ -293,15 +294,36 @@ def verify_gateway_attestation(
             )
         )
 
-        compose_hash_event = single_event_payload(events, "compose-hash")
-        instance_id_event = single_event_payload(events, "instance-id")
-        app_id_event = single_event_payload(events, "app-id")
-        key_provider_event = single_event_payload(events, "key-provider")
-        os_image_hash_event = single_event_payload(events, "os-image-hash")
-        event_log_read = True
     except ValueError as exc:
         checks.append(check("event_log_replays_rtmrs", False, True, str(exc)))
         checks.append(check("event_digests_commit_to_payloads", False, True, str(exc)))
+        events = None
+
+    # Reading the named identities is a SEPARATE step with its own failure mode.
+    # ``single_event_payload`` raises when an event appears twice, and folding that
+    # into the block above appended ``event_log_replays_rtmrs`` a second time, so a
+    # verdict could carry the same check name twice with different outcomes. A
+    # caller looking one up by name would find the passing copy and never see the
+    # failure.
+    if events is not None:
+        try:
+            compose_hash_event = single_event_payload(events, "compose-hash")
+            instance_id_event = single_event_payload(events, "instance-id")
+            app_id_event = single_event_payload(events, "app-id")
+            key_provider_event = single_event_payload(events, "key-provider")
+            os_image_hash_event = single_event_payload(events, "os-image-hash")
+            event_log_read = True
+        except ValueError:
+            # A duplicated or self-inconsistent named event makes EVERY identity
+            # read out of this log unusable, not just the one that raised. Leaving
+            # them None with ``event_log_read`` False is what makes the dependent
+            # checks fail rather than treating an absence as agreement.
+            compose_hash_event = None
+            instance_id_event = None
+            app_id_event = None
+            key_provider_event = None
+            os_image_hash_event = None
+            event_log_read = False
 
     # The compose hash the TD asserted in the binding must be the one hardware
     # measured. Without this the binding could name any configuration it liked.

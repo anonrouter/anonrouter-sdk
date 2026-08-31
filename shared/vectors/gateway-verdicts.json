@@ -1,0 +1,1388 @@
+{
+  "_readme": [
+    "Complete hop 1 verdicts, loaded identically by the JS and Python suites.",
+    "",
+    "HOW TO READ A CASE. Start from `base`, apply the case's `evidence` overrides,",
+    "delete the keys in `evidenceRemoved`, and do the same for `policy` and",
+    "`expectations`. The merge is shallow, and the removal lists exist because JSON",
+    "cannot express 'absent' while an evidence document with no issued_at_ms is a case",
+    "that has to be reachable. The generator asserts that merging reproduces the exact",
+    "bytes it verified, so the rule is pinned rather than assumed.",
+    "",
+    "attestation.json does this for hop 2. Without an equivalent here, the two",
+    "languages agreed about the binding digest and the quote parse but nothing pinned",
+    "the VERDICT: which checks are required, what a failure is called, and which single",
+    "check a given tamper is supposed to fail. A change landing in one language and not",
+    "the other could pass both suites.",
+    "",
+    "Each case carries a COMPLETE evidence document, so both languages verify the same",
+    "bytes rather than each rebuilding a fixture and hoping the two agree. Most cases",
+    "change exactly one thing from the baseline, and the expectation names the exact",
+    "check that change is supposed to fail. Cases that PASS are as load-bearing as the",
+    "failures: they are what stops a change from making everything fail.",
+    "",
+    "`chainVerifier` is a stub each language constructs locally from the recorded",
+    "{verified, tcbStatus}, because a verifier is code and cannot be serialized. It is",
+    "how the TCB cases are reachable without an engine.",
+    "",
+    "`observedTlsSpki.supplied` distinguishes 'not observed' from 'observed and there",
+    "is none'. Python has no `undefined`, so the two are separated explicitly rather",
+    "than collapsed into null, which would silently turn an unmet gap into a mismatch.",
+    "",
+    "Regenerate with: npx tsx scripts/gen-gateway-verdict-vectors.ts (in js/confidential).",
+    "A changed expectation is a changed security decision, not a test fixup."
+  ],
+  "bindingVersion": 1,
+  "base": {
+    "evidence": {
+      "binding": {
+        "v": 1,
+        "nonce": "9999999999999999999999999999999999999999999999999999999999999999",
+        "app_id": "0123456789abcdef0123456789abcdef01234567",
+        "instance_id": "fedcba9876543210fedcba9876543210fedcba98",
+        "compose_hash": "18270c62cd087a55b2ae2a7ff997c3f00768e887969efbd09a90342755dd63a5",
+        "release_id": "anonrouter-tee@c7b32e0",
+        "origin": "https://tee.anonrouter.ai",
+        "key_alg": "x25519",
+        "public_key": "abababababababababababababababababababababababababababababababab",
+        "transport": "in-tee-tls",
+        "tls_spki_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "quote": "040002008100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f02abababababababababababababababababababababababababababababababab000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000eded6a091e636b51828d4086a2a2cda3fa96c11bddbf00b3d1a4981ae24d5c063558f54e38fb25fa143139f005323e911eeb6482aa8e9f78d63bfcc444355072a3fbcfa80a234dfe66e86de8fe768831fc5e909fd47f40c2f803b321778f52f8c2c98e8618f07417936f9576b7b46792886a0856ce9a05b131d5693e7335661a2ff2eb5e5519c67e8ffb3233789a382f8d4ee70ae9c05c736260867389644bff77d6a9fa84353124f370e5f80788e5622898939887b37d26fe9e2547ed2b7bb483e1574713f07ca251138b9282c194fed9e4c84a6f59ea5ec1c43db802ff1f0ecce3abffff8f6d659d659cc68778354359282ae8be3316263fbfb19ff72758cc",
+      "event_log": "[{\"imr\":0,\"event_type\":2147483659,\"digest\":\"1af8ef59e9a847e8360e6a07afa3663f49720970bc47d5cfd537b38ba019e6cc0c5f188edde9805c5e573d11b42904ae\",\"event\":\"\",\"event_payload\":\"\"},{\"imr\":1,\"event_type\":2147483659,\"digest\":\"e1685b6426d9c5be8691ff8f95eacdc11753355667394aa23124570b14baf68ab322a3aaeb3c599c448ad5016c709a49\",\"event\":\"\",\"event_payload\":\"\"},{\"imr\":2,\"event_type\":2147483659,\"digest\":\"57a32a0f5f85ff930383ddc151002e81057f1b2f73a4d2b6d631b24c9db8c4bf451cf5f3ff629b82a6cd8fa412545278\",\"event\":\"\",\"event_payload\":\"\"},{\"imr\":3,\"event_type\":134217729,\"digest\":\"\",\"event\":\"system-preparing\",\"event_payload\":\"\"},{\"imr\":3,\"event_type\":134217729,\"digest\":\"\",\"event\":\"app-id\",\"event_payload\":\"0123456789abcdef0123456789abcdef01234567\"},{\"imr\":3,\"event_type\":134217729,\"digest\":\"\",\"event\":\"compose-hash\",\"event_payload\":\"18270c62cd087a55b2ae2a7ff997c3f00768e887969efbd09a90342755dd63a5\"},{\"imr\":3,\"event_type\":134217729,\"digest\":\"\",\"event\":\"instance-id\",\"event_payload\":\"fedcba9876543210fedcba9876543210fedcba98\"},{\"imr\":3,\"event_type\":134217729,\"digest\":\"\",\"event\":\"os-image-hash\",\"event_payload\":\"dededededededededededededededededededededededededededededededede\"},{\"imr\":3,\"event_type\":134217729,\"digest\":\"\",\"event\":\"key-provider\",\"event_payload\":\"7b226e616d65223a226b6d73222c226964223a22616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d\"}]",
+      "app_compose": "{\"manifest_version\":2,\"name\":\"anonrouter-tee\",\"runner\":\"docker-compose\",\"docker_compose_file\":\"services:\\n  relay:\\n    image: ghcr.io/example/anonrouter@sha256:1111111111111111111111111111111111111111111111111111111111111111\\n    read_only: true\\n  gateway-attestation:\\n    image: ghcr.io/example/anonrouter@sha256:2222222222222222222222222222222222222222222222222222222222222222\",\"public_logs\":false,\"public_sysinfo\":false,\"kms_enabled\":true,\"gateway_enabled\":true}",
+      "vm_config": "{\"os_image_hash\":\"dededededededededededededededededededededededededededededededede\",\"cpu_count\":1,\"memory_size\":2147483648,\"spec_version\":1}",
+      "issued_at_ms": 1759999999000
+    },
+    "policy": {
+      "source": "anonrouter-sdk@gateway-verdict-vectors",
+      "version": "1",
+      "origins": [
+        "https://tee.anonrouter.ai"
+      ],
+      "appIds": [
+        "0123456789abcdef0123456789abcdef01234567"
+      ],
+      "composeHashes": [
+        "18270c62cd087a55b2ae2a7ff997c3f00768e887969efbd09a90342755dd63a5"
+      ],
+      "releaseIds": [
+        "anonrouter-tee@c7b32e0"
+      ],
+      "keyProviderId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "platform": {
+        "mrTd": [
+          "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f"
+        ],
+        "mrConfigId": [
+          "02abababababababababababababababababababababababababababababababab000000000000000000000000000000"
+        ],
+        "rtmr0": [
+          "eded6a091e636b51828d4086a2a2cda3fa96c11bddbf00b3d1a4981ae24d5c063558f54e38fb25fa143139f005323e91"
+        ],
+        "rtmr1": [
+          "1eeb6482aa8e9f78d63bfcc444355072a3fbcfa80a234dfe66e86de8fe768831fc5e909fd47f40c2f803b321778f52f8"
+        ],
+        "rtmr2": [
+          "c2c98e8618f07417936f9576b7b46792886a0856ce9a05b131d5693e7335661a2ff2eb5e5519c67e8ffb3233789a382f"
+        ],
+        "osImageHash": [
+          "dededededededededededededededededededededededededededededededede"
+        ]
+      },
+      "requireInTeeTls": false,
+      "requirePrivateLogs": true,
+      "requireDigestPinnedImages": true,
+      "requireHardwareVerified": false,
+      "acceptableTcbStatuses": [
+        "UpToDate"
+      ],
+      "requireEvidenceExpiry": true,
+      "maxEvidenceAgeMs": 300000
+    },
+    "expectations": {
+      "nonce": "9999999999999999999999999999999999999999999999999999999999999999",
+      "origin": "https://tee.anonrouter.ai",
+      "nowMs": 1760000000000
+    }
+  },
+  "cases": [
+    {
+      "name": "everything holds",
+      "why": "The baseline. Every other case changes exactly one thing from here, so a failure below is caused by that change and nothing else.",
+      "evidence": {},
+      "evidenceRemoved": [],
+      "policy": {},
+      "policyRemoved": [],
+      "expectations": {},
+      "observedTlsSpki": {
+        "supplied": false,
+        "value": null
+      },
+      "chainVerifier": null,
+      "expected": {
+        "status": "ok",
+        "verificationLevel": "provider-attested",
+        "reason": null,
+        "tcbStatus": null,
+        "failedRequiredChecks": [],
+        "unmetAdvisoryChecks": [
+          "quote_signature_chain",
+          "tcb_status_acceptable"
+        ]
+      }
+    },
+    {
+      "name": "the V2 event-log form, which real CVMs emit",
+      "why": "dstack V2 publishes the hashed bytes as `preimage`. The verifier must accept it without falling back to the V1 concatenation, and must still require the preimage to name the same event and payload that are displayed.",
+      "evidence": {
+        "quote": "040002008100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f02abababababababababababababababababababababababababababababababab000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000eded6a091e636b51828d4086a2a2cda3fa96c11bddbf00b3d1a4981ae24d5c063558f54e38fb25fa143139f005323e911eeb6482aa8e9f78d63bfcc444355072a3fbcfa80a234dfe66e86de8fe768831fc5e909fd47f40c2f803b321778f52f8c2c98e8618f07417936f9576b7b46792886a0856ce9a05b131d5693e7335661a2ff2eb5e5519c67e8ffb3233789a382f4a442664dc7c76fae8c251c44d2e347a7ebf8856cb5046d47be4251ca2d6ff9ec9c3fa0ed8e274f432f807c25a1a5c6e83e1574713f07ca251138b9282c194fed9e4c84a6f59ea5ec1c43db802ff1f0ecce3abffff8f6d659d659cc68778354359282ae8be3316263fbfb19ff72758cc",
+        "event_log": "[{\"imr\":0,\"event_type\":2147483659,\"digest\":\"1af8ef59e9a847e8360e6a07afa3663f49720970bc47d5cfd537b38ba019e6cc0c5f188edde9805c5e573d11b42904ae\",\"event\":\"\",\"event_payload\":\"\"},{\"imr\":1,\"event_type\":2147483659,\"digest\":\"e1685b6426d9c5be8691ff8f95eacdc11753355667394aa23124570b14baf68ab322a3aaeb3c599c448ad5016c709a49\",\"event\":\"\",\"event_payload\":\"\"},{\"imr\":2,\"event_type\":2147483659,\"digest\":\"57a32a0f5f85ff930383ddc151002e81057f1b2f73a4d2b6d631b24c9db8c4bf451cf5f3ff629b82a6cd8fa412545278\",\"event\":\"\",\"event_payload\":\"\"},{\"imr\":3,\"event_type\":134217729,\"digest\":\"918e390aef67de4520d37d7e046dd222038e0a8385825072383ab194543ffa3046a9a48fdabbc16e6ba9ff24249ba88f\",\"event\":\"system-preparing\",\"event_payload\":\"\",\"preimage\":\"7b226e616d65223a2273797374656d2d707265706172696e67222c227061796c6f6164223a22222c2274797065223a3133343231373732397d\",\"version\":2},{\"imr\":3,\"event_type\":134217729,\"digest\":\"8cf5b9f6f2ae762a8286ab8db9806a289194733ef6ef3b23c8823759123bb534b48559f08f3160336e4f157894155d0f\",\"event\":\"app-id\",\"event_payload\":\"0123456789abcdef0123456789abcdef01234567\",\"preimage\":\"7b226e616d65223a226170702d6964222c227061796c6f6164223a2230313233343536373839616263646566303132333435363738396162636465663031323334353637222c2274797065223a3133343231373732397d\",\"version\":2},{\"imr\":3,\"event_type\":134217729,\"digest\":\"64317a0711832dda06d9a1c0c8712f9092fcf8d66f52719d72cd7ec3691b2f0d6895b223e13247f784ba5d67b6766b42\",\"event\":\"compose-hash\",\"event_payload\":\"18270c62cd087a55b2ae2a7ff997c3f00768e887969efbd09a90342755dd63a5\",\"preimage\":\"7b226e616d65223a22636f6d706f73652d68617368222c227061796c6f6164223a2231383237306336326364303837613535623261653261376666393937633366303037363865383837393639656662643039613930333432373535646436336135222c2274797065223a3133343231373732397d\",\"version\":2},{\"imr\":3,\"event_type\":134217729,\"digest\":\"e584e5d2d71bf165abacb0d1bcd571d7803f86a756b376cad68572ac902b98c77fa08a728161745d449b837f9badbd01\",\"event\":\"instance-id\",\"event_payload\":\"fedcba9876543210fedcba9876543210fedcba98\",\"preimage\":\"7b226e616d65223a22696e7374616e63652d6964222c227061796c6f6164223a2266656463626139383736353433323130666564636261393837363534333231306665646362613938222c2274797065223a3133343231373732397d\",\"version\":2},{\"imr\":3,\"event_type\":134217729,\"digest\":\"cfd0e29beda10241bf73c5cc561c421e107525138464db8227869236fee78b3691118f3b61e719aeede2a29f56d034a3\",\"event\":\"os-image-hash\",\"event_payload\":\"dededededededededededededededededededededededededededededededede\",\"preimage\":\"7b226e616d65223a226f732d696d6167652d68617368222c227061796c6f6164223a2264656465646564656465646564656465646564656465646564656465646564656465646564656465646564656465646564656465646564656465646564656465222c2274797065223a3133343231373732397d\",\"version\":2},{\"imr\":3,\"event_type\":134217729,\"digest\":\"1846436c30ff8878403a612493de9cf278c7e286872b01fc5b0ddf5bd72f73056f0edd0dc5f4cc2765e8b93a074986df\",\"event\":\"key-provider\",\"event_payload\":\"7b226e616d65223a226b6d73222c226964223a22616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d\",\"preimage\":\"7b226e616d65223a226b65792d70726f7669646572222c227061796c6f6164223a223762323236653631366436353232336132323662366437333232326332323639363432323361323236313631363136313631363136313631363136313631363136313631363136313631363136313631363136313631363136313631363136313631363136313631363136313631363136313631363136313631363136313631363136313631363136313631363136313631363136313631363136313631363136313631363136313631363132323764222c2274797065223a3133343231373732397d\",\"version\":2}]"
+      },
+      "evidenceRemoved": [],
+      "policy": {},
+      "policyRemoved": [],
+      "expectations": {},
+      "observedTlsSpki": {
+        "supplied": false,
+        "value": null
+      },
+      "chainVerifier": null,
+      "expected": {
+        "status": "ok",
+        "verificationLevel": "provider-attested",
+        "reason": null,
+        "tcbStatus": null,
+        "failedRequiredChecks": [],
+        "unmetAdvisoryChecks": [
+          "quote_signature_chain",
+          "tcb_status_acceptable"
+        ]
+      }
+    },
+    {
+      "name": "REPLAY: a nonce the document was never bound to",
+      "why": "The primary anti-replay control. A document that verified a moment ago must not verify for a challenge it never saw.",
+      "evidence": {},
+      "evidenceRemoved": [],
+      "policy": {},
+      "policyRemoved": [],
+      "expectations": {
+        "nonce": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "observedTlsSpki": {
+        "supplied": false,
+        "value": null
+      },
+      "chainVerifier": null,
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "nonce_matches_request",
+        "tcbStatus": null,
+        "failedRequiredChecks": [
+          "nonce_matches_request"
+        ],
+        "unmetAdvisoryChecks": [
+          "quote_signature_chain",
+          "tcb_status_acceptable"
+        ]
+      }
+    },
+    {
+      "name": "WRONG ORIGIN: the document names another deployment",
+      "why": "The document belongs to whoever it names. Accepting it elsewhere would let one verified deployment vouch for an unverified one.",
+      "evidence": {},
+      "evidenceRemoved": [],
+      "policy": {},
+      "policyRemoved": [],
+      "expectations": {
+        "origin": "https://someone-else.example"
+      },
+      "observedTlsSpki": {
+        "supplied": false,
+        "value": null
+      },
+      "chainVerifier": null,
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "origin_matches_connection",
+        "tcbStatus": null,
+        "failedRequiredChecks": [
+          "origin_matches_connection"
+        ],
+        "unmetAdvisoryChecks": [
+          "quote_signature_chain",
+          "tcb_status_acceptable"
+        ]
+      }
+    },
+    {
+      "name": "TAMPERED BINDING: a rewritten release id",
+      "why": "report_data is SHA-512 of the whole binding, so changing any field breaks it. This is what stops an operator renaming a build after the fact.",
+      "evidence": {
+        "binding": {
+          "v": 1,
+          "nonce": "9999999999999999999999999999999999999999999999999999999999999999",
+          "app_id": "0123456789abcdef0123456789abcdef01234567",
+          "instance_id": "fedcba9876543210fedcba9876543210fedcba98",
+          "compose_hash": "18270c62cd087a55b2ae2a7ff997c3f00768e887969efbd09a90342755dd63a5",
+          "release_id": "anonrouter-tee@attacker",
+          "origin": "https://tee.anonrouter.ai",
+          "key_alg": "x25519",
+          "public_key": "abababababababababababababababababababababababababababababababab",
+          "transport": "in-tee-tls",
+          "tls_spki_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      },
+      "evidenceRemoved": [],
+      "policy": {},
+      "policyRemoved": [],
+      "expectations": {},
+      "observedTlsSpki": {
+        "supplied": false,
+        "value": null
+      },
+      "chainVerifier": null,
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "report_data_binds_binding",
+        "tcbStatus": null,
+        "failedRequiredChecks": [
+          "report_data_binds_binding",
+          "release_pinned"
+        ],
+        "unmetAdvisoryChecks": [
+          "quote_signature_chain",
+          "tcb_status_acceptable"
+        ]
+      }
+    },
+    {
+      "name": "TAMPERED BINDING: a rewritten TLS fingerprint",
+      "why": "The certificate the TD attests is inside the hashed binding, which is what closes the earlier fingerprint-hearsay bug where an operator could name a key the TD never held.",
+      "evidence": {
+        "binding": {
+          "v": 1,
+          "nonce": "9999999999999999999999999999999999999999999999999999999999999999",
+          "app_id": "0123456789abcdef0123456789abcdef01234567",
+          "instance_id": "fedcba9876543210fedcba9876543210fedcba98",
+          "compose_hash": "18270c62cd087a55b2ae2a7ff997c3f00768e887969efbd09a90342755dd63a5",
+          "release_id": "anonrouter-tee@c7b32e0",
+          "origin": "https://tee.anonrouter.ai",
+          "key_alg": "x25519",
+          "public_key": "abababababababababababababababababababababababababababababababab",
+          "transport": "in-tee-tls",
+          "tls_spki_sha256": "abababababababababababababababababababababababababababababababab"
+        }
+      },
+      "evidenceRemoved": [],
+      "policy": {},
+      "policyRemoved": [],
+      "expectations": {},
+      "observedTlsSpki": {
+        "supplied": false,
+        "value": null
+      },
+      "chainVerifier": null,
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "report_data_binds_binding",
+        "tcbStatus": null,
+        "failedRequiredChecks": [
+          "report_data_binds_binding"
+        ],
+        "unmetAdvisoryChecks": [
+          "quote_signature_chain",
+          "tcb_status_acceptable"
+        ]
+      }
+    },
+    {
+      "name": "MALFORMED BINDING: an unknown field",
+      "why": "A verifier that ignored an unknown field would accept a digest computed over data it never inspected.",
+      "evidence": {
+        "binding": {
+          "v": 1,
+          "nonce": "9999999999999999999999999999999999999999999999999999999999999999",
+          "app_id": "0123456789abcdef0123456789abcdef01234567",
+          "instance_id": "fedcba9876543210fedcba9876543210fedcba98",
+          "compose_hash": "18270c62cd087a55b2ae2a7ff997c3f00768e887969efbd09a90342755dd63a5",
+          "release_id": "anonrouter-tee@c7b32e0",
+          "origin": "https://tee.anonrouter.ai",
+          "key_alg": "x25519",
+          "public_key": "abababababababababababababababababababababababababababababababab",
+          "transport": "in-tee-tls",
+          "tls_spki_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "surprise": "extra"
+        }
+      },
+      "evidenceRemoved": [],
+      "policy": {},
+      "policyRemoved": [],
+      "expectations": {},
+      "observedTlsSpki": {
+        "supplied": false,
+        "value": null
+      },
+      "chainVerifier": null,
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "binding_wellformed",
+        "tcbStatus": null,
+        "failedRequiredChecks": [
+          "binding_wellformed"
+        ],
+        "unmetAdvisoryChecks": []
+      }
+    },
+    {
+      "name": "TAMPERED QUOTE: one flipped byte in report_data",
+      "why": "The single-bit case. Nothing else about the document changes.",
+      "evidence": {
+        "quote": "040002008100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f02abababababababababababababababababababababababababababababababab000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000eded6a091e636b51828d4086a2a2cda3fa96c11bddbf00b3d1a4981ae24d5c063558f54e38fb25fa143139f005323e911eeb6482aa8e9f78d63bfcc444355072a3fbcfa80a234dfe66e86de8fe768831fc5e909fd47f40c2f803b321778f52f8c2c98e8618f07417936f9576b7b46792886a0856ce9a05b131d5693e7335661a2ff2eb5e5519c67e8ffb3233789a382f8d4ee70ae9c05c736260867389644bff77d6a9fa84353124f370e5f80788e5622898939887b37d26fe9e2547ed2b7bb482e1574713f07ca251138b9282c194fed9e4c84a6f59ea5ec1c43db802ff1f0ecce3abffff8f6d659d659cc68778354359282ae8be3316263fbfb19ff72758cc"
+      },
+      "evidenceRemoved": [],
+      "policy": {},
+      "policyRemoved": [],
+      "expectations": {},
+      "observedTlsSpki": {
+        "supplied": false,
+        "value": null
+      },
+      "chainVerifier": null,
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "report_data_binds_binding",
+        "tcbStatus": null,
+        "failedRequiredChecks": [
+          "report_data_binds_binding"
+        ],
+        "unmetAdvisoryChecks": [
+          "quote_signature_chain",
+          "tcb_status_acceptable"
+        ]
+      }
+    },
+    {
+      "name": "TAMPERED QUOTE: a flipped RTMR0 byte",
+      "why": "The event log no longer replays to the register it claims to describe.",
+      "evidence": {
+        "quote": "040002008100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f02abababababababababababababababababababababababababababababababab000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000eced6a091e636b51828d4086a2a2cda3fa96c11bddbf00b3d1a4981ae24d5c063558f54e38fb25fa143139f005323e911eeb6482aa8e9f78d63bfcc444355072a3fbcfa80a234dfe66e86de8fe768831fc5e909fd47f40c2f803b321778f52f8c2c98e8618f07417936f9576b7b46792886a0856ce9a05b131d5693e7335661a2ff2eb5e5519c67e8ffb3233789a382f8d4ee70ae9c05c736260867389644bff77d6a9fa84353124f370e5f80788e5622898939887b37d26fe9e2547ed2b7bb483e1574713f07ca251138b9282c194fed9e4c84a6f59ea5ec1c43db802ff1f0ecce3abffff8f6d659d659cc68778354359282ae8be3316263fbfb19ff72758cc"
+      },
+      "evidenceRemoved": [],
+      "policy": {},
+      "policyRemoved": [],
+      "expectations": {},
+      "observedTlsSpki": {
+        "supplied": false,
+        "value": null
+      },
+      "chainVerifier": null,
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "event_log_replays_rtmrs",
+        "tcbStatus": null,
+        "failedRequiredChecks": [
+          "event_log_replays_rtmrs",
+          "platform_measurements_pinned"
+        ],
+        "unmetAdvisoryChecks": [
+          "quote_signature_chain",
+          "tcb_status_acceptable"
+        ]
+      }
+    },
+    {
+      "name": "DEBUG TD",
+      "why": "A debug TD lets the host read and modify guest memory, so nothing measured inside it is confidential. Unconditionally fatal.",
+      "evidence": {
+        "quote": "040002008100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000003f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f02abababababababababababababababababababababababababababababababab000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000eded6a091e636b51828d4086a2a2cda3fa96c11bddbf00b3d1a4981ae24d5c063558f54e38fb25fa143139f005323e911eeb6482aa8e9f78d63bfcc444355072a3fbcfa80a234dfe66e86de8fe768831fc5e909fd47f40c2f803b321778f52f8c2c98e8618f07417936f9576b7b46792886a0856ce9a05b131d5693e7335661a2ff2eb5e5519c67e8ffb3233789a382f8d4ee70ae9c05c736260867389644bff77d6a9fa84353124f370e5f80788e5622898939887b37d26fe9e2547ed2b7bb483e1574713f07ca251138b9282c194fed9e4c84a6f59ea5ec1c43db802ff1f0ecce3abffff8f6d659d659cc68778354359282ae8be3316263fbfb19ff72758cc"
+      },
+      "evidenceRemoved": [],
+      "policy": {},
+      "policyRemoved": [],
+      "expectations": {},
+      "observedTlsSpki": {
+        "supplied": false,
+        "value": null
+      },
+      "chainVerifier": null,
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "quote_not_debug",
+        "tcbStatus": null,
+        "failedRequiredChecks": [
+          "quote_not_debug"
+        ],
+        "unmetAdvisoryChecks": [
+          "quote_signature_chain",
+          "tcb_status_acceptable"
+        ]
+      }
+    },
+    {
+      "name": "NOT A TDX QUOTE",
+      "why": "A quote for another TEE type is not evidence about a TD.",
+      "evidence": {
+        "quote": "040002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f02abababababababababababababababababababababababababababababababab000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000eded6a091e636b51828d4086a2a2cda3fa96c11bddbf00b3d1a4981ae24d5c063558f54e38fb25fa143139f005323e911eeb6482aa8e9f78d63bfcc444355072a3fbcfa80a234dfe66e86de8fe768831fc5e909fd47f40c2f803b321778f52f8c2c98e8618f07417936f9576b7b46792886a0856ce9a05b131d5693e7335661a2ff2eb5e5519c67e8ffb3233789a382f8d4ee70ae9c05c736260867389644bff77d6a9fa84353124f370e5f80788e5622898939887b37d26fe9e2547ed2b7bb483e1574713f07ca251138b9282c194fed9e4c84a6f59ea5ec1c43db802ff1f0ecce3abffff8f6d659d659cc68778354359282ae8be3316263fbfb19ff72758cc"
+      },
+      "evidenceRemoved": [],
+      "policy": {},
+      "policyRemoved": [],
+      "expectations": {},
+      "observedTlsSpki": {
+        "supplied": false,
+        "value": null
+      },
+      "chainVerifier": null,
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "quote_is_tdx",
+        "tcbStatus": null,
+        "failedRequiredChecks": [
+          "quote_is_tdx"
+        ],
+        "unmetAdvisoryChecks": [
+          "quote_signature_chain",
+          "tcb_status_acceptable"
+        ]
+      }
+    },
+    {
+      "name": "TAMPERED EVENT LOG: a rewritten digest",
+      "why": "The replay stops reproducing the hardware registers.",
+      "evidence": {
+        "event_log": "[{\"imr\":0,\"event_type\":2147483659,\"digest\":\"000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"event\":\"\",\"event_payload\":\"\"},{\"imr\":1,\"event_type\":2147483659,\"digest\":\"e1685b6426d9c5be8691ff8f95eacdc11753355667394aa23124570b14baf68ab322a3aaeb3c599c448ad5016c709a49\",\"event\":\"\",\"event_payload\":\"\"},{\"imr\":2,\"event_type\":2147483659,\"digest\":\"57a32a0f5f85ff930383ddc151002e81057f1b2f73a4d2b6d631b24c9db8c4bf451cf5f3ff629b82a6cd8fa412545278\",\"event\":\"\",\"event_payload\":\"\"},{\"imr\":3,\"event_type\":134217729,\"digest\":\"\",\"event\":\"system-preparing\",\"event_payload\":\"\"},{\"imr\":3,\"event_type\":134217729,\"digest\":\"\",\"event\":\"app-id\",\"event_payload\":\"0123456789abcdef0123456789abcdef01234567\"},{\"imr\":3,\"event_type\":134217729,\"digest\":\"\",\"event\":\"compose-hash\",\"event_payload\":\"18270c62cd087a55b2ae2a7ff997c3f00768e887969efbd09a90342755dd63a5\"},{\"imr\":3,\"event_type\":134217729,\"digest\":\"\",\"event\":\"instance-id\",\"event_payload\":\"fedcba9876543210fedcba9876543210fedcba98\"},{\"imr\":3,\"event_type\":134217729,\"digest\":\"\",\"event\":\"os-image-hash\",\"event_payload\":\"dededededededededededededededededededededededededededededededede\"},{\"imr\":3,\"event_type\":134217729,\"digest\":\"\",\"event\":\"key-provider\",\"event_payload\":\"7b226e616d65223a226b6d73222c226964223a22616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d\"}]"
+      },
+      "evidenceRemoved": [],
+      "policy": {},
+      "policyRemoved": [],
+      "expectations": {},
+      "observedTlsSpki": {
+        "supplied": false,
+        "value": null
+      },
+      "chainVerifier": null,
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "event_log_replays_rtmrs",
+        "tcbStatus": null,
+        "failedRequiredChecks": [
+          "event_log_replays_rtmrs"
+        ],
+        "unmetAdvisoryChecks": [
+          "quote_signature_chain",
+          "tcb_status_acceptable"
+        ]
+      }
+    },
+    {
+      "name": "REWRITTEN PAYLOAD: the compose hash renamed beside an empty digest",
+      "why": "The natural attack: keep a genuine quote and log, rewrite only the readable payload to something the policy accepts. It fails because RTMR3 digests are DERIVED from each event's own fields rather than read out of the log.",
+      "evidence": {
+        "event_log": "[{\"imr\":0,\"event_type\":2147483659,\"digest\":\"1af8ef59e9a847e8360e6a07afa3663f49720970bc47d5cfd537b38ba019e6cc0c5f188edde9805c5e573d11b42904ae\",\"event\":\"\",\"event_payload\":\"\"},{\"imr\":1,\"event_type\":2147483659,\"digest\":\"e1685b6426d9c5be8691ff8f95eacdc11753355667394aa23124570b14baf68ab322a3aaeb3c599c448ad5016c709a49\",\"event\":\"\",\"event_payload\":\"\"},{\"imr\":2,\"event_type\":2147483659,\"digest\":\"57a32a0f5f85ff930383ddc151002e81057f1b2f73a4d2b6d631b24c9db8c4bf451cf5f3ff629b82a6cd8fa412545278\",\"event\":\"\",\"event_payload\":\"\"},{\"imr\":3,\"event_type\":134217729,\"digest\":\"\",\"event\":\"system-preparing\",\"event_payload\":\"\"},{\"imr\":3,\"event_type\":134217729,\"digest\":\"\",\"event\":\"app-id\",\"event_payload\":\"0123456789abcdef0123456789abcdef01234567\"},{\"imr\":3,\"event_type\":134217729,\"digest\":\"\",\"event\":\"compose-hash\",\"event_payload\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"},{\"imr\":3,\"event_type\":134217729,\"digest\":\"\",\"event\":\"instance-id\",\"event_payload\":\"fedcba9876543210fedcba9876543210fedcba98\"},{\"imr\":3,\"event_type\":134217729,\"digest\":\"\",\"event\":\"os-image-hash\",\"event_payload\":\"dededededededededededededededededededededededededededededededede\"},{\"imr\":3,\"event_type\":134217729,\"digest\":\"\",\"event\":\"key-provider\",\"event_payload\":\"7b226e616d65223a226b6d73222c226964223a22616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d\"}]"
+      },
+      "evidenceRemoved": [],
+      "policy": {},
+      "policyRemoved": [],
+      "expectations": {},
+      "observedTlsSpki": {
+        "supplied": false,
+        "value": null
+      },
+      "chainVerifier": null,
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "event_log_replays_rtmrs",
+        "tcbStatus": null,
+        "failedRequiredChecks": [
+          "event_log_replays_rtmrs",
+          "compose_hash_measured_in_rtmr3"
+        ],
+        "unmetAdvisoryChecks": [
+          "quote_signature_chain",
+          "tcb_status_acceptable"
+        ]
+      }
+    },
+    {
+      "name": "SUPPLIED DIGEST that does not commit to its payload",
+      "why": "If a log supplies a digest instead of leaving it empty, it must still agree with the payload printed beside it, or a server could ship a digest that replays while displaying something else.",
+      "evidence": {
+        "event_log": "[{\"imr\":0,\"event_type\":2147483659,\"digest\":\"1af8ef59e9a847e8360e6a07afa3663f49720970bc47d5cfd537b38ba019e6cc0c5f188edde9805c5e573d11b42904ae\",\"event\":\"\",\"event_payload\":\"\"},{\"imr\":1,\"event_type\":2147483659,\"digest\":\"e1685b6426d9c5be8691ff8f95eacdc11753355667394aa23124570b14baf68ab322a3aaeb3c599c448ad5016c709a49\",\"event\":\"\",\"event_payload\":\"\"},{\"imr\":2,\"event_type\":2147483659,\"digest\":\"57a32a0f5f85ff930383ddc151002e81057f1b2f73a4d2b6d631b24c9db8c4bf451cf5f3ff629b82a6cd8fa412545278\",\"event\":\"\",\"event_payload\":\"\"},{\"imr\":3,\"event_type\":134217729,\"digest\":\"\",\"event\":\"system-preparing\",\"event_payload\":\"\"},{\"imr\":3,\"event_type\":134217729,\"digest\":\"\",\"event\":\"app-id\",\"event_payload\":\"0123456789abcdef0123456789abcdef01234567\"},{\"imr\":3,\"event_type\":134217729,\"digest\":\"abababababababababababababababababababababababababababababababababababababababababababababababab\",\"event\":\"compose-hash\",\"event_payload\":\"18270c62cd087a55b2ae2a7ff997c3f00768e887969efbd09a90342755dd63a5\"},{\"imr\":3,\"event_type\":134217729,\"digest\":\"\",\"event\":\"instance-id\",\"event_payload\":\"fedcba9876543210fedcba9876543210fedcba98\"},{\"imr\":3,\"event_type\":134217729,\"digest\":\"\",\"event\":\"os-image-hash\",\"event_payload\":\"dededededededededededededededededededededededededededededededede\"},{\"imr\":3,\"event_type\":134217729,\"digest\":\"\",\"event\":\"key-provider\",\"event_payload\":\"7b226e616d65223a226b6d73222c226964223a22616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d\"}]"
+      },
+      "evidenceRemoved": [],
+      "policy": {},
+      "policyRemoved": [],
+      "expectations": {},
+      "observedTlsSpki": {
+        "supplied": false,
+        "value": null
+      },
+      "chainVerifier": null,
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "event_digests_commit_to_payloads",
+        "tcbStatus": null,
+        "failedRequiredChecks": [
+          "event_digests_commit_to_payloads",
+          "compose_hash_measured_in_rtmr3",
+          "instance_id_measured",
+          "app_id_measured",
+          "key_provider_pinned",
+          "os_image_pinned"
+        ],
+        "unmetAdvisoryChecks": [
+          "vm_config_matches_measured_os_image",
+          "quote_signature_chain",
+          "tcb_status_acceptable"
+        ]
+      }
+    },
+    {
+      "name": "DUPLICATE compose-hash events",
+      "why": "Two entries with the same name would let a server present whichever value the reader happens to pick first. It must make EVERY identity read out of that log unusable, not just the duplicated one.",
+      "evidence": {
+        "quote": "040002008100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f02abababababababababababababababababababababababababababababababab000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000eded6a091e636b51828d4086a2a2cda3fa96c11bddbf00b3d1a4981ae24d5c063558f54e38fb25fa143139f005323e911eeb6482aa8e9f78d63bfcc444355072a3fbcfa80a234dfe66e86de8fe768831fc5e909fd47f40c2f803b321778f52f8c2c98e8618f07417936f9576b7b46792886a0856ce9a05b131d5693e7335661a2ff2eb5e5519c67e8ffb3233789a382fc5b61a3b81c2e529cecfe4f970e0852fc2a8b8894019282da0b42762cb9f00fab7df789aa0cce1118da97d2a88cc3d9883e1574713f07ca251138b9282c194fed9e4c84a6f59ea5ec1c43db802ff1f0ecce3abffff8f6d659d659cc68778354359282ae8be3316263fbfb19ff72758cc",
+        "event_log": "[{\"imr\":0,\"event_type\":2147483659,\"digest\":\"1af8ef59e9a847e8360e6a07afa3663f49720970bc47d5cfd537b38ba019e6cc0c5f188edde9805c5e573d11b42904ae\",\"event\":\"\",\"event_payload\":\"\"},{\"imr\":1,\"event_type\":2147483659,\"digest\":\"e1685b6426d9c5be8691ff8f95eacdc11753355667394aa23124570b14baf68ab322a3aaeb3c599c448ad5016c709a49\",\"event\":\"\",\"event_payload\":\"\"},{\"imr\":2,\"event_type\":2147483659,\"digest\":\"57a32a0f5f85ff930383ddc151002e81057f1b2f73a4d2b6d631b24c9db8c4bf451cf5f3ff629b82a6cd8fa412545278\",\"event\":\"\",\"event_payload\":\"\"},{\"imr\":3,\"event_type\":134217729,\"digest\":\"\",\"event\":\"system-preparing\",\"event_payload\":\"\"},{\"imr\":3,\"event_type\":134217729,\"digest\":\"\",\"event\":\"app-id\",\"event_payload\":\"0123456789abcdef0123456789abcdef01234567\"},{\"imr\":3,\"event_type\":134217729,\"digest\":\"\",\"event\":\"compose-hash\",\"event_payload\":\"18270c62cd087a55b2ae2a7ff997c3f00768e887969efbd09a90342755dd63a5\"},{\"imr\":3,\"event_type\":134217729,\"digest\":\"\",\"event\":\"instance-id\",\"event_payload\":\"fedcba9876543210fedcba9876543210fedcba98\"},{\"imr\":3,\"event_type\":134217729,\"digest\":\"\",\"event\":\"os-image-hash\",\"event_payload\":\"dededededededededededededededededededededededededededededededede\"},{\"imr\":3,\"event_type\":134217729,\"digest\":\"\",\"event\":\"key-provider\",\"event_payload\":\"7b226e616d65223a226b6d73222c226964223a22616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d\"},{\"imr\":3,\"event_type\":134217729,\"digest\":\"f29311d37cc3249980f0f2896a8f5b3c0723ad978ef8a26d0e2718615dafac606e7c8166c8fe0b00cacbf4f3da6a2f6c\",\"event\":\"compose-hash\",\"event_payload\":\"18270c62cd087a55b2ae2a7ff997c3f00768e887969efbd09a90342755dd63a5\"}]"
+      },
+      "evidenceRemoved": [],
+      "policy": {},
+      "policyRemoved": [],
+      "expectations": {},
+      "observedTlsSpki": {
+        "supplied": false,
+        "value": null
+      },
+      "chainVerifier": null,
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "compose_hash_measured_in_rtmr3",
+        "tcbStatus": null,
+        "failedRequiredChecks": [
+          "compose_hash_measured_in_rtmr3",
+          "instance_id_measured",
+          "app_id_measured",
+          "key_provider_pinned",
+          "os_image_pinned"
+        ],
+        "unmetAdvisoryChecks": [
+          "vm_config_matches_measured_os_image",
+          "quote_signature_chain",
+          "tcb_status_acceptable"
+        ]
+      }
+    },
+    {
+      "name": "TAMPERED MANIFEST: one appended space",
+      "why": "The manifest is measured by SHA-256, so any edit makes it a different document. Without this check the manifest is decorative.",
+      "evidence": {
+        "app_compose": "{\"manifest_version\":2,\"name\":\"anonrouter-tee\",\"runner\":\"docker-compose\",\"docker_compose_file\":\"services:\\n  relay:\\n    image: ghcr.io/example/anonrouter@sha256:1111111111111111111111111111111111111111111111111111111111111111\\n    read_only: true\\n  gateway-attestation:\\n    image: ghcr.io/example/anonrouter@sha256:2222222222222222222222222222222222222222222222222222222222222222\",\"public_logs\":false,\"public_sysinfo\":false,\"kms_enabled\":true,\"gateway_enabled\":true} "
+      },
+      "evidenceRemoved": [],
+      "policy": {},
+      "policyRemoved": [],
+      "expectations": {},
+      "observedTlsSpki": {
+        "supplied": false,
+        "value": null
+      },
+      "chainVerifier": null,
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "app_compose_matches_measurement",
+        "tcbStatus": null,
+        "failedRequiredChecks": [
+          "app_compose_matches_measurement"
+        ],
+        "unmetAdvisoryChecks": [
+          "quote_signature_chain",
+          "tcb_status_acceptable"
+        ]
+      }
+    },
+    {
+      "name": "PUBLIC LOGS: the attested configuration publishes container logs",
+      "why": "Turns 'we do not publish logs' from a promise into a measured configuration fact. The policy pins this document's own compose hash, so compose_public_logs_disabled is the ONLY thing that fails.",
+      "evidence": {
+        "binding": {
+          "v": 1,
+          "nonce": "9999999999999999999999999999999999999999999999999999999999999999",
+          "app_id": "0123456789abcdef0123456789abcdef01234567",
+          "instance_id": "fedcba9876543210fedcba9876543210fedcba98",
+          "compose_hash": "d06f0999d907aa8b2286928fdfd51911162035a71c458e68387d5dfd439253b2",
+          "release_id": "anonrouter-tee@c7b32e0",
+          "origin": "https://tee.anonrouter.ai",
+          "key_alg": "x25519",
+          "public_key": "abababababababababababababababababababababababababababababababab",
+          "transport": "in-tee-tls",
+          "tls_spki_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        },
+        "quote": "040002008100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f02abababababababababababababababababababababababababababababababab000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000eded6a091e636b51828d4086a2a2cda3fa96c11bddbf00b3d1a4981ae24d5c063558f54e38fb25fa143139f005323e911eeb6482aa8e9f78d63bfcc444355072a3fbcfa80a234dfe66e86de8fe768831fc5e909fd47f40c2f803b321778f52f8c2c98e8618f07417936f9576b7b46792886a0856ce9a05b131d5693e7335661a2ff2eb5e5519c67e8ffb3233789a382f03b79f4a23ab2f6e3746fe11d46305be0f23586565991ea83bb6b998956e1c4b3c7dda47d3fe1b39c392fd064586c537bcfdc53bc8351f73bf73cb92f1cdcb2c14d0e48c82e5d6b83a9a24af206f0c864f1b3d1a09e96e3e4d1f0ccd5042aa4a4eee1fea26c569ebad651f696edae29d",
+        "event_log": "[{\"imr\":0,\"event_type\":2147483659,\"digest\":\"1af8ef59e9a847e8360e6a07afa3663f49720970bc47d5cfd537b38ba019e6cc0c5f188edde9805c5e573d11b42904ae\",\"event\":\"\",\"event_payload\":\"\"},{\"imr\":1,\"event_type\":2147483659,\"digest\":\"e1685b6426d9c5be8691ff8f95eacdc11753355667394aa23124570b14baf68ab322a3aaeb3c599c448ad5016c709a49\",\"event\":\"\",\"event_payload\":\"\"},{\"imr\":2,\"event_type\":2147483659,\"digest\":\"57a32a0f5f85ff930383ddc151002e81057f1b2f73a4d2b6d631b24c9db8c4bf451cf5f3ff629b82a6cd8fa412545278\",\"event\":\"\",\"event_payload\":\"\"},{\"imr\":3,\"event_type\":134217729,\"digest\":\"\",\"event\":\"system-preparing\",\"event_payload\":\"\"},{\"imr\":3,\"event_type\":134217729,\"digest\":\"\",\"event\":\"app-id\",\"event_payload\":\"0123456789abcdef0123456789abcdef01234567\"},{\"imr\":3,\"event_type\":134217729,\"digest\":\"\",\"event\":\"compose-hash\",\"event_payload\":\"d06f0999d907aa8b2286928fdfd51911162035a71c458e68387d5dfd439253b2\"},{\"imr\":3,\"event_type\":134217729,\"digest\":\"\",\"event\":\"instance-id\",\"event_payload\":\"fedcba9876543210fedcba9876543210fedcba98\"},{\"imr\":3,\"event_type\":134217729,\"digest\":\"\",\"event\":\"os-image-hash\",\"event_payload\":\"dededededededededededededededededededededededededededededededede\"},{\"imr\":3,\"event_type\":134217729,\"digest\":\"\",\"event\":\"key-provider\",\"event_payload\":\"7b226e616d65223a226b6d73222c226964223a22616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d\"}]",
+        "app_compose": "{\"manifest_version\":2,\"name\":\"anonrouter-tee\",\"runner\":\"docker-compose\",\"docker_compose_file\":\"services:\\n  relay:\\n    image: ghcr.io/example/anonrouter@sha256:1111111111111111111111111111111111111111111111111111111111111111\\n    read_only: true\\n  gateway-attestation:\\n    image: ghcr.io/example/anonrouter@sha256:2222222222222222222222222222222222222222222222222222222222222222\",\"public_logs\":true,\"public_sysinfo\":false,\"kms_enabled\":true,\"gateway_enabled\":true}"
+      },
+      "evidenceRemoved": [],
+      "policy": {
+        "composeHashes": [
+          "d06f0999d907aa8b2286928fdfd51911162035a71c458e68387d5dfd439253b2"
+        ]
+      },
+      "policyRemoved": [],
+      "expectations": {},
+      "observedTlsSpki": {
+        "supplied": false,
+        "value": null
+      },
+      "chainVerifier": null,
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "compose_public_logs_disabled",
+        "tcbStatus": null,
+        "failedRequiredChecks": [
+          "compose_public_logs_disabled"
+        ],
+        "unmetAdvisoryChecks": [
+          "quote_signature_chain",
+          "tcb_status_acceptable"
+        ]
+      }
+    },
+    {
+      "name": "UNPINNED IMAGE: a container referenced by tag",
+      "why": "A tag can be repointed later, so the compose hash would pin something mutable. The policy pins this document's own compose hash, so compose_images_digest_pinned is the ONLY thing that fails.",
+      "evidence": {
+        "binding": {
+          "v": 1,
+          "nonce": "9999999999999999999999999999999999999999999999999999999999999999",
+          "app_id": "0123456789abcdef0123456789abcdef01234567",
+          "instance_id": "fedcba9876543210fedcba9876543210fedcba98",
+          "compose_hash": "ed1b542c2431e180de018f788194a17e9ee7e8a3cc38d9147a0c00cb693fed66",
+          "release_id": "anonrouter-tee@c7b32e0",
+          "origin": "https://tee.anonrouter.ai",
+          "key_alg": "x25519",
+          "public_key": "abababababababababababababababababababababababababababababababab",
+          "transport": "in-tee-tls",
+          "tls_spki_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        },
+        "quote": "040002008100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f02abababababababababababababababababababababababababababababababab000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000eded6a091e636b51828d4086a2a2cda3fa96c11bddbf00b3d1a4981ae24d5c063558f54e38fb25fa143139f005323e911eeb6482aa8e9f78d63bfcc444355072a3fbcfa80a234dfe66e86de8fe768831fc5e909fd47f40c2f803b321778f52f8c2c98e8618f07417936f9576b7b46792886a0856ce9a05b131d5693e7335661a2ff2eb5e5519c67e8ffb3233789a382fa3f4b812d32f90e3f89d1781aab8a77c3b0276d53e60f92275b0126aecbb6365f76a1d463b48530eef09add0af0c25995a257474490bb0ec5bb2df0cbfafc5fe17107f83301fdda96d7eb02e7cdf37acb6db962b4f68ce312e8a06080cb5e4a1ba7cac27cdd3bb04d814bfc385e809f9",
+        "event_log": "[{\"imr\":0,\"event_type\":2147483659,\"digest\":\"1af8ef59e9a847e8360e6a07afa3663f49720970bc47d5cfd537b38ba019e6cc0c5f188edde9805c5e573d11b42904ae\",\"event\":\"\",\"event_payload\":\"\"},{\"imr\":1,\"event_type\":2147483659,\"digest\":\"e1685b6426d9c5be8691ff8f95eacdc11753355667394aa23124570b14baf68ab322a3aaeb3c599c448ad5016c709a49\",\"event\":\"\",\"event_payload\":\"\"},{\"imr\":2,\"event_type\":2147483659,\"digest\":\"57a32a0f5f85ff930383ddc151002e81057f1b2f73a4d2b6d631b24c9db8c4bf451cf5f3ff629b82a6cd8fa412545278\",\"event\":\"\",\"event_payload\":\"\"},{\"imr\":3,\"event_type\":134217729,\"digest\":\"\",\"event\":\"system-preparing\",\"event_payload\":\"\"},{\"imr\":3,\"event_type\":134217729,\"digest\":\"\",\"event\":\"app-id\",\"event_payload\":\"0123456789abcdef0123456789abcdef01234567\"},{\"imr\":3,\"event_type\":134217729,\"digest\":\"\",\"event\":\"compose-hash\",\"event_payload\":\"ed1b542c2431e180de018f788194a17e9ee7e8a3cc38d9147a0c00cb693fed66\"},{\"imr\":3,\"event_type\":134217729,\"digest\":\"\",\"event\":\"instance-id\",\"event_payload\":\"fedcba9876543210fedcba9876543210fedcba98\"},{\"imr\":3,\"event_type\":134217729,\"digest\":\"\",\"event\":\"os-image-hash\",\"event_payload\":\"dededededededededededededededededededededededededededededededede\"},{\"imr\":3,\"event_type\":134217729,\"digest\":\"\",\"event\":\"key-provider\",\"event_payload\":\"7b226e616d65223a226b6d73222c226964223a22616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161227d\"}]",
+        "app_compose": "{\"manifest_version\":2,\"name\":\"anonrouter-tee\",\"runner\":\"docker-compose\",\"docker_compose_file\":\"services:\\n  relay:\\n    image: ghcr.io/example/anonrouter:latest\",\"public_logs\":false,\"public_sysinfo\":false,\"kms_enabled\":true,\"gateway_enabled\":true}"
+      },
+      "evidenceRemoved": [],
+      "policy": {
+        "composeHashes": [
+          "ed1b542c2431e180de018f788194a17e9ee7e8a3cc38d9147a0c00cb693fed66"
+        ]
+      },
+      "policyRemoved": [],
+      "expectations": {},
+      "observedTlsSpki": {
+        "supplied": false,
+        "value": null
+      },
+      "chainVerifier": null,
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "compose_images_digest_pinned",
+        "tcbStatus": null,
+        "failedRequiredChecks": [
+          "compose_images_digest_pinned"
+        ],
+        "unmetAdvisoryChecks": [
+          "quote_signature_chain",
+          "tcb_status_acceptable"
+        ]
+      }
+    },
+    {
+      "name": "APP ID not on the allowlist",
+      "why": "A policy-pin failure, which is the ordinary outcome after a release. Distinguishable from a cryptographic failure by name.",
+      "evidence": {},
+      "evidenceRemoved": [],
+      "policy": {
+        "appIds": [
+          "ffffffffffffffffffffffffffffffffffffffff"
+        ]
+      },
+      "policyRemoved": [],
+      "expectations": {},
+      "observedTlsSpki": {
+        "supplied": false,
+        "value": null
+      },
+      "chainVerifier": null,
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "app_id_pinned",
+        "tcbStatus": null,
+        "failedRequiredChecks": [
+          "app_id_pinned"
+        ],
+        "unmetAdvisoryChecks": [
+          "quote_signature_chain",
+          "tcb_status_acceptable"
+        ]
+      }
+    },
+    {
+      "name": "COMPOSE HASH not on the allowlist",
+      "why": "The deployment moved to a configuration nobody reviewed.",
+      "evidence": {},
+      "evidenceRemoved": [],
+      "policy": {
+        "composeHashes": [
+          "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        ]
+      },
+      "policyRemoved": [],
+      "expectations": {},
+      "observedTlsSpki": {
+        "supplied": false,
+        "value": null
+      },
+      "chainVerifier": null,
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "compose_hash_pinned",
+        "tcbStatus": null,
+        "failedRequiredChecks": [
+          "compose_hash_pinned"
+        ],
+        "unmetAdvisoryChecks": [
+          "quote_signature_chain",
+          "tcb_status_acceptable"
+        ]
+      }
+    },
+    {
+      "name": "RELEASE not on the allowlist",
+      "why": "The release id is an operator-set string, so this catches a build nobody named.",
+      "evidence": {},
+      "evidenceRemoved": [],
+      "policy": {
+        "releaseIds": [
+          "anonrouter-tee@unreviewed"
+        ]
+      },
+      "policyRemoved": [],
+      "expectations": {},
+      "observedTlsSpki": {
+        "supplied": false,
+        "value": null
+      },
+      "chainVerifier": null,
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "release_pinned",
+        "tcbStatus": null,
+        "failedRequiredChecks": [
+          "release_pinned"
+        ],
+        "unmetAdvisoryChecks": [
+          "quote_signature_chain",
+          "tcb_status_acceptable"
+        ]
+      }
+    },
+    {
+      "name": "ORIGIN not authorized by the policy",
+      "why": "A policy authorizes named origins; an unlisted one fails closed rather than being accepted because everything else matched.",
+      "evidence": {},
+      "evidenceRemoved": [],
+      "policy": {
+        "origins": [
+          "https://other.anonrouter.ai"
+        ]
+      },
+      "policyRemoved": [],
+      "expectations": {
+        "origin": "https://other.anonrouter.ai"
+      },
+      "observedTlsSpki": {
+        "supplied": false,
+        "value": null
+      },
+      "chainVerifier": null,
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "origin_matches_connection",
+        "tcbStatus": null,
+        "failedRequiredChecks": [
+          "origin_matches_connection",
+          "origin_pinned"
+        ],
+        "unmetAdvisoryChecks": [
+          "quote_signature_chain",
+          "tcb_status_acceptable"
+        ]
+      }
+    },
+    {
+      "name": "PLATFORM measurements not pinned",
+      "why": "The firmware or guest OS changed underneath an otherwise matching identity.",
+      "evidence": {},
+      "evidenceRemoved": [],
+      "policy": {
+        "platform": {
+          "mrTd": [
+            "abababababababababababababababababababababababababababababababababababababababababababababababab"
+          ],
+          "mrConfigId": [
+            "abababababababababababababababababababababababababababababababababababababababababababababababab"
+          ],
+          "rtmr0": [
+            "abababababababababababababababababababababababababababababababababababababababababababababababab"
+          ],
+          "rtmr1": [
+            "abababababababababababababababababababababababababababababababababababababababababababababababab"
+          ],
+          "rtmr2": [
+            "abababababababababababababababababababababababababababababababababababababababababababababababab"
+          ],
+          "osImageHash": [
+            "abababababababababababababababababababababababababababababababab"
+          ]
+        }
+      },
+      "policyRemoved": [],
+      "expectations": {},
+      "observedTlsSpki": {
+        "supplied": false,
+        "value": null
+      },
+      "chainVerifier": null,
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "platform_measurements_pinned",
+        "tcbStatus": null,
+        "failedRequiredChecks": [
+          "platform_measurements_pinned",
+          "os_image_pinned"
+        ],
+        "unmetAdvisoryChecks": [
+          "quote_signature_chain",
+          "tcb_status_acceptable"
+        ]
+      }
+    },
+    {
+      "name": "KEY PROVIDER not pinned",
+      "why": "A CVM whose keys come from a different KMS is a different trust domain even at the same compose hash.",
+      "evidence": {},
+      "evidenceRemoved": [],
+      "policy": {
+        "keyProviderId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "policyRemoved": [],
+      "expectations": {},
+      "observedTlsSpki": {
+        "supplied": false,
+        "value": null
+      },
+      "chainVerifier": null,
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "key_provider_pinned",
+        "tcbStatus": null,
+        "failedRequiredChecks": [
+          "key_provider_pinned"
+        ],
+        "unmetAdvisoryChecks": [
+          "quote_signature_chain",
+          "tcb_status_acceptable"
+        ]
+      }
+    },
+    {
+      "name": "NO KEY PROVIDER pinned at all",
+      "why": "Absent rather than wrong. The check becomes ADVISORY and the verdict still passes, but the gap is recorded rather than assumed away.",
+      "evidence": {},
+      "evidenceRemoved": [],
+      "policy": {},
+      "policyRemoved": [
+        "keyProviderId"
+      ],
+      "expectations": {},
+      "observedTlsSpki": {
+        "supplied": false,
+        "value": null
+      },
+      "chainVerifier": null,
+      "expected": {
+        "status": "ok",
+        "verificationLevel": "provider-attested",
+        "reason": null,
+        "tcbStatus": null,
+        "failedRequiredChecks": [],
+        "unmetAdvisoryChecks": [
+          "key_provider_pinned",
+          "quote_signature_chain",
+          "tcb_status_acceptable"
+        ]
+      }
+    },
+    {
+      "name": "VM CONFIG names an OS image the hardware did not measure",
+      "why": "vm_config is what an auditor re-feeds to dstack-mr. A CVM naming a different image would send them to reproduce the wrong measurements and conclude the quote was forged.",
+      "evidence": {
+        "vm_config": "{\"os_image_hash\":\"abababababababababababababababababababababababababababababababab\",\"cpu_count\":1,\"memory_size\":2147483648,\"spec_version\":1}"
+      },
+      "evidenceRemoved": [],
+      "policy": {},
+      "policyRemoved": [],
+      "expectations": {},
+      "observedTlsSpki": {
+        "supplied": false,
+        "value": null
+      },
+      "chainVerifier": null,
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "vm_config_matches_measured_os_image",
+        "tcbStatus": null,
+        "failedRequiredChecks": [
+          "vm_config_matches_measured_os_image"
+        ],
+        "unmetAdvisoryChecks": [
+          "quote_signature_chain",
+          "tcb_status_acceptable"
+        ]
+      }
+    },
+    {
+      "name": "NO VM CONFIG at all",
+      "why": "Absent rather than wrong, so the check is advisory: offline measurement recomputation is unanchored, and that is recorded.",
+      "evidence": {},
+      "evidenceRemoved": [
+        "vm_config"
+      ],
+      "policy": {},
+      "policyRemoved": [],
+      "expectations": {},
+      "observedTlsSpki": {
+        "supplied": false,
+        "value": null
+      },
+      "chainVerifier": null,
+      "expected": {
+        "status": "ok",
+        "verificationLevel": "provider-attested",
+        "reason": null,
+        "tcbStatus": null,
+        "failedRequiredChecks": [],
+        "unmetAdvisoryChecks": [
+          "vm_config_matches_measured_os_image",
+          "quote_signature_chain",
+          "tcb_status_acceptable"
+        ]
+      }
+    },
+    {
+      "name": "STALE EVIDENCE",
+      "why": "Defence in depth behind the nonce. The document is outside the age window the policy allows.",
+      "evidence": {},
+      "evidenceRemoved": [],
+      "policy": {},
+      "policyRemoved": [],
+      "expectations": {
+        "nowMs": 1760003600000
+      },
+      "observedTlsSpki": {
+        "supplied": false,
+        "value": null
+      },
+      "chainVerifier": null,
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "evidence_recent",
+        "tcbStatus": null,
+        "failedRequiredChecks": [
+          "evidence_recent"
+        ],
+        "unmetAdvisoryChecks": [
+          "quote_signature_chain",
+          "tcb_status_acceptable"
+        ]
+      }
+    },
+    {
+      "name": "NO TIMESTAMP, with expiry required",
+      "why": "A document that cannot be aged has not been shown to be fresh. Treating unmeasurable as acceptable is how an expiry check quietly stops existing.",
+      "evidence": {},
+      "evidenceRemoved": [
+        "issued_at_ms"
+      ],
+      "policy": {},
+      "policyRemoved": [],
+      "expectations": {},
+      "observedTlsSpki": {
+        "supplied": false,
+        "value": null
+      },
+      "chainVerifier": null,
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "evidence_recent",
+        "tcbStatus": null,
+        "failedRequiredChecks": [
+          "evidence_recent"
+        ],
+        "unmetAdvisoryChecks": [
+          "quote_signature_chain",
+          "tcb_status_acceptable"
+        ]
+      }
+    },
+    {
+      "name": "NO TIMESTAMP, with expiry not required",
+      "why": "The same document under a policy that does not require expiry: the check becomes advisory and the verdict passes.",
+      "evidence": {},
+      "evidenceRemoved": [
+        "issued_at_ms"
+      ],
+      "policy": {
+        "requireEvidenceExpiry": false
+      },
+      "policyRemoved": [],
+      "expectations": {},
+      "observedTlsSpki": {
+        "supplied": false,
+        "value": null
+      },
+      "chainVerifier": null,
+      "expected": {
+        "status": "ok",
+        "verificationLevel": "provider-attested",
+        "reason": null,
+        "tcbStatus": null,
+        "failedRequiredChecks": [],
+        "unmetAdvisoryChecks": [
+          "evidence_recent",
+          "quote_signature_chain",
+          "tcb_status_acceptable"
+        ]
+      }
+    },
+    {
+      "name": "IN-TEE TLS required, but the platform gateway terminates it",
+      "why": "When TLS terminates in front of the TD, the transport is not proof of who you are talking to.",
+      "evidence": {
+        "binding": {
+          "v": 1,
+          "nonce": "9999999999999999999999999999999999999999999999999999999999999999",
+          "app_id": "0123456789abcdef0123456789abcdef01234567",
+          "instance_id": "fedcba9876543210fedcba9876543210fedcba98",
+          "compose_hash": "18270c62cd087a55b2ae2a7ff997c3f00768e887969efbd09a90342755dd63a5",
+          "release_id": "anonrouter-tee@c7b32e0",
+          "origin": "https://tee.anonrouter.ai",
+          "key_alg": "x25519",
+          "public_key": "abababababababababababababababababababababababababababababababab",
+          "transport": "gateway-tls",
+          "tls_spki_sha256": null
+        },
+        "quote": "040002008100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f02abababababababababababababababababababababababababababababababab000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000eded6a091e636b51828d4086a2a2cda3fa96c11bddbf00b3d1a4981ae24d5c063558f54e38fb25fa143139f005323e911eeb6482aa8e9f78d63bfcc444355072a3fbcfa80a234dfe66e86de8fe768831fc5e909fd47f40c2f803b321778f52f8c2c98e8618f07417936f9576b7b46792886a0856ce9a05b131d5693e7335661a2ff2eb5e5519c67e8ffb3233789a382f8d4ee70ae9c05c736260867389644bff77d6a9fa84353124f370e5f80788e5622898939887b37d26fe9e2547ed2b7bb4297fc618f296bf1e5ca861706d76d483b7b8fa8d5ece6eb0bcf085389bb931889181e3fbd43c58b8c454e296201f2991fb0f58eac37987e2be9e98cd50bd053a"
+      },
+      "evidenceRemoved": [],
+      "policy": {
+        "requireInTeeTls": true
+      },
+      "policyRemoved": [],
+      "expectations": {},
+      "observedTlsSpki": {
+        "supplied": false,
+        "value": null
+      },
+      "chainVerifier": null,
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "transport_terminates_in_tee",
+        "tcbStatus": null,
+        "failedRequiredChecks": [
+          "transport_terminates_in_tee"
+        ],
+        "unmetAdvisoryChecks": [
+          "tls_certificate_bound_to_quote",
+          "quote_signature_chain",
+          "tcb_status_acceptable"
+        ]
+      }
+    },
+    {
+      "name": "IN-TEE TLS required and the observed certificate matches",
+      "why": "The strongest transport statement available: the TD attested the very key the caller's session used.",
+      "evidence": {},
+      "evidenceRemoved": [],
+      "policy": {
+        "requireInTeeTls": true
+      },
+      "policyRemoved": [],
+      "expectations": {},
+      "observedTlsSpki": {
+        "supplied": true,
+        "value": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "chainVerifier": null,
+      "expected": {
+        "status": "ok",
+        "verificationLevel": "provider-attested",
+        "reason": null,
+        "tcbStatus": null,
+        "failedRequiredChecks": [],
+        "unmetAdvisoryChecks": [
+          "quote_signature_chain",
+          "tcb_status_acceptable"
+        ]
+      }
+    },
+    {
+      "name": "IN-TEE TLS required and the observed certificate does NOT match",
+      "why": "Someone is terminating the connection who is not the TD that attested.",
+      "evidence": {},
+      "evidenceRemoved": [],
+      "policy": {
+        "requireInTeeTls": true
+      },
+      "policyRemoved": [],
+      "expectations": {},
+      "observedTlsSpki": {
+        "supplied": true,
+        "value": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      },
+      "chainVerifier": null,
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "tls_certificate_bound_to_quote",
+        "tcbStatus": null,
+        "failedRequiredChecks": [
+          "tls_certificate_bound_to_quote"
+        ],
+        "unmetAdvisoryChecks": [
+          "quote_signature_chain",
+          "tcb_status_acceptable"
+        ]
+      }
+    },
+    {
+      "name": "IN-TEE TLS required and the caller could not observe its certificate",
+      "why": "A browser cannot see its own certificate. The gap is recorded as advisory rather than assumed away, and the verdict still passes.",
+      "evidence": {},
+      "evidenceRemoved": [],
+      "policy": {
+        "requireInTeeTls": true
+      },
+      "policyRemoved": [],
+      "expectations": {},
+      "observedTlsSpki": {
+        "supplied": false,
+        "value": null
+      },
+      "chainVerifier": null,
+      "expected": {
+        "status": "ok",
+        "verificationLevel": "provider-attested",
+        "reason": null,
+        "tcbStatus": null,
+        "failedRequiredChecks": [],
+        "unmetAdvisoryChecks": [
+          "tls_certificate_bound_to_quote",
+          "quote_signature_chain",
+          "tcb_status_acceptable"
+        ]
+      }
+    },
+    {
+      "name": "HARDWARE VERIFICATION required with no chain verifier",
+      "why": "A client whose engine is missing or unbuilt must fail loudly rather than quietly accept at the weaker level and report success.",
+      "evidence": {},
+      "evidenceRemoved": [],
+      "policy": {
+        "requireHardwareVerified": true
+      },
+      "policyRemoved": [],
+      "expectations": {},
+      "observedTlsSpki": {
+        "supplied": false,
+        "value": null
+      },
+      "chainVerifier": null,
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "quote_signature_chain",
+        "tcbStatus": null,
+        "failedRequiredChecks": [
+          "quote_signature_chain",
+          "tcb_status_acceptable"
+        ],
+        "unmetAdvisoryChecks": []
+      }
+    },
+    {
+      "name": "HARDWARE VERIFICATION with a passing chain verifier",
+      "why": "The only path to hardware_verified, and it requires an engine that actually ran.",
+      "evidence": {},
+      "evidenceRemoved": [],
+      "policy": {
+        "requireHardwareVerified": true
+      },
+      "policyRemoved": [],
+      "expectations": {},
+      "observedTlsSpki": {
+        "supplied": false,
+        "value": null
+      },
+      "chainVerifier": {
+        "verified": true,
+        "tcbStatus": "UpToDate"
+      },
+      "expected": {
+        "status": "ok",
+        "verificationLevel": "hardware-verified",
+        "reason": null,
+        "tcbStatus": "UpToDate",
+        "failedRequiredChecks": [],
+        "unmetAdvisoryChecks": []
+      }
+    },
+    {
+      "name": "CHAIN VERIFIED but the TCB is not accepted",
+      "why": "THE case worth understanding: the signature is genuine and the machine holding your data has known unpatched vulnerabilities. quote_signature_chain passes while tcb_status_acceptable fails.",
+      "evidence": {},
+      "evidenceRemoved": [],
+      "policy": {
+        "requireHardwareVerified": true
+      },
+      "policyRemoved": [],
+      "expectations": {},
+      "observedTlsSpki": {
+        "supplied": false,
+        "value": null
+      },
+      "chainVerifier": {
+        "verified": true,
+        "tcbStatus": "OutOfDate"
+      },
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "tcb_status_acceptable",
+        "tcbStatus": "OutOfDate",
+        "failedRequiredChecks": [
+          "tcb_status_acceptable"
+        ],
+        "unmetAdvisoryChecks": []
+      }
+    },
+    {
+      "name": "CHAIN VERIFIER reports no TCB status at all",
+      "why": "A status that cannot be read cannot be checked against the policy, so it is a failure rather than a pass with an unknown.",
+      "evidence": {},
+      "evidenceRemoved": [],
+      "policy": {
+        "requireHardwareVerified": true
+      },
+      "policyRemoved": [],
+      "expectations": {},
+      "observedTlsSpki": {
+        "supplied": false,
+        "value": null
+      },
+      "chainVerifier": {
+        "verified": true,
+        "tcbStatus": null
+      },
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "tcb_status_acceptable",
+        "tcbStatus": null,
+        "failedRequiredChecks": [
+          "tcb_status_acceptable"
+        ],
+        "unmetAdvisoryChecks": []
+      }
+    },
+    {
+      "name": "CHAIN VERIFIER refuses the quote",
+      "why": "The engine said no. Nothing else in the document can compensate.",
+      "evidence": {},
+      "evidenceRemoved": [],
+      "policy": {
+        "requireHardwareVerified": true
+      },
+      "policyRemoved": [],
+      "expectations": {},
+      "observedTlsSpki": {
+        "supplied": false,
+        "value": null
+      },
+      "chainVerifier": {
+        "verified": false,
+        "tcbStatus": "UpToDate"
+      },
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "quote_signature_chain",
+        "tcbStatus": "UpToDate",
+        "failedRequiredChecks": [
+          "quote_signature_chain"
+        ],
+        "unmetAdvisoryChecks": []
+      }
+    },
+    {
+      "name": "a passing chain verifier under a policy that does not require it",
+      "why": "The verdict still reaches hardware_verified: the work was done, so reporting less would be as dishonest as reporting more.",
+      "evidence": {},
+      "evidenceRemoved": [],
+      "policy": {},
+      "policyRemoved": [],
+      "expectations": {},
+      "observedTlsSpki": {
+        "supplied": false,
+        "value": null
+      },
+      "chainVerifier": {
+        "verified": true,
+        "tcbStatus": "UpToDate"
+      },
+      "expected": {
+        "status": "ok",
+        "verificationLevel": "hardware-verified",
+        "reason": null,
+        "tcbStatus": "UpToDate",
+        "failedRequiredChecks": [],
+        "unmetAdvisoryChecks": []
+      }
+    }
+  ]
+}

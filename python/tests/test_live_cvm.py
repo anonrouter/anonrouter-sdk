@@ -39,6 +39,8 @@ import json
 import os
 import secrets
 import time
+from dataclasses import dataclass
+from functools import lru_cache
 from typing import Any
 
 import httpx
@@ -98,19 +100,23 @@ def fresh_nonce() -> str:
 _CLIENT = httpx.Client(timeout=30.0)
 
 
-def fetch_live(origin: str, nonce: str, attempts: int = 3) -> dict[str, Any]:
-    """Fetch one evidence document, retrying only TRANSPORT failures.
+def fetch_live(origin: str, nonce: str, attempts: int = 5) -> dict[str, Any]:
+    """Fetch one evidence document, retrying only what is safe to retry.
 
-    A suite this size opens a lot of connections in a few seconds; a dropped
-    handshake is a fact about the network, not about the evidence. Retrying is
-    safe precisely because nothing about the verification is relaxed: the nonce
-    still has to come back inside the quote. An HTTP error status is NOT retried,
-    because that is the server answering.
+    Two things are retried and nothing else. A dropped connection is a fact about
+    the network, not about the evidence: a suite this size opens many connections
+    in a few seconds against a 2-vCPU machine. And a 429 is the server explicitly
+    saying "later", which is a scheduling answer rather than a verification one.
+
+    Retrying is safe precisely because nothing about the verification is relaxed:
+    the nonce still has to come back inside the quote, so a retry that produced a
+    document for a different challenge would fail exactly as it should. Every
+    other status is the server answering and is raised.
     """
     last_error: Exception | None = None
     for attempt in range(attempts):
         if attempt > 0:
-            time.sleep(0.5 * attempt)
+            time.sleep(0.5 * (2**attempt))
         try:
             response = _CLIENT.get(
                 f"{origin}/v1/gateway/attestation",
@@ -120,11 +126,49 @@ def fetch_live(origin: str, nonce: str, attempts: int = 3) -> dict[str, Any]:
         except httpx.TransportError as exc:
             last_error = exc
             continue
+        if response.status_code == 429:
+            last_error = AssertionError("rate limited")
+            retry_after = response.headers.get("retry-after")
+            if retry_after and retry_after.isdigit():
+                time.sleep(min(int(retry_after), 10))
+            continue
         response.raise_for_status()
         body = response.json()
         assert isinstance(body, dict)
         return body
     raise AssertionError(f"could not reach {origin} in {attempts} attempts: {last_error}")
+
+
+@dataclass(frozen=True)
+class LiveDocument:
+    nonce: str
+    doc: dict[str, Any]
+    binding: Any
+
+
+@lru_cache(maxsize=2)
+def _document(slot: int) -> LiveDocument:
+    """TWO documents for the whole file, fetched once each.
+
+    A confidential VM is a small machine, and asking it for a fresh document per
+    test hammers it hard enough to be rate limited, which tests the network rather
+    than the verifier. Two is the minimum that keeps every property below
+    reachable: one to verify and tamper with, and a second bound to a DIFFERENT
+    challenge, which is what proves the TD quoted each nonce rather than replaying
+    a recording. Freshness is asserted explicitly rather than assumed from the
+    number of fetches.
+    """
+    nonce = fresh_nonce()
+    doc = fetch_live(str(LIVE_ORIGIN), nonce)
+    return LiveDocument(nonce=nonce, doc=doc, binding=normalize_gateway_binding(doc["binding"]))
+
+
+def first() -> LiveDocument:
+    return _document(0)
+
+
+def second() -> LiveDocument:
+    return _document(1)
 
 
 def policy_from(binding: Any, **overrides: Any) -> Any:
@@ -219,48 +263,44 @@ def test_a_verifier_refuses_structurally_absent_evidence() -> None:
 
 @requires_live
 def test_serves_a_document_bound_to_our_fresh_nonce() -> None:
-    nonce = fresh_nonce()
-    doc = fetch_live(str(LIVE_ORIGIN), nonce)
-    binding = normalize_gateway_binding(doc["binding"])
-    assert binding.nonce == nonce
-    assert binding.origin == LIVE_ORIGIN
+    assert first().binding.nonce == first().nonce
+    assert first().binding.origin == LIVE_ORIGIN
+    assert second().binding.nonce == second().nonce
+    assert first().nonce != second().nonce
 
 
 @requires_live
 def test_answers_two_challenges_with_two_documents() -> None:
     # A recorded document replayed to everyone would answer the case above just as
-    # well. Two fresh nonces must produce two different report_data values, which
-    # is only possible if the TD quoted each challenge.
-    first = fetch_live(str(LIVE_ORIGIN), fresh_nonce())
-    second = fetch_live(str(LIVE_ORIGIN), fresh_nonce())
-    a = parse_tdx_quote(first["quote"])
-    b = parse_tdx_quote(second["quote"])
+    # well. Two nonces must produce two different report_data values, which is only
+    # possible if the TD quoted each challenge.
+    a = parse_tdx_quote(first().doc["quote"])
+    b = parse_tdx_quote(second().doc["quote"])
     assert a is not None and b is not None
     assert a.report_data != b.report_data
     # ...while the MEASUREMENTS stay identical, because it is the same TD.
     assert a.mr_td == b.mr_td
     assert a.rtmr0 == b.rtmr0
+    assert a.rtmr3 == b.rtmr3
 
 
 @requires_live
 def test_returns_a_real_non_debug_tdx_quote_committing_to_the_binding() -> None:
-    nonce = fresh_nonce()
-    doc = fetch_live(str(LIVE_ORIGIN), nonce)
-    quote = parse_tdx_quote(doc["quote"])
-    assert quote is not None
-    assert quote.tee_type == TDX_TEE_TYPE
-    assert quote.debug_enabled is False
-    # The load-bearing one: our canonical serialization must reproduce exactly
-    # what the TD hashed into report_data, on real hardware output.
-    assert quote.report_data == gateway_binding_hash(normalize_gateway_binding(doc["binding"]))
+    for document in (first(), second()):
+        quote = parse_tdx_quote(document.doc["quote"])
+        assert quote is not None
+        assert quote.tee_type == TDX_TEE_TYPE
+        assert quote.debug_enabled is False
+        # The load-bearing one: our canonical serialization must reproduce exactly
+        # what the TD hashed into report_data, on real hardware output.
+        assert quote.report_data == gateway_binding_hash(document.binding)
 
 
 @requires_live
 def test_event_log_replays_to_the_hardware_registers() -> None:
-    doc = fetch_live(str(LIVE_ORIGIN), fresh_nonce())
-    quote = parse_tdx_quote(doc["quote"])
+    quote = parse_tdx_quote(first().doc["quote"])
     assert quote is not None
-    replayed = replay_rtmrs(parse_event_log(doc["event_log"]))
+    replayed = replay_rtmrs(parse_event_log(first().doc["event_log"]))
     assert replayed == (quote.rtmr0, quote.rtmr1, quote.rtmr2, quote.rtmr3)
 
 
@@ -268,14 +308,11 @@ def test_event_log_replays_to_the_hardware_registers() -> None:
 def test_caps_the_verdict_without_a_dcap_engine() -> None:
     # Even against genuine hardware, no vendor-root chain means no
     # hardware-verified. This is the claim discipline the SDK exists to keep.
-    nonce = fresh_nonce()
-    doc = fetch_live(str(LIVE_ORIGIN), nonce)
-    binding = normalize_gateway_binding(doc["binding"])
     result = verify_gateway_attestation(
-        doc,
-        nonce=nonce,
-        origin=binding.origin,
-        policy=policy_from(binding),
+        first().doc,
+        nonce=first().nonce,
+        origin=first().binding.origin,
+        policy=policy_from(first().binding),
         now_ms=time.time() * 1000.0,
     )
     assert result.status == "ok"
@@ -287,13 +324,15 @@ def test_caps_the_verdict_without_a_dcap_engine() -> None:
 
 @pytest.fixture(scope="module")
 def live_document() -> tuple[str, dict[str, Any], Any, Any]:
-    """One genuine document, reused so each negative changes exactly one thing."""
+    """The one genuine document every negative starts from.
+
+    Each case changes exactly one thing from here, so a failure is caused by that
+    change and nothing else.
+    """
     if not LIVE_ORIGIN:
         pytest.skip("no live origin configured")
-    nonce = fresh_nonce()
-    doc = fetch_live(str(LIVE_ORIGIN), nonce)
-    binding = normalize_gateway_binding(doc["binding"])
-    return nonce, doc, binding, policy_from(binding)
+    document = first()
+    return document.nonce, document.doc, document.binding, policy_from(document.binding)
 
 
 def verify_mutated(
@@ -557,11 +596,9 @@ def test_only_policy_checks_may_fail_under_the_shipped_pin() -> None:
     entry = pinned_gateway_policy_for(str(LIVE_ORIGIN), allow_candidate=True)
     if entry is None:
         pytest.skip("this package ships no pin for the configured live origin")
-    nonce = fresh_nonce()
-    doc = fetch_live(str(LIVE_ORIGIN), nonce)
     result = verify_gateway_attestation(
-        doc,
-        nonce=nonce,
+        first().doc,
+        nonce=first().nonce,
         origin=str(LIVE_ORIGIN),
         policy=entry.policy,
         now_ms=time.time() * 1000.0,
@@ -592,19 +629,16 @@ def test_only_policy_checks_may_fail_under_the_shipped_pin() -> None:
 
 @requires_hardware
 def test_reaches_hardware_verified_with_an_acceptable_tcb() -> None:
-    nonce = fresh_nonce()
-    doc = fetch_live(str(LIVE_ORIGIN), nonce)
-    binding = normalize_gateway_binding(doc["binding"])
-    policy = policy_from(binding, requireHardwareVerified=True)
+    policy = policy_from(first().binding, requireHardwareVerified=True)
     verifier = create_anonrouter_dcap_verifier().prepare(
-        str(doc["quote"]),
+        str(first().doc["quote"]),
         accepted_tcb_statuses=list(policy.acceptable_tcb_statuses),
         now_ms=time.time() * 1000.0,
     )
     result = verify_gateway_attestation(
-        doc,
-        nonce=nonce,
-        origin=binding.origin,
+        first().doc,
+        nonce=first().nonce,
+        origin=first().binding.origin,
         policy=policy,
         now_ms=time.time() * 1000.0,
         chain_verifier=verifier,
@@ -619,8 +653,7 @@ def test_refuses_a_tampered_quote_at_the_signature() -> None:
     # The check no amount of structural verification can make: this quote is
     # internally consistent right up to the ECDSA signature, and only the chain to
     # Intel's roots catches it.
-    doc = fetch_live(str(LIVE_ORIGIN), fresh_nonce())
-    tampered = flip_quote_byte(str(doc["quote"]), MR_TD_OFFSET)
+    tampered = flip_quote_byte(str(first().doc["quote"]), MR_TD_OFFSET)
     verifier = create_anonrouter_dcap_verifier().prepare(
         tampered, accepted_tcb_statuses=["UpToDate"], now_ms=time.time() * 1000.0
     )
@@ -629,35 +662,32 @@ def test_refuses_a_tampered_quote_at_the_signature() -> None:
 
 @requires_hardware
 def test_a_prepared_verifier_refuses_a_different_live_quote() -> None:
-    doc = fetch_live(str(LIVE_ORIGIN), fresh_nonce())
+    # Both quotes are genuine and come from the same machine. A prepared verifier
+    # that answered for either would let one challenge's pass launder another's.
     verifier = create_anonrouter_dcap_verifier().prepare(
-        str(doc["quote"]), accepted_tcb_statuses=["UpToDate"], now_ms=time.time() * 1000.0
+        str(first().doc["quote"]), accepted_tcb_statuses=["UpToDate"], now_ms=time.time() * 1000.0
     )
-    assert verifier.verify_chain(str(doc["quote"]))[0] is True
-    other = fetch_live(str(LIVE_ORIGIN), fresh_nonce())
-    assert verifier.verify_chain(str(other["quote"]))[0] is False
+    assert verifier.verify_chain(str(first().doc["quote"]))[0] is True
+    assert verifier.verify_chain(str(second().doc["quote"]))[0] is False
 
 
 @requires_hardware
 def test_refuses_when_no_reportable_tcb_status_is_accepted() -> None:
     # The case that separates "the signature is genuine" from "this machine is safe
     # to hand data to". Both are required; neither implies the other.
-    nonce = fresh_nonce()
-    doc = fetch_live(str(LIVE_ORIGIN), nonce)
-    binding = normalize_gateway_binding(doc["binding"])
     policy = policy_from(
-        binding, requireHardwareVerified=True, acceptableTcbStatuses=["Revoked"]
+        first().binding, requireHardwareVerified=True, acceptableTcbStatuses=["Revoked"]
     )
     verifier = create_anonrouter_dcap_verifier().prepare(
-        str(doc["quote"]),
+        str(first().doc["quote"]),
         # The engine is told the same list, so it refuses too. Both layers gate.
         accepted_tcb_statuses=list(policy.acceptable_tcb_statuses),
         now_ms=time.time() * 1000.0,
     )
     result = verify_gateway_attestation(
-        doc,
-        nonce=nonce,
-        origin=binding.origin,
+        first().doc,
+        nonce=first().nonce,
+        origin=first().binding.origin,
         policy=policy,
         now_ms=time.time() * 1000.0,
         chain_verifier=verifier,

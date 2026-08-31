@@ -49,6 +49,12 @@ def dcap_vectors() -> dict[str, Any]:
 
 
 @pytest.fixture(scope="session")
+def gateway_verdict_vectors() -> dict[str, Any]:
+    """Hop 1's complete verdicts: the analogue of attestation.json for the gateway."""
+    return _load("gateway-verdicts.json")
+
+
+@pytest.fixture(scope="session")
 def cli_contract() -> dict[str, Any]:
     """The anonrouter-verify command's contract: exit codes and document shape."""
     return _load("cli-contract.json")
