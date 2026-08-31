@@ -37,10 +37,19 @@ from ._util import as_dict, as_list, as_str
 from .crypto import chutes as chutes_crypto
 from .crypto import near as near_crypto
 from .crypto import venice as venice_crypto
+from .errors import ConfidentialError
 from .gateway.binding import GATEWAY_NONCE_HEX_LENGTH
 from .gateway.policy import GatewayMeasurementPolicy, pinned_gateway_policy_for
 from .gateway.verify import TdxChainVerifier, verify_gateway_attestation
 from .measurements import pinned_endpoint_identity_for, pinned_measurement_policy_for
+from .media import (
+    DEFAULT_CONTROL_ORIGIN,
+    DEFAULT_INFERENCE_ORIGIN,
+    AudioApi,
+    ImagesApi,
+    MediaOwner,
+    _MediaTransport,
+)
 from .tdx import TDX_TEE_TYPE, match_measurement_allowlist, parse_tdx_quote
 from .verify import verify_raw_evidence
 from .verify.checks import hex_equal
@@ -75,10 +84,6 @@ _UUID_RE = re.compile(
 )
 _INSTANCE_NONCE_RE = re.compile(r"^[A-Za-z0-9_-]{16,128}$")
 _MLKEM_PUBLICKEY_BYTES = 1184
-
-
-class ConfidentialError(RuntimeError):
-    """Any failure in the confidential-inference flow (fail closed)."""
 
 
 #: Loopback hosts, where plaintext http can be opted into for local development.
@@ -180,24 +185,30 @@ def _gateway_option_to_kwargs(option: bool | dict[str, Any] | None) -> dict[str,
     return option
 
 
-def create_client(base_url: str, api_key: str | None = None, **kwargs: Any) -> ConfidentialClient:
+def create_client(
+    base_url: str | None = None, api_key: str | None = None, **kwargs: Any
+) -> ConfidentialClient:
     """Construct a client.
 
     ``base_url`` is the confidential inference origin. Split production callers
     pass ``control_base_url="https://api.anonrouter.ai"`` so API-key and
     content-free ticket operations use the control tier while both attestation
     hops and encrypted request content remain on ``base_url``.
+
+    ``inference_base_url`` is an exact alias for ``base_url``, and with neither
+    supplied both origins default to AnonRouter's production pair.
     """
     return ConfidentialClient(base_url=base_url, api_key=api_key, **kwargs)
 
 
-class ConfidentialClient:
+class ConfidentialClient(MediaOwner):
     def __init__(
         self,
-        base_url: str,
+        base_url: str | None = None,
         api_key: str | None = None,
         *,
         control_base_url: str | None = None,
+        inference_base_url: str | None = None,
         http_client: httpx.Client | None = None,
         timeout: float = 300.0,
         allow_insecure_http: bool = False,
@@ -211,16 +222,56 @@ class ConfidentialClient:
         still working on. Connect is kept short so an unreachable gateway still
         fails fast.
         """
+        # `base_url` and `inference_base_url` name the same thing. Two different
+        # values is an ambiguous configuration, and the ambiguity is about where
+        # prompts go, so it is refused instead of resolved by precedence.
+        if (
+            base_url
+            and inference_base_url
+            and _normalize_api_origin(base_url, allow_insecure_http)
+            != _normalize_api_origin(inference_base_url, allow_insecure_http)
+        ):
+            raise ConfidentialError(
+                "base_url and inference_base_url name the same origin and must not "
+                "disagree. Set one of them."
+            )
+        # An ABSENT origin (None) means "use the production defaults". An origin
+        # that was supplied and is empty is a misconfiguration -- an unset
+        # environment variable read with a "" default is the usual way to arrive
+        # here -- and quietly defaulting it would send content to production when
+        # the caller believed they had configured something else.
+        for name, value in (
+            ("base_url", base_url),
+            ("control_base_url", control_base_url),
+            ("inference_base_url", inference_base_url),
+        ):
+            if value is not None and not value.strip():
+                raise ConfidentialError(
+                    f"{name} was supplied but empty. Omit it to use the default origin."
+                )
+        configured_inference = inference_base_url if inference_base_url is not None else base_url
         # `origin` is the canonical scheme://host[:port] a gateway quote is bound
         # against; `base_url` stays as the (identical) string used to build URLs.
-        self.origin = _normalize_api_origin(base_url, allow_insecure_http)
+        self.origin = _normalize_api_origin(
+            configured_inference or DEFAULT_INFERENCE_ORIGIN, allow_insecure_http
+        )
         self.base_url = self.origin
+        # Defaulting the control origin to the inference origin is the correct
+        # behaviour for a monolithic or local deployment and is preserved exactly.
+        # It is only when NOTHING is configured that both take production values,
+        # which is the one case where they are known to be two different hosts.
         self.control_origin = _normalize_api_origin(
-            control_base_url or base_url, allow_insecure_http
+            control_base_url or configured_inference or DEFAULT_CONTROL_ORIGIN,
+            allow_insecure_http,
         )
         self.api_key = api_key
+        self._allow_insecure_http = allow_insecure_http
         self._owns_client = http_client is None
         self._http = http_client or httpx.Client(timeout=httpx.Timeout(timeout, connect=10.0))
+        #: ``client.images.generate(...)`` -- ticketed image generation.
+        self.images = ImagesApi(self)
+        #: ``client.audio.speech.create(...)`` -- ticketed text-to-speech.
+        self.audio = AudioApi(self)
 
     # -- lifecycle ---------------------------------------------------------
     def close(self) -> None:
@@ -986,6 +1037,44 @@ class ConfidentialClient:
         if self.api_key:
             headers["authorization"] = f"Bearer {self.api_key}"
         return headers
+
+    # -- ticketed media ----------------------------------------------------
+    def _media_transport(self) -> _MediaTransport:
+        """Build the two-origin media transport, refusing a collapsed boundary.
+
+        The check lives here rather than in ``__init__`` so a caller who only
+        verifies or runs E2EE chat against a monolithic deployment keeps working
+        unchanged; only a media call needs the stronger configuration.
+
+        Why media specifically. In E2EE chat the relay receives ciphertext, so a
+        single origin still never holds readable content. A media prompt is sent
+        as PLAINTEXT to the inference origin, protected by the origin split and
+        the enclave rather than by client-side encryption. Collapse the two
+        origins and one host receives both the API key and the prompt, which is
+        precisely the linkage the ticket exists to prevent. That is not a
+        degraded mode worth supporting quietly; it is the absence of the feature.
+        """
+        if self.control_origin == self.origin:
+            # The documented local-test override: a developer running both roles
+            # on their own machine has no privacy boundary to collapse. This is
+            # the same loopback-only escape hatch `_normalize_api_origin` already
+            # documents for plaintext http, and it cannot be reached remotely.
+            host = urlsplit(self.origin).hostname or ""
+            if not (self._allow_insecure_http and host in _LOOPBACK_HOSTS):
+                raise ConfidentialError(
+                    "Ticketed media needs two distinct origins: the API key mints a ticket "
+                    "at the control origin and the prompt goes to the confidential inference "
+                    f"origin. Both are currently {self.origin}, so one host would receive the "
+                    "key and the content together. Set control_base_url (production: "
+                    f"{DEFAULT_CONTROL_ORIGIN}) alongside the confidential inference_base_url "
+                    f"(production: {DEFAULT_INFERENCE_ORIGIN})."
+                )
+        return _MediaTransport(
+            control_origin=self.control_origin,
+            inference_origin=self.origin,
+            api_key=self.api_key,
+            http=self._http,
+        )
 
     def _url(self, path: str) -> str:
         return f"{self.base_url}{path}"

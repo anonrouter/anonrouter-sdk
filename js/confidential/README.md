@@ -74,6 +74,62 @@ const reply = await client.chat({
 console.log(reply.content);
 ```
 
+## Images and speech
+
+`images.generate` and `audio.speech.create` run AnonRouter's two-origin ticket
+exchange for you. The API key mints a **content-free** single-use ticket at the
+control origin; the prompt or text then goes to the confidential origin with that
+ticket as its only credential. Neither host sees both your identity and your
+content.
+
+```ts
+import { createClient } from "@anonrouter/confidential";
+
+// The production origins are the defaults, so this is the whole configuration.
+const client = createClient({ apiKey: process.env.ANONROUTER_API_KEY! });
+
+const image = await client.images.generate({
+  model: "venice/flux-dev",
+  prompt: "a lighthouse in a storm",
+  size: "1024x1024"
+});
+await writeFile("out.png", image.data[0].bytes);
+console.log(image.selected_model, image.data[0].mime_type);
+
+const speech = await client.audio.speech.create({
+  model: "venice/tts-kokoro",
+  input: "The quick brown fox.",
+  voice: "af_sky"
+});
+await writeFile("out.mp3", speech.audio);
+```
+
+**The official OpenAI SDK cannot perform this exchange.** It has one base URL and
+one credential, so it would send your API key and your prompt to the same host in
+one request. Point it at the confidential origin and the mint answers 404; point
+it at the control origin and media answers 503. Both failures are the design
+working. AnonRouter's OpenAI-compatibility broker is a **different, lower-privacy
+option** — one service receives the key and the prompt together — and this SDK
+never selects it implicitly, never falls back to it, and has no flag that enables
+it.
+
+Unsupported OpenAI parameters are **refused, not dropped**: `n` other than 1,
+`response_format` other than `b64_json` / `mp3`, `speed` other than 1, and unknown
+keys like `quality`. Silently ignoring them would hand you something other than
+what you paid for. Failed POSTs are **never retried**, because a media generation
+is billed on the provider attempt.
+
+**Media is not end-to-end encrypted, unlike `chat()`.** The prompt reaches the
+confidential origin as plaintext. What protects it is the origin split (the host
+holding the prompt never holds your credential) plus the TDX enclave that host
+runs in — which you can verify yourself with `verifyGateway()` before you send
+anything, against the same origin the content goes to. That is a real property
+and a weaker one than E2EE chat; if your threat model needs AnonRouter to be
+unable to read the content even in principle, media does not meet it today.
+
+Full contract, compatibility matrix, bound ticket facts, and the error taxonomy:
+[`docs/ticketed-media.md`](../../docs/ticketed-media.md).
+
 ## Verify from a terminal
 
 Installing this package installs `anonrouter-verify`. It prints one JSON document

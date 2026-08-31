@@ -15,23 +15,77 @@ file lands with.
 | Gate | Command | Result |
 | --- | --- | --- |
 | JS typecheck | `npm run typecheck` (in `js/`) | clean, covering `src`, `test`, `examples` and `scripts` |
-| JS tests, offline | `npm test` (in `js/`) | **299 passed, 31 skipped** in `@anonrouter/confidential`; **6 passed** in `@anonrouter/client` |
+| JS tests, offline | `npm test` (in `js/`) | **402 passed, 39 skipped** in `@anonrouter/confidential`; **12 passed** in `@anonrouter/client` |
 | JS build | `npm run build` (in `js/`) | clean |
 | End-to-end self-test | `npm run example:selftest` | PASS: venice and chutes, verify plus E2EE chat, relay saw ciphertext only |
-| Python tests, offline | `pytest -q` (in `python/`) | **210 passed, 32 skipped** |
-| Python types | `mypy` (in `python/`) | clean, 32 files, `src` and `examples` |
+| Python tests, offline | `pytest -q` (in `python/`) | **316 passed, 41 skipped** |
+| Python types | `mypy` (in `python/`) | clean, 35 files, `src` and `examples` |
 | Python lint | `ruff check .` (in `python/`) | clean |
 | Measurement pin parity | `node scripts/check-parity.mjs` | all four per-package copies match `shared/` |
 | Command parity | `node scripts/check-cli-parity.mjs` | 4/4 cases, both real executables, identical documents and exit codes |
-| Artifact installs | `node scripts/smoke-artifacts.mjs` | **21/21** |
-| **Live, JS** | `npm test` with a live origin and an engine | **330 passed, 0 skipped** |
-| **Live, Python** | `pytest -q` with a live origin and an engine | **241 passed, 1 platform-only skip** |
-| **Live provider route, JS + Python** | `anonrouter-verify route` plus one bounded E2EE chat per SDK | gateway **`hardware_verified`**, Venice **`cryptographically_checked`**, cross-binding held, both decrypted `OK`, plaintext/key leak canaries clean |
+| Artifact installs | `node scripts/smoke-artifacts.mjs` | **22/22**, now including that `client.images.generate` and `client.audio.speech.create` are reachable from the installed artifact in both languages |
+| **Live, JS** (no engine) | `npm test` with both live origins | **437 passed, 4 skipped** |
+| **Live, Python** (no engine) | `pytest -q` with both live origins | **352 passed, 5 skipped** |
 
 The offline skips are opt-in live/platform cases. They skip with a stated reason
-and never fabricate a result. With
-`ANONROUTER_LIVE_GATEWAY_ORIGIN`, `ANONROUTER_LIVE_PUBLIC_ORIGIN` and
-`ANONROUTER_DCAP_VERIFIER_BIN` set, all 31 run and pass.
+and never fabricate a result. Setting `ANONROUTER_LIVE_GATEWAY_ORIGIN` and
+`ANONROUTER_LIVE_PUBLIC_ORIGIN` runs all but the engine-gated cases; the
+remaining 4 (JS) and 5 (Python) need `ANONROUTER_DCAP_VERIFIER_BIN`.
+
+**The engine-gated rows were not re-run for this commit.** No
+`anonrouter-dcap-verifier` was available in this environment, so the
+`hardware_verified` live result and the live provider-route proof recorded below
+stand as **previously recorded** for 0.1.0 and are not re-asserted here. Nothing
+in this commit touches the verification path; the media surface added here is a
+separate code path with its own live probes, listed next.
+
+## Ticketed media, verified
+
+| Gate | Result |
+| --- | --- |
+| Wire-contract parity | `shared/vectors/media-contract.json`, 6 request cases and 8 refusals, replayed by **both** suites |
+| JS media unit + negatives | **90 passed** (`js/confidential/test/media.test.ts`) |
+| JS two-origin end-to-end | **11 passed** over real loopback sockets (`media-e2e.test.ts`) |
+| Python media unit + negatives | **93 passed** (`python/tests/test_media.py`) |
+| Python two-origin end-to-end | **12 passed** over real loopback sockets (`test_media_e2e.py`) |
+| **Live media contract, JS** | **10 passed** against the real origins, credential-free, zero spend |
+| **Live media contract, Python** | **10 passed**, the same probes |
+
+The live media probes are the only live gate in this file that needs **no key and
+no engine**, so they are reproducible by anyone:
+
+```bash
+ANONROUTER_LIVE_GATEWAY_ORIGIN=https://api.private.anonrouter.ai \
+ANONROUTER_LIVE_PUBLIC_ORIGIN=https://api.anonrouter.ai \
+  npx vitest run test/live-media.test.ts     # in js/confidential
+```
+
+What they established on 2026-08-30, against production:
+
+- `api.private.anonrouter.ai` serves **both** media routes and fails closed with
+  **401 `ticket_required`** on a request carrying no ticket — including a request
+  with an empty body, so the refusal happens before a body is even parsed.
+- That origin answers **404** for `/v1/inference/tickets`: it does not mint, which
+  is what keeps the API key off the content host by construction rather than by
+  the client's good manners.
+- `api.anonrouter.ai` serves **no** media content at all — **503
+  `media_disabled`** for both routes — and does serve the mint, refusing an
+  unauthenticated call (403 CSRF without a bearer header, 401 with a bogus one).
+
+Two planted negatives guard the probes themselves: each suite asserts its probe
+helper sends no `authorization` and no `x-anonrouter-ticket` header, so a future
+edit cannot quietly make these billable.
+
+### What the media gates do NOT cover
+
+**No successful generation has been performed by any test in this repository.**
+That needs a real inference-scoped API key and a callable `(provider, model)`
+pair, and it spends money. Everything above establishes that the two-origin
+exchange is shaped correctly, that both origins enforce their halves of it, and
+that the client refuses rather than degrades — not that a given account can
+generate a given image today. `js/confidential/examples/media.ts` and
+`python/examples/media.py` perform a real generation and are deliberately not run
+by CI.
 
 ## What the live run establishes
 
@@ -57,6 +111,9 @@ signed body, which is refused at the **signature** and which no amount of
 structural checking could catch.
 
 ## Live provider-hop proof
+
+*Previously recorded, and not re-run for the media commit: the engine and the
+inference-scoped key it needed were not available in that environment.*
 
 Using a fresh inference-scoped key that was read from a mode-0600 temporary file
 and never printed, both SDK implementations verified provider `venice`, model
@@ -107,6 +164,17 @@ was bypassed and no plaintext fallback exists.
   output says which it was.
 - **Attestation proves which code ran, not that it behaves well.** Reviewing the
   source behind a pinned compose hash is a separate act.
+- **No media generation has been performed by any test.** The media gates prove
+  the exchange is shaped correctly and that both origins enforce their halves;
+  they do not prove a given account can generate a given image or clip today.
+  That needs a real key and spends money.
+- **Ticketed media is not end-to-end encrypted, and is not described as such.**
+  The prompt reaches the confidential origin as plaintext. What protects it is
+  the origin split (the host holding the prompt never holds the account
+  credential) plus the TDX enclave the confidential plane runs in — not
+  client-side encryption. E2EE chat is the surface where AnonRouter sees only
+  ciphertext. Anyone reading `images.generate` on the confidential client as
+  "encrypted like `chat`" is reading more than is claimed.
 
 ## One thing the suites assert that is easy to miss
 

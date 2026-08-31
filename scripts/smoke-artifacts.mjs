@@ -113,7 +113,8 @@ if (npmInstalled) {
   const probe = join(jsHome, "probe.mjs");
   writeFileSync(probe, `
 import { createClient, verifyGatewayAttestation, loadGatewayPolicy, atLeast,
-         pinnedGatewayPolicyFor, measurementPolicyDocument } from "@anonrouter/confidential";
+         pinnedGatewayPolicyFor, measurementPolicyDocument,
+         redactHeaders, utf16Length, MediaError } from "@anonrouter/confidential";
 import { createAnonRouterDcapVerifier, describeDcapInstallation,
          buildDcapEngineRequest } from "@anonrouter/confidential/dcap";
 import { createSubprocessChainVerifier } from "@anonrouter/confidential/chain-verifiers";
@@ -130,7 +131,24 @@ const report = {
   // "don't trust us, verify" arrangement has no allowlist on the user's disk.
   gatewayPinPresent: pinnedGatewayPolicyFor("https://api.private.anonrouter.ai")?.status === "published",
   providerPinsPresent: Object.keys(measurementPolicyDocument().providers ?? {}).length > 0,
-  engineDetected: describeDcapInstallation().available
+  engineDetected: describeDcapInstallation().available,
+  // The ticketed media surface, reached the way a user reaches it. A packaging
+  // mistake that dropped media.js would still let every import above succeed,
+  // so the ACCESSOR PATH is what gets checked, not just the module.
+  mediaSurface: (() => {
+    const client = createClient({ apiKey: "smoke-probe-key-not-a-credential" });
+    return typeof client.images?.generate === "function"
+      && typeof client.audio?.speech?.create === "function"
+      && typeof redactHeaders === "function"
+      && typeof utf16Length === "function"
+      && typeof MediaError === "function";
+  })(),
+  // The production defaults are part of the artifact: a package that shipped
+  // without them would send prompts wherever the caller happened to guess.
+  mediaDefaults: (() => {
+    const client = createClient({ apiKey: "smoke-probe-key-not-a-credential" });
+    return client.images !== undefined && utf16Length("Hi \\u{1F600}") === 5;
+  })()
 };
 console.log(JSON.stringify(report));
 `);
@@ -150,6 +168,10 @@ console.log(JSON.stringify(report));
     () => assert(probeOutput.gatewayPinPresent, "the published pin did not resolve by default"));
   check("the shipped provider pins are present in the installed package",
     () => assert(probeOutput.providerPinsPresent, "no provider measurement pins found after install"));
+  check("client.images.generate and client.audio.speech.create are reachable after install",
+    () => assert(probeOutput.mediaSurface, "the ticketed media surface did not survive packaging"));
+  check("the media production origin defaults survive packaging",
+    () => assert(probeOutput.mediaDefaults, "media defaults or the UTF-16 counter did not survive packaging"));
 
   // The command, run from the installed bin rather than from the repo.
   // The installed bin itself, not `npx`: this is the symlink npm creates from the
@@ -271,7 +293,8 @@ if (!python) {
 import json
 from anonrouter_confidential import (create_client, verify_gateway_attestation,
                                      load_gateway_policy, at_least,
-                                     pinned_gateway_policy_for, load_measurements)
+                                     pinned_gateway_policy_for, load_measurements,
+                                     MediaError, redact_headers, utf16_length)
 from anonrouter_confidential.gateway.dcap import (create_anonrouter_dcap_verifier,
                                                   describe_dcap_installation,
                                                   build_dcap_engine_request)
@@ -291,6 +314,18 @@ print(json.dumps({
         and pinned_gateway_policy_for("https://api.private.anonrouter.ai").status == "published"
     ),
     "providerPinsPresent": len(load_measurements().get("providers", {})) > 0,
+    # The ticketed media surface, reached the way a user reaches it. A packaging
+    # mistake that dropped media.py would still let every import above succeed,
+    # so the ACCESSOR PATH is what gets checked, not just the module.
+    "mediaSurface": (
+        callable(create_client(api_key="smoke-probe-key-not-a-credential").images.generate)
+        and callable(create_client(api_key="smoke-probe-key-not-a-credential").audio.speech.create)
+        and callable(redact_headers)
+        and issubclass(MediaError, Exception)
+        # The UTF-16 counter is the one piece of arithmetic that differs from
+        # Python's own len(); a wheel that lost it would 409 on every emoji.
+        and utf16_length("Hi \\U0001f600") == 5
+    ),
 }))
 `);
       const probeOutput = JSON.parse(run(join(venv, "bin", "python"), [probe], { cwd: workspace }));
@@ -298,6 +333,7 @@ print(json.dumps({
         assert(probeOutput.coreExports, "missing core exports");
         assert(probeOutput.dcapExports, "missing dcap exports");
         assert(probeOutput.cliImportable, "the CLI module did not import");
+        assert(probeOutput.mediaSurface, "the ticketed media surface did not survive packaging");
       });
       check(`${label}: the shipped pins travel inside the distribution`, () => {
         assert(probeOutput.gatewayPinPresent, "no gateway pin found after install");

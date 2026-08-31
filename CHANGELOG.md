@@ -17,6 +17,54 @@ already exercised.
 Initial public release.
 
 ### Added
+- **Ticketed media: `client.images.generate(...)` and
+  `client.audio.speech.create(...)`, in both languages.** Image generation and
+  text-to-speech over AnonRouter's two-origin split, with OpenAI's parameter
+  names so a working call ports over unchanged. One SDK call is two HTTP requests
+  to two different hosts: the API key mints a **content-free** single-use ticket
+  at the control origin (operation, model, image size/format, speech character
+  COUNT, voice, container — never the prompt or the text), then the content goes
+  to the confidential inference origin authenticated by that ticket alone. Neither
+  host holds both the account identity and the content.
+  - **The official OpenAI SDK cannot perform this exchange.** It has one base URL
+    and one credential, so it would send the key and the prompt to the same host.
+    Pointed at the confidential origin its mint 404s; pointed at the control
+    origin media answers 503. Both failures are the design working. AnonRouter's
+    OpenAI-compatibility broker is a **separate, lower-privacy option** — one
+    service receives the key and the prompt together — and these SDKs never
+    select it implicitly, never fall back to it, and expose no flag that enables
+    it.
+  - **Every server-required ticket fact is bound and re-checked client-side**
+    before content is sent: operation, model, image width/height/format, and for
+    speech the exact input character count, voice, and container. The relay
+    answers 409 on drift; checking the mint's echo first means a mismatch fails on
+    the content-free half and **the prompt never leaves the process**.
+  - **The priced speech unit is UTF-16 code units, not code points.** The server
+    counts `input.length` on Node; Python's `len()` disagrees on every emoji
+    (`"Hi 😀"` is 4 to `len()`, 5 to the server). The Python SDK counts UTF-16, so
+    emoji do not produce a mysterious `ticket_input_length_mismatch`.
+    `shared/vectors/media-contract.json` pins the case in both suites.
+  - **Unsupported OpenAI parameters are refused, not dropped**: `n` other than 1,
+    `response_format` other than `b64_json`/`mp3`, `speed` other than 1, and
+    unknown keys such as `quality`. Silently ignoring them would hand the caller
+    something other than what they paid for.
+  - **No automatic POST retry.** A media generation is billed on the provider
+    attempt, so a transparently retried POST would be a second charge for one
+    call. Pinned by tests that count POSTs across 500/502/503/429/408 and
+    transport failures.
+  - Typed errors — `media_ticket_failed`, `ticket_binding_mismatch`,
+    `ticket_rejected`, `relay_refused`, `provider_failed`, `response_invalid`,
+    `transport_failed`, `cancelled`, `timeout` — separating the failures that
+    cannot have been charged from the one that may have. Messages and diagnostics
+    never carry the prompt, the key, or the ticket, and header values are replaced
+    with `<redacted>`. Both `MediaError` types subclass `ConfidentialError`, so an
+    existing catch keeps working.
+  - Media **requires two distinct origins** and refuses when they collapse: one
+    host would receive the key and the prompt together. The documented
+    loopback-only `allowInsecureHttp` / `allow_insecure_http` override permits a
+    single origin for local development, and cannot be reached for a remote host.
+  - See [`docs/ticketed-media.md`](docs/ticketed-media.md) for the compatibility
+    matrix and the full contract.
 - **`verifyRoute()` / `verify_route()`, the stable verdict contract.** The earlier
   `verify()` reported internal `verification_level` values, which say WHO attested
   rather than WHAT was checked, so a reader had to already know the trust model to
@@ -146,6 +194,15 @@ Initial public release.
   optional `tinfoil` dependency.
 - `@anonrouter/client` (npm): thin, dependency-free client for the public
   (plaintext / TEE / private) routes over the two-request ticketed flow.
+  - Now accepts `controlBaseUrl` and `inferenceBaseUrl`, so the ticket mint and
+    the content request can genuinely go to different hosts. The README
+    previously showed `controlBaseUrl` on this client, which **did not compile
+    and described a boundary the code did not implement**: every request went to
+    a single `baseUrl`. Passing only `baseUrl` still sends both to that one
+    origin, unchanged; with nothing configured both take AnonRouter's production
+    values. Two origins that disagree, or an origin supplied as an empty string,
+    are refused rather than resolved by precedence — a silent default here would
+    send content somewhere the caller did not choose.
 - `anonrouter-confidential` (PyPI): the Python twin of `@anonrouter/confidential`,
   sharing the same measurement pins and known-answer test vectors.
 - `shared/measurements.json` reviewed measurement pins and `shared/vectors/`

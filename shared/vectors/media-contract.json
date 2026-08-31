@@ -1,0 +1,370 @@
+{
+  "note": [
+    "The canonical wire contract for ticketed media, replayed by BOTH language suites.",
+    "Each case names one SDK call and the EXACT two requests it must produce: a",
+    "content-free ticket mint at the control origin carrying the API key, then the",
+    "content request at the inference origin carrying only the single-use ticket.",
+    "",
+    "This file is the parity gate for the media surface. A change to either client's",
+    "request shape that is not made in the other fails here, in both suites, rather",
+    "than being discovered by a customer whose Python calls 409 where their",
+    "JavaScript calls succeed.",
+    "",
+    "Derived from deployed AnonRouter code: src/routes/image.ts, src/routes/speech.ts,",
+    "src/inference/ticketRequestSchema.ts, src/providers/types.ts. Verified against",
+    "the live origins on 2026-08-30.",
+    "",
+    "`mint.body` must match EXACTLY, key for key: an extra key is a strict-schema 400,",
+    "and a missing one is an unbound fact the relay will refuse to redeem. The prompt",
+    "and the speech input must NEVER appear in a mint body; `probe` marks the exact",
+    "string each suite scans the whole control request for."
+  ],
+  "control_origin": "https://control.media.test.invalid",
+  "inference_origin": "https://inference.media.test.invalid",
+  "api_key": "ar-parity-key-never-sent-to-the-relay",
+  "ticket_path": "/v1/inference/tickets",
+  "ticket_header": "x-anonrouter-ticket",
+  "cases": [
+    {
+      "name": "image: defaults bind 1024x1024 b64_json",
+      "api": "images.generate",
+      "args": {
+        "model": "venice/flux-dev",
+        "prompt": "a lighthouse in a storm PARITY-IMAGE-PROBE"
+      },
+      "probe": "PARITY-IMAGE-PROBE",
+      "mint": {
+        "method": "POST",
+        "origin": "control",
+        "path": "/v1/inference/tickets",
+        "headers_present": ["authorization", "content-type"],
+        "headers_absent": ["x-anonrouter-ticket", "cookie"],
+        "body": {
+          "operation": "image",
+          "model": "venice/flux-dev",
+          "size": "1024x1024",
+          "response_format": "b64_json"
+        }
+      },
+      "ticket_response": {
+        "ticket": "tkt_image_defaults",
+        "expires_in": 30,
+        "operation": "image",
+        "model": "venice/flux-dev",
+        "automatic": false,
+        "privacy_class": "private",
+        "max_output_tokens": 0,
+        "reasoning": "default",
+        "size": "1024x1024",
+        "response_format": "b64_json"
+      },
+      "content": {
+        "method": "POST",
+        "origin": "inference",
+        "path": "/v1/images/generations",
+        "headers_present": ["x-anonrouter-ticket", "content-type"],
+        "headers_absent": ["authorization", "cookie"],
+        "body": {
+          "model": "venice/flux-dev",
+          "prompt": "a lighthouse in a storm PARITY-IMAGE-PROBE",
+          "size": "1024x1024",
+          "response_format": "b64_json"
+        }
+      }
+    },
+    {
+      "name": "image: an explicit size and an OpenAI-shaped n=1 bind the same work",
+      "api": "images.generate",
+      "args": {
+        "model": "venice/flux-dev",
+        "prompt": "a red bicycle",
+        "size": "512x768",
+        "response_format": "b64_json",
+        "n": 1
+      },
+      "probe": "a red bicycle",
+      "mint": {
+        "method": "POST",
+        "origin": "control",
+        "path": "/v1/inference/tickets",
+        "headers_present": ["authorization", "content-type"],
+        "headers_absent": ["x-anonrouter-ticket", "cookie"],
+        "body": {
+          "operation": "image",
+          "model": "venice/flux-dev",
+          "size": "512x768",
+          "response_format": "b64_json"
+        }
+      },
+      "ticket_response": {
+        "ticket": "tkt_image_sized",
+        "expires_in": 30,
+        "operation": "image",
+        "model": "venice/flux-dev",
+        "size": "512x768",
+        "response_format": "b64_json"
+      },
+      "content": {
+        "method": "POST",
+        "origin": "inference",
+        "path": "/v1/images/generations",
+        "headers_present": ["x-anonrouter-ticket", "content-type"],
+        "headers_absent": ["authorization", "cookie"],
+        "body": {
+          "model": "venice/flux-dev",
+          "prompt": "a red bicycle",
+          "size": "512x768",
+          "response_format": "b64_json"
+        }
+      }
+    },
+    {
+      "name": "image: a zero-padded size is canonicalized identically for both hosts",
+      "comment": [
+        "The server's regex accepts 0512x0512 and the mint echoes the parsed",
+        "512x512. Both clients must send the SAME canonical string to both hosts,",
+        "or the echo check reports drift that is not there."
+      ],
+      "api": "images.generate",
+      "args": {
+        "model": "venice/flux-dev",
+        "prompt": "a canonical size",
+        "size": "0512x0512"
+      },
+      "probe": "a canonical size",
+      "mint": {
+        "method": "POST",
+        "origin": "control",
+        "path": "/v1/inference/tickets",
+        "headers_present": ["authorization", "content-type"],
+        "headers_absent": ["x-anonrouter-ticket", "cookie"],
+        "body": {
+          "operation": "image",
+          "model": "venice/flux-dev",
+          "size": "512x512",
+          "response_format": "b64_json"
+        }
+      },
+      "ticket_response": {
+        "ticket": "tkt_image_canonical",
+        "expires_in": 30,
+        "operation": "image",
+        "model": "venice/flux-dev",
+        "size": "512x512",
+        "response_format": "b64_json"
+      },
+      "content": {
+        "method": "POST",
+        "origin": "inference",
+        "path": "/v1/images/generations",
+        "headers_present": ["x-anonrouter-ticket", "content-type"],
+        "headers_absent": ["authorization", "cookie"],
+        "body": {
+          "model": "venice/flux-dev",
+          "prompt": "a canonical size",
+          "size": "512x512",
+          "response_format": "b64_json"
+        }
+      }
+    },
+    {
+      "name": "speech: no voice binds the character count and mp3 only",
+      "comment": [
+        "The mint carries input_chars and NOT the text. The relay compares",
+        "(constraints.speechVoice ?? null) against (body.voice ?? null), so a",
+        "request without a voice must omit the key on BOTH hosts rather than",
+        "sending null."
+      ],
+      "api": "audio.speech.create",
+      "args": {
+        "model": "venice/tts-kokoro",
+        "input": "The quick brown fox PARITY-SPEECH-PROBE"
+      },
+      "probe": "PARITY-SPEECH-PROBE",
+      "expected_input_chars": 39,
+      "mint": {
+        "method": "POST",
+        "origin": "control",
+        "path": "/v1/inference/tickets",
+        "headers_present": ["authorization", "content-type"],
+        "headers_absent": ["x-anonrouter-ticket", "cookie"],
+        "body": {
+          "operation": "speech",
+          "model": "venice/tts-kokoro",
+          "input_chars": 39,
+          "response_format": "mp3"
+        }
+      },
+      "ticket_response": {
+        "ticket": "tkt_speech_novoice",
+        "expires_in": 30,
+        "operation": "speech",
+        "model": "venice/tts-kokoro",
+        "input_chars": 39,
+        "response_format": "mp3"
+      },
+      "content": {
+        "method": "POST",
+        "origin": "inference",
+        "path": "/v1/audio/speech",
+        "headers_present": ["x-anonrouter-ticket", "content-type"],
+        "headers_absent": ["authorization", "cookie"],
+        "body": {
+          "model": "venice/tts-kokoro",
+          "input": "The quick brown fox PARITY-SPEECH-PROBE",
+          "response_format": "mp3"
+        }
+      }
+    },
+    {
+      "name": "speech: an explicit voice is bound on both hosts",
+      "api": "audio.speech.create",
+      "args": {
+        "model": "venice/tts-kokoro",
+        "input": "Good morning.",
+        "voice": "af_sky",
+        "response_format": "mp3"
+      },
+      "probe": "Good morning.",
+      "expected_input_chars": 13,
+      "mint": {
+        "method": "POST",
+        "origin": "control",
+        "path": "/v1/inference/tickets",
+        "headers_present": ["authorization", "content-type"],
+        "headers_absent": ["x-anonrouter-ticket", "cookie"],
+        "body": {
+          "operation": "speech",
+          "model": "venice/tts-kokoro",
+          "input_chars": 13,
+          "response_format": "mp3",
+          "voice": "af_sky"
+        }
+      },
+      "ticket_response": {
+        "ticket": "tkt_speech_voice",
+        "expires_in": 30,
+        "operation": "speech",
+        "model": "venice/tts-kokoro",
+        "input_chars": 13,
+        "response_format": "mp3",
+        "voice": "af_sky"
+      },
+      "content": {
+        "method": "POST",
+        "origin": "inference",
+        "path": "/v1/audio/speech",
+        "headers_present": ["x-anonrouter-ticket", "content-type"],
+        "headers_absent": ["authorization", "cookie"],
+        "body": {
+          "model": "venice/tts-kokoro",
+          "input": "Good morning.",
+          "response_format": "mp3",
+          "voice": "af_sky"
+        }
+      }
+    },
+    {
+      "name": "speech: the bound count is UTF-16 code units, not code points",
+      "comment": [
+        "THE CROSS-LANGUAGE TRAP THIS FILE EXISTS FOR. The relay computes",
+        "body.input.length on Node, which counts UTF-16 code units, and rejects any",
+        "drift with ticket_input_length_mismatch. Python's len() counts CODE POINTS.",
+        "'Hi 😀' is 4 to len() and 5 to the server, so a Python client using",
+        "len() mints a ticket bound to 4, sends 5 characters of text, and gets a 409",
+        "on exactly the inputs that contain emoji. Both suites must produce 5."
+      ],
+      "api": "audio.speech.create",
+      "args": {
+        "model": "venice/tts-kokoro",
+        "input": "Hi 😀"
+      },
+      "probe": "Hi 😀",
+      "expected_input_chars": 5,
+      "expected_code_points": 4,
+      "mint": {
+        "method": "POST",
+        "origin": "control",
+        "path": "/v1/inference/tickets",
+        "headers_present": ["authorization", "content-type"],
+        "headers_absent": ["x-anonrouter-ticket", "cookie"],
+        "body": {
+          "operation": "speech",
+          "model": "venice/tts-kokoro",
+          "input_chars": 5,
+          "response_format": "mp3"
+        }
+      },
+      "ticket_response": {
+        "ticket": "tkt_speech_astral",
+        "expires_in": 30,
+        "operation": "speech",
+        "model": "venice/tts-kokoro",
+        "input_chars": 5,
+        "response_format": "mp3"
+      },
+      "content": {
+        "method": "POST",
+        "origin": "inference",
+        "path": "/v1/audio/speech",
+        "headers_present": ["x-anonrouter-ticket", "content-type"],
+        "headers_absent": ["authorization", "cookie"],
+        "body": {
+          "model": "venice/tts-kokoro",
+          "input": "Hi 😀",
+          "response_format": "mp3"
+        }
+      }
+    }
+  ],
+  "refusals": [
+    {
+      "name": "an unsupported OpenAI image count is refused, never silently reduced",
+      "api": "images.generate",
+      "args": { "model": "m", "prompt": "p", "n": 4 },
+      "code": "unsupported_request"
+    },
+    {
+      "name": "an unsupported image container is refused",
+      "api": "images.generate",
+      "args": { "model": "m", "prompt": "p", "response_format": "url" },
+      "code": "unsupported_request"
+    },
+    {
+      "name": "an out-of-range image dimension is refused before minting",
+      "api": "images.generate",
+      "args": { "model": "m", "prompt": "p", "size": "4096x4096" },
+      "code": "unsupported_request"
+    },
+    {
+      "name": "a malformed size is refused before minting",
+      "api": "images.generate",
+      "args": { "model": "m", "prompt": "p", "size": "big" },
+      "code": "unsupported_request"
+    },
+    {
+      "name": "an empty prompt is refused before minting",
+      "api": "images.generate",
+      "args": { "model": "m", "prompt": "" },
+      "code": "unsupported_request"
+    },
+    {
+      "name": "an unsupported speech container is refused",
+      "api": "audio.speech.create",
+      "args": { "model": "m", "input": "hello", "response_format": "wav" },
+      "code": "unsupported_request"
+    },
+    {
+      "name": "a speech speed AnonRouter does not serve is refused, never dropped",
+      "api": "audio.speech.create",
+      "args": { "model": "m", "input": "hello", "speed": 1.5 },
+      "code": "unsupported_request"
+    },
+    {
+      "name": "an empty speech input is refused before minting",
+      "api": "audio.speech.create",
+      "args": { "model": "m", "input": "" },
+      "code": "unsupported_request"
+    }
+  ]
+}

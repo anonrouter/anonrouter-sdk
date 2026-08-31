@@ -37,6 +37,32 @@ Env: everything from example 1, plus `ANONROUTER_REQUIRE` (default
 `cryptographically_checked`; try `hardware_verified` with an engine installed),
 `PROMPT`, `MAX_TOKENS`.
 
+## 3. Image and speech over the two-origin split (real gateway, your key, BILLABLE)
+
+```bash
+ANONROUTER_API_KEY=ar_... python examples/media.py
+```
+
+Generates an image and synthesizes speech, writing `anonrouter-image.png` and
+`anonrouter-speech.mp3`. One call is two requests to two hosts: the API key mints
+a content-free ticket at the control origin, then the prompt goes to the
+confidential origin with only that ticket. The official OpenAI SDK cannot perform
+this exchange. Makes two real, billable generations.
+
+To check the same routes for FREE, with no key and no spend, run the live probes
+instead -- they confirm both media routes answer `401 ticket_required` without a
+ticket and that the control origin serves no media content at all:
+
+```bash
+ANONROUTER_LIVE_GATEWAY_ORIGIN=https://api.private.anonrouter.ai \
+ANONROUTER_LIVE_PUBLIC_ORIGIN=https://api.anonrouter.ai \
+  pytest tests/test_live_media.py
+```
+
+Env: `ANONROUTER_IMAGE_MODEL` (default `venice/flux-dev`),
+`ANONROUTER_SPEECH_MODEL` (default `venice/tts-kokoro`),
+`ANONROUTER_SPEECH_VOICE`, `ANONROUTER_BASE_URL`, `ANONROUTER_CONTROL_URL`.
+
 ## Notes
 
 - The API key needs the `inference` scope. It is sent only on the authenticated,

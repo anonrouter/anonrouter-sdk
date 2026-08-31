@@ -28,6 +28,41 @@ export {
   type ChatResult
 } from "./client.js";
 
+// ---- Ticketed media (image / speech) -----------------------------------------
+// `client.images.generate(...)` and `client.audio.speech.create(...)` run the
+// two-origin ticket exchange automatically. The API key mints a content-free
+// single-use ticket at the control origin; the prompt or text goes only to the
+// confidential inference origin, authenticated by that ticket alone. An official
+// OpenAI client cannot perform this exchange: it has one base URL and one
+// credential, so it would send the key and the content to the same host.
+export {
+  redactHeaders,
+  utf16Length,
+  canonicalImageSize,
+  MediaError,
+  DEFAULT_CONTROL_ORIGIN,
+  DEFAULT_INFERENCE_ORIGIN,
+  IMAGE_DEFAULT_SIZE,
+  IMAGE_MIN_DIMENSION,
+  IMAGE_MAX_DIMENSION,
+  IMAGE_MAX_PROMPT_CHARS,
+  IMAGE_RESPONSE_FORMAT,
+  SPEECH_MAX_INPUT_CHARS,
+  SPEECH_MAX_VOICE_CHARS,
+  SPEECH_RESPONSE_FORMAT,
+  type ImagesApi,
+  type AudioApi,
+  type SpeechApi,
+  type ImageGenerateInput,
+  type ImageGenerateResult,
+  type GeneratedImage,
+  type SpeechCreateInput,
+  type SpeechCreateResult,
+  type MediaResponseMetadata,
+  type MediaRateLimit,
+  type MediaErrorDiagnostics
+} from "./media.js";
+
 // ---- Hop 1: AnonRouter's own confidential routing plane ----------------------
 // Verifying the provider's enclave says nothing about who routed the request to
 // it. These verify the other half: that the AnonRouter data plane you connected

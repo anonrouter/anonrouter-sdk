@@ -14,9 +14,9 @@ lives here in the open.
 
 | Package | Language | What it is |
 | --- | --- | --- |
-| `@anonrouter/confidential` | JavaScript / TypeScript (npm) | Independently verify TEE / E2EE routes and run end-to-end-encrypted inference. |
+| `@anonrouter/confidential` | JavaScript / TypeScript (npm) | Independently verify TEE / E2EE routes, run end-to-end-encrypted inference, and generate images / speech over the two-origin ticket exchange. |
 | `@anonrouter/client` | JavaScript / TypeScript (npm) | Thin, dependency-free API client for the public (plaintext / TEE / private) routes. |
-| `anonrouter-confidential` | Python (PyPI) | The Python twin of `@anonrouter/confidential`: same verification, same E2EE. |
+| `anonrouter-confidential` | Python (PyPI) | The Python twin of `@anonrouter/confidential`: same verification, same E2EE, same media surface. |
 
 Both `@anonrouter/confidential` and `anonrouter-confidential` also install an
 `anonrouter-verify` command. See [Verify from a terminal](#verify-from-a-terminal).
@@ -37,7 +37,7 @@ js/
   confidential/           # @anonrouter/confidential
   client/                 # @anonrouter/client
 python/                   # anonrouter-confidential
-docs/                     # what the live origins actually serve
+docs/                     # what the live origins serve; the ticketed media contract
 scripts/                  # sync, parity gates, artifact smoke installs
 .github/workflows/        # CI: js, python, parity, CLI parity, packaging
 ```
@@ -300,11 +300,10 @@ npm install @anonrouter/client
 ```ts
 import { createClient } from "@anonrouter/client";
 
-const client = createClient({
-  baseUrl: "https://api.private.anonrouter.ai",
-  controlBaseUrl: "https://api.anonrouter.ai",
-  apiKey: process.env.ANONROUTER_API_KEY!
-});
+// The production origins are the defaults. Pass controlBaseUrl /
+// inferenceBaseUrl explicitly to point at another deployment, or a single
+// baseUrl for a monolithic or local one.
+const client = createClient({ apiKey: process.env.ANONROUTER_API_KEY! });
 
 const models = await client.models();
 
@@ -316,6 +315,47 @@ const completion = await client.chat({
   messages: [{ role: "user", content: "Hello." }]
 });
 ```
+
+## Images and speech, over the two-origin split
+
+`client.images.generate(...)` and `client.audio.speech.create(...)` exist in both
+`@anonrouter/confidential` and `anonrouter-confidential`, with the same parameters
+and the same guarantees.
+
+```ts
+const client = createClient({ apiKey: process.env.ANONROUTER_API_KEY! });
+
+const image = await client.images.generate({ model: "venice/flux-dev", prompt: "a lighthouse" });
+await writeFile("out.png", image.data[0].bytes);
+
+const speech = await client.audio.speech.create({ model: "venice/tts-kokoro", input: "Hello." });
+await writeFile("out.mp3", speech.audio);
+```
+
+```python
+client = create_client(api_key=os.environ["ANONROUTER_API_KEY"])
+
+image = client.images.generate(model="venice/flux-dev", prompt="a lighthouse")
+open("out.png", "wb").write(image.data[0].data)
+
+client.audio.speech.create(model="venice/tts-kokoro", input="Hello.").write_to("out.mp3")
+```
+
+One call is two requests to two hosts. The API key mints a **content-free**
+single-use ticket at the control origin — model, size, voice, and for speech the
+character *count*, never the text. The prompt then goes to the confidential origin
+with that ticket as its only credential. Neither host holds both your identity and
+your content.
+
+**The official OpenAI SDK cannot perform this exchange**: one base URL, one
+credential, so the key and the prompt would reach the same host. AnonRouter's
+OpenAI-compatibility broker is a **separate, lower-privacy option** where one
+service receives both, and these SDKs never select it implicitly or fall back to
+it.
+
+Read [`docs/ticketed-media.md`](docs/ticketed-media.md) for the compatibility
+matrix, the exact facts the ticket binds, the error taxonomy, and why a failed
+media POST is never retried.
 
 ## One source of truth, enforced across languages
 

@@ -166,3 +166,91 @@ describe("createClient errors", () => {
     expect(() => createClient({ baseUrl: "https://x", apiKey: "" })).toThrow(/apiKey/);
   });
 });
+
+// The two-origin split. The root README documented `controlBaseUrl` on this
+// client before the option existed, so the example it showed did not compile and
+// described a boundary the code did not implement. These pin the real behaviour.
+describe("createClient origins", () => {
+  function record() {
+    const calls: RecordedCall[] = [];
+    const fetchStub = vi.fn(async (input: string, init?: RequestInit): Promise<Response> => {
+      calls.push({ url: input, init });
+      if (input.endsWith("/v1/inference/tickets")) return jsonResponse({ ticket: "tkt" });
+      return jsonResponse({
+        id: "c", object: "chat.completion", created: 1, model: "m",
+        choices: [{ index: 0, message: { role: "assistant", content: "hi" }, finish_reason: "stop" }]
+      });
+    });
+    return { calls, fetchStub };
+  }
+
+  it("sends the key to the control origin and the content to the inference origin", async () => {
+    const { calls, fetchStub } = record();
+    const client = createClient({
+      controlBaseUrl: "https://control.invalid",
+      inferenceBaseUrl: "https://inference.invalid",
+      apiKey: "sk-split",
+      fetch: fetchStub
+    });
+    await client.chat({ model: "m", messages: [{ role: "user", content: "SPLIT-CANARY" }] });
+
+    const ticket = calls.find((c) => c.url.endsWith("/v1/inference/tickets"))!;
+    const content = calls.find((c) => c.url.endsWith("/v1/chat/completions"))!;
+    expect(ticket.url).toBe("https://control.invalid/v1/inference/tickets");
+    expect(content.url).toBe("https://inference.invalid/v1/chat/completions");
+    // The key goes to one host and the content to the other, and neither
+    // request carries the other's half.
+    expect(headerValue(ticket.init, "authorization")).toBe("Bearer sk-split");
+    expect(headerValue(content.init, "authorization")).toBeNull();
+    expect(String(ticket.init?.body)).not.toContain("SPLIT-CANARY");
+    expect(String(content.init?.body)).toContain("SPLIT-CANARY");
+  });
+
+  it("lists models from the control origin", async () => {
+    const { calls, fetchStub } = record();
+    const client = createClient({
+      controlBaseUrl: "https://control.invalid",
+      inferenceBaseUrl: "https://inference.invalid",
+      apiKey: "sk",
+      fetch: fetchStub
+    });
+    await client.models().catch(() => undefined);
+    expect(calls[0].url).toBe("https://control.invalid/v1/models");
+  });
+
+  it("keeps a single baseUrl serving both roles, unchanged", async () => {
+    // The behaviour this option has always had. A caller who set only baseUrl
+    // must not suddenly start sending content somewhere else.
+    const { calls, fetchStub } = record();
+    const client = createClient({ baseUrl: "https://solo.invalid", apiKey: "sk", fetch: fetchStub });
+    await client.chat({ model: "m", messages: [{ role: "user", content: "hi" }] });
+    expect(calls.every((c) => c.url.startsWith("https://solo.invalid"))).toBe(true);
+  });
+
+  it("defaults to the production pair when no origin is configured", async () => {
+    const { calls, fetchStub } = record();
+    const client = createClient({ apiKey: "sk", fetch: fetchStub });
+    await client.chat({ model: "m", messages: [{ role: "user", content: "hi" }] });
+    expect(calls[0].url).toBe("https://api.anonrouter.ai/v1/inference/tickets");
+    expect(calls[1].url).toBe("https://api.private.anonrouter.ai/v1/chat/completions");
+  });
+
+  it("refuses baseUrl and inferenceBaseUrl that disagree", () => {
+    expect(() =>
+      createClient({ baseUrl: "https://a.invalid", inferenceBaseUrl: "https://b.invalid", apiKey: "sk" })
+    ).toThrow(/must not disagree/);
+  });
+
+  it("refuses an origin that was supplied but empty", () => {
+    // `baseUrl: process.env.X ?? ""` is the usual way to arrive here. Quietly
+    // defaulting it would send content to production when the caller believed
+    // they had configured something else.
+    for (const options of [
+      { baseUrl: "", apiKey: "sk" },
+      { controlBaseUrl: "  ", apiKey: "sk" },
+      { inferenceBaseUrl: "", apiKey: "sk" }
+    ]) {
+      expect(() => createClient(options)).toThrow(/supplied but empty/);
+    }
+  });
+});

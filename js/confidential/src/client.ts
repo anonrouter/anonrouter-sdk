@@ -54,6 +54,13 @@ import {
   type TdxChainVerifier,
   type TdxChainVerifierFactory
 } from "./gateway/verify.js";
+import {
+  createMediaApi,
+  DEFAULT_CONTROL_ORIGIN,
+  DEFAULT_INFERENCE_ORIGIN,
+  type AudioApi,
+  type ImagesApi
+} from "./media.js";
 import { transportFor } from "./transport/index.js";
 import { validateE2eeMessages, validateE2eeRequest, type RawTurnMessage } from "./transport/validation.js";
 import { joinUrl, type FetchLike, type HttpContext } from "./transport/types.js";
@@ -65,12 +72,25 @@ export interface CreateClientOptions {
    *  Must be an origin
    *  (scheme + host + optional port), not a path, and must be https unless the
    *  host is loopback and `allowInsecureHttp` is set. */
-  baseUrl: string;
+  baseUrl?: string;
+  /**
+   * The confidential inference origin, spelled out. An exact alias for
+   * `baseUrl`, added because a two-origin configuration reads far better when
+   * both origins are named rather than one being "the base" and the other the
+   * exception. Supply either; supplying both with DIFFERENT values is refused
+   * rather than resolved, because a guess about which one receives prompts is
+   * exactly the guess that must never be made silently.
+   *
+   * When neither is given, this defaults to AnonRouter's production
+   * confidential origin.
+   */
+  inferenceBaseUrl?: string;
   /**
    * Identity/billing control origin. The split production architecture mints
    * content-free single-use tickets at https://api.anonrouter.ai while evidence
    * and encrypted inference stay on the confidential `baseUrl`. Defaults to
-   * `baseUrl` for monolithic/local deployments.
+   * `baseUrl` for monolithic/local deployments, and to AnonRouter's production
+   * control origin when no origin is configured at all.
    *
    * This does NOT permit split verification: both attestation hops and all
    * request content remain on `baseUrl`. Only the API key, route metadata, and
@@ -385,6 +405,23 @@ export interface AnonRouterClient {
   /** Both hops in the earlier report shape. Prefer `verifyRoute`. */
   verify(input: VerifyInput): Promise<VerificationReport>;
   chat(input: ChatInput): Promise<ChatResult>;
+  /**
+   * Ticketed image generation. `images.generate({ model, prompt })`.
+   *
+   * Runs the two-origin exchange automatically: the API key mints a
+   * content-free single-use ticket at the control origin, then the prompt goes
+   * to the confidential inference origin with that ticket as its only
+   * credential. An official OpenAI client cannot do this — it has one base URL
+   * and one credential — so this method exists rather than a base-URL swap.
+   */
+  images: ImagesApi;
+  /**
+   * Ticketed text-to-speech. `audio.speech.create({ model, input })`.
+   *
+   * Same exchange as `images`. The control origin is told the character COUNT,
+   * which is the priced unit, and never the text.
+   */
+  audio: AudioApi;
 }
 
 export interface VerifyRouteInput {
@@ -478,10 +515,29 @@ interface AttestationResponse {
 }
 
 export function createClient(options: CreateClientOptions): AnonRouterClient {
-  const origin = normalizeApiOrigin(options.baseUrl, options.allowInsecureHttp === true);
+  const allowInsecureHttp = options.allowInsecureHttp === true;
+  // `baseUrl` and `inferenceBaseUrl` name the same thing. Two different values
+  // is an ambiguous configuration, and the ambiguity is about where prompts go,
+  // so it is refused instead of resolved by precedence.
+  if (
+    typeof options.baseUrl === "string" && typeof options.inferenceBaseUrl === "string"
+    && normalizeApiOrigin(options.baseUrl, allowInsecureHttp)
+      !== normalizeApiOrigin(options.inferenceBaseUrl, allowInsecureHttp)
+  ) {
+    throw new ConfidentialError(
+      "unsupported_request",
+      "baseUrl and inferenceBaseUrl name the same origin and must not disagree. Set one of them."
+    );
+  }
+  const configuredInference = options.inferenceBaseUrl ?? options.baseUrl;
+  const origin = normalizeApiOrigin(configuredInference ?? DEFAULT_INFERENCE_ORIGIN, allowInsecureHttp);
+  // Defaulting the control origin to the inference origin is the correct
+  // behaviour for a monolithic or local deployment and is preserved exactly.
+  // It is only when NOTHING is configured that both take production values,
+  // which is the one case where they are known to be two different hosts.
   const controlOrigin = normalizeApiOrigin(
-    options.controlBaseUrl ?? options.baseUrl,
-    options.allowInsecureHttp === true
+    options.controlBaseUrl ?? configuredInference ?? DEFAULT_CONTROL_ORIGIN,
+    allowInsecureHttp
   );
   if (typeof options.apiKey !== "string" || options.apiKey.length === 0) {
     throw new ConfidentialError("unsupported_request", "createClient needs an apiKey.");
@@ -1157,7 +1213,64 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
     }
   }
 
-  return { verifyRoute, verifyGateway, verifyAttestation, verify, chat };
+  // ---- Ticketed media -------------------------------------------------------
+  //
+  // Media is the one surface that REQUIRES two distinct origins, so the check
+  // lives here rather than in createClient: a caller who only verifies or runs
+  // E2EE chat against a monolithic deployment must keep working unchanged, and
+  // only a media call needs the stronger configuration.
+  //
+  // Why media specifically. In E2EE chat the relay receives ciphertext, so a
+  // single origin still never holds readable content. A media prompt is sent as
+  // PLAINTEXT to the inference origin, protected by the origin split and the
+  // enclave rather than by client-side encryption. Collapse the two origins and
+  // one host receives both the API key and the prompt, which is precisely the
+  // linkage the ticket exists to prevent. That is not a degraded mode worth
+  // supporting quietly; it is the absence of the feature.
+  const mediaApi = createMediaApi({
+    controlOrigin,
+    inferenceOrigin: origin,
+    apiKey: options.apiKey,
+    fetchImpl
+  });
+
+  function assertSplitOrigins(): void {
+    if (controlOrigin !== origin) return;
+    // The documented local-test override: a developer running both roles on
+    // their own machine has no privacy boundary to collapse, and this is the
+    // same loopback-only escape hatch normalizeApiOrigin already documents for
+    // plaintext http. It cannot be reached for a remote host.
+    if (options.allowInsecureHttp === true && LOOPBACK_HOSTS.has(new URL(origin).hostname)) return;
+    throw new ConfidentialError(
+      "unsupported_request",
+      "Ticketed media needs two distinct origins: the API key mints a ticket at the control "
+      + "origin and the prompt goes to the confidential inference origin. Both are currently "
+      + `${origin}, so one host would receive the key and the content together. Set `
+      + "controlBaseUrl (production: https://api.anonrouter.ai) alongside the confidential "
+      + "inferenceBaseUrl (production: https://api.private.anonrouter.ai)."
+    );
+  }
+
+  // `async` is load-bearing, not decoration: it turns the configuration refusal
+  // into a REJECTED PROMISE rather than a synchronous throw. A caller writing
+  // `client.images.generate(...).catch(handle)` would otherwise get an uncaught
+  // exception from the one failure mode most likely to hit them on first use.
+  const images: ImagesApi = {
+    async generate(input) {
+      assertSplitOrigins();
+      return mediaApi.images.generate(input);
+    }
+  };
+  const audio: AudioApi = {
+    speech: {
+      async create(input) {
+        assertSplitOrigins();
+        return mediaApi.audio.speech.create(input);
+      }
+    }
+  };
+
+  return { verifyRoute, verifyGateway, verifyAttestation, verify, chat, images, audio };
 }
 
 function throwIfAborted(signal?: AbortSignal): void {

@@ -31,6 +31,31 @@ from .measurements import (
     pinned_measurement_policy_for,
     tdx_tee_type,
 )
+from .media import (
+    DEFAULT_CONTROL_ORIGIN,
+    DEFAULT_INFERENCE_ORIGIN,
+    IMAGE_DEFAULT_SIZE,
+    IMAGE_MAX_DIMENSION,
+    IMAGE_MAX_PROMPT_CHARS,
+    IMAGE_MIN_DIMENSION,
+    IMAGE_RESPONSE_FORMAT,
+    MEDIA_ERROR_CODES,
+    SPEECH_MAX_INPUT_CHARS,
+    SPEECH_MAX_VOICE_CHARS,
+    SPEECH_RESPONSE_FORMAT,
+    AudioApi,
+    GeneratedImage,
+    ImageGenerateResult,
+    ImagesApi,
+    MediaError,
+    MediaErrorDiagnostics,
+    MediaRateLimit,
+    SpeechApi,
+    SpeechCreateResult,
+    canonical_image_size,
+    redact_headers,
+    utf16_length,
+)
 from .tdx import (
     TDX_TEE_TYPE,
     ParsedTdxQuote,
@@ -71,6 +96,35 @@ __all__ = [
     "create_client",
     "ConfidentialClient",
     "ConfidentialError",
+    # ticketed media (image / speech). `client.images.generate(...)` and
+    # `client.audio.speech.create(...)` run the two-origin ticket exchange
+    # automatically: the API key mints a content-free single-use ticket at the
+    # control origin, and the prompt or text goes only to the confidential
+    # inference origin, authenticated by that ticket alone. An official OpenAI
+    # client cannot perform this exchange -- one base URL, one credential.
+    "ImagesApi",
+    "AudioApi",
+    "SpeechApi",
+    "ImageGenerateResult",
+    "SpeechCreateResult",
+    "GeneratedImage",
+    "MediaError",
+    "MediaErrorDiagnostics",
+    "MediaRateLimit",
+    "MEDIA_ERROR_CODES",
+    "redact_headers",
+    "utf16_length",
+    "canonical_image_size",
+    "DEFAULT_CONTROL_ORIGIN",
+    "DEFAULT_INFERENCE_ORIGIN",
+    "IMAGE_DEFAULT_SIZE",
+    "IMAGE_MIN_DIMENSION",
+    "IMAGE_MAX_DIMENSION",
+    "IMAGE_MAX_PROMPT_CHARS",
+    "IMAGE_RESPONSE_FORMAT",
+    "SPEECH_MAX_INPUT_CHARS",
+    "SPEECH_MAX_VOICE_CHARS",
+    "SPEECH_RESPONSE_FORMAT",
     # THE STABLE CONTRACT: ordered states + the two-hop route verdict
     "RouteVerificationState",
     "RouteVerdict",

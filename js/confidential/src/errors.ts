@@ -22,7 +22,23 @@ export type ConfidentialErrorCode =
   | "response_invalid"
   | "response_too_large"
   | "decrypt_failed"
-  | "cancelled";
+  | "cancelled"
+  // ---- Ticketed media (image / speech) ----
+  // These separate the failures that cost money from the ones that cannot, so a
+  // caller can decide whether starting over is safe. Only `provider_failed` may
+  // correspond to work a provider actually attempted.
+  /** The control origin would not mint a media ticket. No content was sent. */
+  | "media_ticket_failed"
+  /** The issued ticket did not bind what was requested. No content was sent. */
+  | "ticket_binding_mismatch"
+  /** The relay rejected the ticket: expired, already spent, or drifted (401/409). */
+  | "ticket_rejected"
+  /** The relay refused the request outright (no ticket, disabled, quota, 4xx). */
+  | "relay_refused"
+  /** The request reached a provider and the generation failed there (5xx). */
+  | "provider_failed"
+  /** The request exceeded its deadline. */
+  | "timeout";
 
 /** The single error class every module throws. Fail-closed and content-free. */
 export class ConfidentialError extends Error {

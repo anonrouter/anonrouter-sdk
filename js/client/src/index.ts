@@ -23,8 +23,27 @@ export interface ClientOptions {
   /**
    * AnonRouter API origin, e.g. "https://api.anonrouter.ai". A trailing slash is
    * tolerated. Paths like /v1/models are appended by the client.
+   *
+   * When `controlBaseUrl` / `inferenceBaseUrl` are not set, this single origin
+   * serves both roles, which is the correct topology for a monolithic or local
+   * deployment and is the behaviour this option has always had.
    */
-  baseUrl: string;
+  baseUrl?: string;
+  /**
+   * Identity and billing origin: model listing and ticket issuance. This is the
+   * ONLY origin the API key is sent to. Defaults to `baseUrl`, and to
+   * AnonRouter's production control origin when no origin is configured at all.
+   */
+  controlBaseUrl?: string;
+  /**
+   * The origin that receives request CONTENT, authenticated by the single-use
+   * ticket alone. Defaults to `baseUrl`, and to AnonRouter's production
+   * confidential origin when no origin is configured at all.
+   *
+   * Setting this to a different host from `controlBaseUrl` is what makes the
+   * split real: the host that sees your prompt then never sees your API key.
+   */
+  inferenceBaseUrl?: string;
   /**
    * Workspace API key. Sent as a Bearer credential on control-plane requests
    * only (model listing, ticket issuance). It is never attached to the request
@@ -34,6 +53,10 @@ export interface ClientOptions {
   /** Optional fetch override (for tests, proxies, or non-global runtimes). */
   fetch?: FetchLike;
 }
+
+/** AnonRouter's production origins. The two are different hosts on purpose. */
+export const DEFAULT_CONTROL_ORIGIN = "https://api.anonrouter.ai";
+export const DEFAULT_INFERENCE_ORIGIN = "https://api.private.anonrouter.ai";
 
 /** The {object, data} list envelope AnonRouter returns for collections. */
 export interface ListResponse<T> {
@@ -172,6 +195,11 @@ interface ApiErrorBody {
   error?: { message?: string; request_id?: string };
 }
 
+/** Normalize an origin string: strip trailing slashes, nothing more. */
+function trimOrigin(value: string): string {
+  return value.replace(/\/+$/, "");
+}
+
 async function toApiError(response: Response): Promise<AnonrouterApiError> {
   let message = `Request failed with status ${response.status}`;
   let requestId: string | undefined;
@@ -189,11 +217,33 @@ async function toApiError(response: Response): Promise<AnonrouterApiError> {
  * Create an AnonRouter API client bound to a base URL and API key.
  */
 export function createClient(options: ClientOptions): AnonrouterClient {
-  if (!options.baseUrl) {
-    throw new Error("createClient: baseUrl is required.");
-  }
   if (!options.apiKey) {
     throw new Error("createClient: apiKey is required.");
+  }
+  // An ABSENT origin means "use the production defaults". An origin that was
+  // supplied and is empty is a misconfiguration -- `baseUrl: process.env.X ?? ""`
+  // is the usual way to arrive here -- and quietly defaulting it would send
+  // content to production when the caller believed they had configured
+  // something else.
+  for (const [name, value] of [
+    ["baseUrl", options.baseUrl],
+    ["controlBaseUrl", options.controlBaseUrl],
+    ["inferenceBaseUrl", options.inferenceBaseUrl]
+  ] as const) {
+    if (value !== undefined && value.trim() === "") {
+      throw new Error(`createClient: ${name} was supplied but empty. Omit it to use the default origin.`);
+    }
+  }
+  // `baseUrl` and `inferenceBaseUrl` name the same thing. Two different values is
+  // an ambiguous configuration, and the ambiguity is about where content goes,
+  // so it is refused instead of resolved by precedence.
+  if (
+    options.baseUrl && options.inferenceBaseUrl
+    && trimOrigin(options.baseUrl) !== trimOrigin(options.inferenceBaseUrl)
+  ) {
+    throw new Error(
+      "createClient: baseUrl and inferenceBaseUrl name the same origin and must not disagree. Set one of them."
+    );
   }
 
   const apiKey = options.apiKey;
@@ -204,11 +254,20 @@ export function createClient(options: ClientOptions): AnonrouterClient {
     );
   }
 
-  const origin = options.baseUrl.replace(/\/+$/, "");
-  const url = (path: string): string => `${origin}/${path.replace(/^\/+/, "")}`;
+  const configuredInference = options.inferenceBaseUrl ?? options.baseUrl;
+  // Defaulting the control origin to `baseUrl` is the correct behaviour for a
+  // monolithic or local deployment and is preserved exactly. It is only when
+  // NOTHING is configured that both take production values, which is the one
+  // case where they are known to be two different hosts.
+  const controlOrigin = trimOrigin(options.controlBaseUrl ?? configuredInference ?? DEFAULT_CONTROL_ORIGIN);
+  const inferenceOrigin = trimOrigin(configuredInference ?? DEFAULT_INFERENCE_ORIGIN);
+  /** URL for a content-free, API-key-authenticated request. */
+  const controlUrl = (path: string): string => `${controlOrigin}/${path.replace(/^\/+/, "")}`;
+  /** URL for a request that carries CONTENT and only the single-use ticket. */
+  const contentUrl = (path: string): string => `${inferenceOrigin}/${path.replace(/^\/+/, "")}`;
 
   async function models(): Promise<ListResponse<ModelInfo>> {
-    const response = await doFetch(url("/v1/models"), {
+    const response = await doFetch(controlUrl("/v1/models"), {
       method: "GET",
       headers: {
         accept: "application/json",
@@ -225,7 +284,7 @@ export function createClient(options: ClientOptions): AnonrouterClient {
   // inference ticket. This is the only request that carries the API key and it
   // carries no content, only routing and authorization metadata.
   async function requestTicket(request: ChatRequest): Promise<string> {
-    const response = await doFetch(url("/v1/inference/tickets"), {
+    const response = await doFetch(controlUrl("/v1/inference/tickets"), {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -262,7 +321,7 @@ export function createClient(options: ClientOptions): AnonrouterClient {
       messages: request.messages
     };
 
-    const response = await doFetch(url("/v1/chat/completions"), {
+    const response = await doFetch(contentUrl("/v1/chat/completions"), {
       method: "POST",
       // Content request: presents ONLY the single-use ticket. The API key and
       // any cookie are deliberately withheld, so content is not linkable to the
