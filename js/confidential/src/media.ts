@@ -63,9 +63,9 @@ export const DEFAULT_INFERENCE_ORIGIN = "https://api.private.anonrouter.ai";
 
 // ---- Public request types ----------------------------------------------------
 //
-// Parameter names are OpenAI's, so a developer moving from `openai` or
-// OpenRouter writes the same object. Where AnonRouter does not support an
-// OpenAI parameter it is REJECTED rather than dropped: silently ignoring `n: 4`
+// Parameter names follow the OpenAI API, so a developer moving from an
+// OpenAI-compatible client writes the same object. Where AnonRouter does not
+// support an OpenAI parameter it is REJECTED rather than dropped: silently ignoring `n: 4`
 // would hand back one image and charge for one while the caller believed they
 // asked for four.
 
