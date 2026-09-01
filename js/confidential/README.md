@@ -45,8 +45,8 @@ import { createClient, atLeast } from "@anonrouter/confidential";
 import { createAnonRouterDcapVerifier } from "@anonrouter/confidential/dcap";
 
 const client = createClient({
-  baseUrl: "https://api.private.anonrouter.ai",
-  controlBaseUrl: "https://api.anonrouter.ai",
+  baseUrl: "https://api.anonrouter.ai",
+  controlBaseUrl: "https://control.anonrouter.ai",
   apiKey: process.env.ANONROUTER_API_KEY!
 });
 
@@ -89,7 +89,7 @@ import { createClient } from "@anonrouter/confidential";
 const client = createClient({ apiKey: process.env.ANONROUTER_API_KEY! });
 
 const image = await client.images.generate({
-  model: "venice/flux-dev",
+  model: "alibaba/z-image-turbo",
   prompt: "a lighthouse in a storm",
   size: "1024x1024"
 });
@@ -97,7 +97,7 @@ await writeFile("out.png", image.data[0].bytes);
 console.log(image.selected_model, image.data[0].mime_type);
 
 const speech = await client.audio.speech.create({
-  model: "venice/tts-kokoro",
+  model: "venice/kokoro-text-to-speech",
   input: "The quick brown fox.",
   voice: "af_sky"
 });
@@ -136,8 +136,8 @@ Installing this package installs `anonrouter-verify`. It prints one JSON documen
 and exits nonzero unless the assurance you asked for was established:
 
 ```bash
-npx anonrouter-verify doctor --origin https://api.private.anonrouter.ai
-npx anonrouter-verify gateway --origin https://api.private.anonrouter.ai --dcap \
+npx anonrouter-verify doctor --origin https://api.anonrouter.ai
+npx anonrouter-verify gateway --origin https://api.anonrouter.ai --dcap \
   --require hardware_verified
 echo $?   # 0 met, 1 not met, 2 the command itself was wrong
 ```

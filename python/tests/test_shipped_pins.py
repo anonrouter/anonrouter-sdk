@@ -32,7 +32,7 @@ def test_ships_the_manifest_bound_production_pin_and_resolves_it_by_default() ->
     assert len(published) == 1
     assert published[0].policy.source == (
         "anonrouter-release-manifest-sha256:"
-        "46da4d4210c21ea76681ef044dd2da29d8a3a4cff135348ef9f168f6a09c6bf4"
+        "ebb976a12b274afc34fb31459578e3ef107764d697ef074d1a82b27d79b1707c"
     )
     for entry in published:
         for origin in entry.policy.origins:

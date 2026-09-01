@@ -57,7 +57,7 @@ describe("createClient chat", () => {
 
     // 1) Ticket request: Bearer API key + control-plane body (max_completion_tokens).
     const ticketCall = calls[0]!;
-    expect(ticketCall.url).toBe("https://api.anonrouter.ai/v1/inference/tickets");
+    expect(ticketCall.url).toBe("https://control.anonrouter.ai/v1/inference/tickets");
     expect(ticketCall.init?.method).toBe("POST");
     expect(headerValue(ticketCall.init, "authorization")).toBe("Bearer sk-test");
     expect(JSON.parse(String(ticketCall.init?.body))).toEqual({
@@ -139,7 +139,7 @@ describe("createClient models", () => {
     const client = createClient({ baseUrl: "https://api.anonrouter.ai", apiKey: "sk-abc" });
     const models = await client.models();
 
-    expect(calls[0]!.url).toBe("https://api.anonrouter.ai/v1/models");
+    expect(calls[0]!.url).toBe("https://control.anonrouter.ai/v1/models");
     expect(calls[0]!.init?.method).toBe("GET");
     expect(headerValue(calls[0]!.init, "authorization")).toBe("Bearer sk-abc");
     expect(models.data[0]!.id).toBe("openai/gpt-oss-120b");
@@ -231,8 +231,8 @@ describe("createClient origins", () => {
     const { calls, fetchStub } = record();
     const client = createClient({ apiKey: "sk", fetch: fetchStub });
     await client.chat({ model: "m", messages: [{ role: "user", content: "hi" }] });
-    expect(calls[0].url).toBe("https://api.anonrouter.ai/v1/inference/tickets");
-    expect(calls[1].url).toBe("https://api.private.anonrouter.ai/v1/chat/completions");
+    expect(calls[0].url).toBe("https://control.anonrouter.ai/v1/inference/tickets");
+    expect(calls[1].url).toBe("https://api.anonrouter.ai/v1/chat/completions");
   });
 
   it("refuses baseUrl and inferenceBaseUrl that disagree", () => {

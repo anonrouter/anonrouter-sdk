@@ -48,13 +48,13 @@ AnonRouter offers routes at different privacy levels. Read this before you rely
 on any of them, because the words matter.
 
 - **Your plaintext does not reach ordinary AnonRouter infrastructure.** All
-  content now goes to the confidential origin, `api.private.anonrouter.ai`, whose
+  content now goes to the confidential origin, `api.anonrouter.ai`, whose
   relay runs inside an attested Intel TDX CVM and terminates TLS *in-enclave*. The
   shipped policy makes `transport_terminates_in_tee` and
   `tls_certificate_bound_to_quote` REQUIRED checks, so the attested TD provably
-  holds the key for the connection carrying your request. The control origin
-  (`api.anonrouter.ai`) serves no content at all — it answers 404 for
-  `/v1/chat/completions` and 503 for media.
+  holds the key for the connection carrying your request. The credential-only
+  control origin (`control.anonrouter.ai`) mints tickets and serves account and
+  catalog operations; it does not receive request content.
 - **A TEE route still asks you to trust our reviewed build.** Inside that enclave,
   the relay handles your plaintext to route and meter it. What keeps that from
   being a matter of faith is that a build changed to exfiltrate it would change
@@ -93,13 +93,12 @@ builds you accept could always name itself. So the pins ship inside the packages
 and an origin with no pin fails closed rather than falling back to the server's own
 claim about itself.
 
-Two caveats on the pin shipped today. It is marked `candidate`, because the
-confidential plane is pre-release and its measurements move on every release, so
-resolving it takes an explicit opt-in. And it requires hardware verification,
-which needs a DCAP engine these packages do not bundle, so a default call fails
-closed with reason `quote_signature_chain`. Installing the engine is the
-[one-step fix](#reaching-hardware_verified), and the failure is the honest
-outcome until you do: nobody has checked the quote came from real silicon.
+The pin shipped today is `published` and is bound to the independently retained
+production release manifest. It still requires hardware verification, which
+needs the separately built DCAP engine, so a call without an engine fails closed
+with reason `quote_signature_chain`. Installing the engine is the
+[one-step fix](#reaching-hardware_verified); the SDK never turns missing hardware
+verification into a reassuring result.
 
 ## Verify from a terminal
 
@@ -108,8 +107,8 @@ document and exits nonzero unless the assurance you asked for was established, s
 it can gate a deploy rather than only inform one:
 
 ```bash
-anonrouter-verify doctor --origin https://api.private.anonrouter.ai
-anonrouter-verify gateway --origin https://api.private.anonrouter.ai --dcap \
+anonrouter-verify doctor --origin https://api.anonrouter.ai
+anonrouter-verify gateway --origin https://api.anonrouter.ai --dcap \
   --require hardware_verified
 echo $?    # 0 met, 1 not met, 2 the command itself was wrong
 ```
@@ -220,8 +219,8 @@ import { createClient, atLeast } from "@anonrouter/confidential";
 import { createAnonRouterDcapVerifier } from "@anonrouter/confidential/dcap";
 
 const client = createClient({
-  baseUrl: "https://api.private.anonrouter.ai",
-  controlBaseUrl: "https://api.anonrouter.ai",
+  baseUrl: "https://api.anonrouter.ai",
+  controlBaseUrl: "https://control.anonrouter.ai",
   apiKey: process.env.ANONROUTER_API_KEY!
 });
 
@@ -276,8 +275,8 @@ from anonrouter_confidential import at_least, create_client
 from anonrouter_confidential.gateway.dcap import create_anonrouter_dcap_verifier
 
 client = create_client(
-    base_url="https://api.private.anonrouter.ai",
-    control_base_url="https://api.anonrouter.ai",
+    base_url="https://api.anonrouter.ai",
+    control_base_url="https://control.anonrouter.ai",
     api_key=os.environ["ANONROUTER_API_KEY"],
 )
 
@@ -334,20 +333,20 @@ and the same guarantees.
 ```ts
 const client = createClient({ apiKey: process.env.ANONROUTER_API_KEY! });
 
-const image = await client.images.generate({ model: "venice/flux-dev", prompt: "a lighthouse" });
+const image = await client.images.generate({ model: "alibaba/z-image-turbo", prompt: "a lighthouse" });
 await writeFile("out.png", image.data[0].bytes);
 
-const speech = await client.audio.speech.create({ model: "venice/tts-kokoro", input: "Hello." });
+const speech = await client.audio.speech.create({ model: "venice/kokoro-text-to-speech", input: "Hello." });
 await writeFile("out.mp3", speech.audio);
 ```
 
 ```python
 client = create_client(api_key=os.environ["ANONROUTER_API_KEY"])
 
-image = client.images.generate(model="venice/flux-dev", prompt="a lighthouse")
+image = client.images.generate(model="alibaba/z-image-turbo", prompt="a lighthouse")
 open("out.png", "wb").write(image.data[0].data)
 
-client.audio.speech.create(model="venice/tts-kokoro", input="Hello.").write_to("out.mp3")
+client.audio.speech.create(model="venice/kokoro-text-to-speech", input="Hello.").write_to("out.mp3")
 ```
 
 One call is two requests to two hosts. The API key mints a **content-free**

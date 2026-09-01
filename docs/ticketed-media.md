@@ -13,11 +13,11 @@ A media call is two HTTP requests to two different hosts, and the split is the
 product:
 
 ```
-  YOU ──API key, model, size/voice, character COUNT──▶  api.anonrouter.ai
+  YOU ──API key, model, size/voice, character COUNT──▶  control.anonrouter.ai
                                                         (control origin)
        ◀──────── single-use ticket, 30s ────────────────┘
 
-  YOU ──ticket, prompt or text──────────────────────▶  api.private.anonrouter.ai
+  YOU ──ticket, prompt or text──────────────────────▶  api.anonrouter.ai
                                                         (confidential origin)
        ◀──────── image bytes / audio bytes ────────────┘
 ```
@@ -80,15 +80,11 @@ the exchange above it would have to:
 3. send the content to **host B** with the ticket and *without* the key,
 4. bind and re-check the ticket's facts between the two.
 
-There is no configuration of `openai` — Python or Node — that does this. Pointing
-`base_url` at `api.private.anonrouter.ai` sends your API key to the confidential
-plane, which does not accept it (`/v1/inference/tickets` answers **404** there,
-and the content routes answer **401 ticket_required**). Pointing it at
-`api.anonrouter.ai` gets **503 media_disabled**, because the control plane does
-not serve media content at all.
-
-**Both failures are the design working.** The SDK methods documented here perform
-the exchange automatically.
+There is no configuration of the standard OpenAI SDK — Python or Node — that
+performs this two-origin exchange. Pointing it at `api.anonrouter.ai` selects the
+single-origin compatibility surface inside the CVM: convenient and compatible,
+but the same in-CVM broker receives both the API key and content. The methods
+documented here instead perform the unlinkable ticket exchange automatically.
 
 ### The compatibility broker is a different, lower-privacy mode
 
@@ -192,8 +188,8 @@ client = create_client(api_key=os.environ["ANONROUTER_API_KEY"])
 
 | Option (JS / Python) | Default |
 | --- | --- |
-| `inferenceBaseUrl` / `inference_base_url` (alias: `baseUrl` / `base_url`) | `https://api.private.anonrouter.ai` |
-| `controlBaseUrl` / `control_base_url` | `https://api.anonrouter.ai` |
+| `inferenceBaseUrl` / `inference_base_url` (alias: `baseUrl` / `base_url`) | `https://api.anonrouter.ai` |
+| `controlBaseUrl` / `control_base_url` | `https://control.anonrouter.ai` |
 
 Two rules, both fail-closed:
 

@@ -66,8 +66,8 @@ SPEECH_PATH = "/v1/audio/speech"
 TICKET_PATH = "/v1/inference/tickets"
 
 #: Production defaults. The two origins are different hosts on purpose.
-DEFAULT_CONTROL_ORIGIN = "https://api.anonrouter.ai"
-DEFAULT_INFERENCE_ORIGIN = "https://api.private.anonrouter.ai"
+DEFAULT_CONTROL_ORIGIN = "https://control.anonrouter.ai"
+DEFAULT_INFERENCE_ORIGIN = "https://api.anonrouter.ai"
 
 _SIZE_RE = re.compile(r"^\d{3,4}x\d{3,4}$")
 _BASE64_RE = re.compile(r"^[A-Za-z0-9+/]+={0,2}$")

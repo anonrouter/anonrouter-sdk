@@ -6,7 +6,7 @@
 // is readable but forgeable. Replaying the log and checking that it reproduces
 // the quote's registers is what turns the readable log into evidence.
 //
-// Replay rule (matches dstack's guest agent and @phala/dstack-sdk's replayRtmrs):
+// Replay rule (matches the measured guest agent's replay algorithm):
 // each RTMR starts at 48 zero bytes and is extended per event as
 //
 //   rtmr = SHA384(rtmr_prev || right_zero_pad_48(event.digest))

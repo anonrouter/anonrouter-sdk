@@ -58,8 +58,8 @@ const SPEECH_PATH = "/v1/audio/speech";
 const TICKET_PATH = "/v1/inference/tickets";
 
 /** Production defaults. The two origins are different hosts on purpose. */
-export const DEFAULT_CONTROL_ORIGIN = "https://api.anonrouter.ai";
-export const DEFAULT_INFERENCE_ORIGIN = "https://api.private.anonrouter.ai";
+export const DEFAULT_CONTROL_ORIGIN = "https://control.anonrouter.ai";
+export const DEFAULT_INFERENCE_ORIGIN = "https://api.anonrouter.ai";
 
 // ---- Public request types ----------------------------------------------------
 //

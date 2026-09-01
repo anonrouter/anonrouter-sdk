@@ -4,8 +4,8 @@
 // run by CI and it is not run without a key. Everything before the generation is
 // free: if you only want to confirm the routes exist and fail closed, run
 //
-//   ANONROUTER_LIVE_GATEWAY_ORIGIN=https://api.private.anonrouter.ai \
-//   ANONROUTER_LIVE_PUBLIC_ORIGIN=https://api.anonrouter.ai npx vitest run test/live-media.test.ts
+//   ANONROUTER_LIVE_GATEWAY_ORIGIN=https://api.anonrouter.ai \
+//   ANONROUTER_LIVE_PUBLIC_ORIGIN=https://control.anonrouter.ai npx vitest run test/live-media.test.ts
 //
 // which probes both origins with no credential and no spend.
 //
@@ -26,8 +26,8 @@ if (!apiKey) {
   process.exit(2);
 }
 
-const IMAGE_MODEL = process.env.ANONROUTER_IMAGE_MODEL ?? "venice/flux-dev";
-const SPEECH_MODEL = process.env.ANONROUTER_SPEECH_MODEL ?? "venice/tts-kokoro";
+const IMAGE_MODEL = process.env.ANONROUTER_IMAGE_MODEL ?? "alibaba/z-image-turbo";
+const SPEECH_MODEL = process.env.ANONROUTER_SPEECH_MODEL ?? "venice/kokoro-text-to-speech";
 const VOICE = process.env.ANONROUTER_SPEECH_VOICE;
 
 // The production origins are the defaults, so this is the whole configuration.

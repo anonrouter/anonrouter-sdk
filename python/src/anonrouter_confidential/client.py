@@ -191,7 +191,7 @@ def create_client(
     """Construct a client.
 
     ``base_url`` is the confidential inference origin. Split production callers
-    pass ``control_base_url="https://api.anonrouter.ai"`` so API-key and
+    pass ``control_base_url="https://control.anonrouter.ai"`` so API-key and
     content-free ticket operations use the control tier while both attestation
     hops and encrypted request content remain on ``base_url``.
 
@@ -256,12 +256,16 @@ class ConfidentialClient(MediaOwner):
             configured_inference or DEFAULT_INFERENCE_ORIGIN, allow_insecure_http
         )
         self.base_url = self.origin
-        # Defaulting the control origin to the inference origin is the correct
-        # behaviour for a monolithic or local deployment and is preserved exactly.
-        # It is only when NOTHING is configured that both take production values,
-        # which is the one case where they are known to be two different hosts.
+        # Preserve same-origin behaviour for custom/self-hosted deployments. Both
+        # production content names, however, always use the credential-only control
+        # origin unless the caller explicitly overrides it.
+        implicit_control_origin = (
+            DEFAULT_CONTROL_ORIGIN
+            if self.origin in {DEFAULT_INFERENCE_ORIGIN, "https://api.private.anonrouter.ai"}
+            else self.origin
+        )
         self.control_origin = _normalize_api_origin(
-            control_base_url or configured_inference or DEFAULT_CONTROL_ORIGIN,
+            control_base_url or implicit_control_origin,
             allow_insecure_http,
         )
         self.api_key = api_key

@@ -20,8 +20,8 @@ than one:
    there. This program prints that distinction instead of hiding it.
 
 Optional env:
-    ANONROUTER_BASE_URL   default https://api.private.anonrouter.ai
-    ANONROUTER_CONTROL_URL default https://api.anonrouter.ai
+    ANONROUTER_BASE_URL   default https://api.anonrouter.ai
+    ANONROUTER_CONTROL_URL default https://control.anonrouter.ai
     ANONROUTER_MODEL      default openai/gpt-oss-120b
     ANONROUTER_PROVIDER   default near-ai
     ANONROUTER_REQUIRE    default cryptographically_checked
@@ -48,8 +48,8 @@ from anonrouter_confidential.gateway.dcap import (
     describe_dcap_installation,
 )
 
-BASE_URL = os.environ.get("ANONROUTER_BASE_URL", "https://api.private.anonrouter.ai")
-CONTROL_URL = os.environ.get("ANONROUTER_CONTROL_URL", "https://api.anonrouter.ai")
+BASE_URL = os.environ.get("ANONROUTER_BASE_URL", "https://api.anonrouter.ai")
+CONTROL_URL = os.environ.get("ANONROUTER_CONTROL_URL", "https://control.anonrouter.ai")
 MODEL = os.environ.get("ANONROUTER_MODEL", "openai/gpt-oss-120b")
 PROVIDER = os.environ.get("ANONROUTER_PROVIDER", "near-ai")
 PROMPT = os.environ.get("PROMPT", "In one sentence: what does attestation prove?")

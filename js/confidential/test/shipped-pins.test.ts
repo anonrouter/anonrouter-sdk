@@ -25,13 +25,13 @@ describe("shipped gateway pins", () => {
   });
 
   it("ships the manifest-bound production pin and resolves it by default", () => {
-    // The 2026-08-30 production-origin manifest closed the gap that caused the
+    // The 2026-09-01 production-origin manifest closed the gap that caused the
     // earlier refresh to be rejected. Pin the source digest here too, so changing
     // the default trust anchor is always a deliberate test update.
     const published = registry.filter((e) => e.status === "published");
     expect(published).toHaveLength(1);
     expect(published[0]?.policy.source).toBe(
-      "anonrouter-release-manifest-sha256:46da4d4210c21ea76681ef044dd2da29d8a3a4cff135348ef9f168f6a09c6bf4"
+      "anonrouter-release-manifest-sha256:ebb976a12b274afc34fb31459578e3ef107764d697ef074d1a82b27d79b1707c"
     );
     for (const entry of published) {
       for (const origin of entry.policy.origins) {

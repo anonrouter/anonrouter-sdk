@@ -6,7 +6,7 @@ verdict is useful inside an application; a command that fails a shell is what yo
 put in front of a deploy, a health check, or a CI job that must not proceed against
 an unverified plane.
 
-    anonrouter-verify gateway --origin https://api.private.anonrouter.ai --dcap \\
+    anonrouter-verify gateway --origin https://api.anonrouter.ai --dcap \\
         --require hardware_verified --policy ./reviewed-policy.json
     echo $?    # 0 met, 1 not met, 2 the command itself was wrong
 
@@ -76,8 +76,8 @@ USAGE = f"""anonrouter-verify: independently verify an AnonRouter route.
 Options
   --origin <url>            The origin to verify. Required for gateway/route.
   --control-origin <url>    Identity/billing origin for content-free ticket
-                            operations. Defaults to --origin. Production uses
-                            https://api.anonrouter.ai.
+                            operations. Production content names default to
+                            https://control.anonrouter.ai; custom names use --origin.
   --require <state>         Minimum assurance to exit 0. One of:
                             {", ".join(TRUSTED_STATES)}.
                             Default: cryptographically_checked.

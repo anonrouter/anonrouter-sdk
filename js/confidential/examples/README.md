@@ -22,8 +22,8 @@ Independently verifies a route's enclave attestation against the real gateway,
 running OUR verifier over the raw evidence (it does not just trust the gateway's
 verdict). This is attestation only, so it does not spend anything.
 
-Env: `ANONROUTER_BASE_URL` (default `https://api.private.anonrouter.ai`),
-`ANONROUTER_CONTROL_URL` (default `https://api.anonrouter.ai`), `TEE_MODEL`
+Env: `ANONROUTER_BASE_URL` (default `https://api.anonrouter.ai`),
+`ANONROUTER_CONTROL_URL` (default `https://control.anonrouter.ai`), `TEE_MODEL`
 (default `openai/gpt-oss-120b`), `TEE_PROVIDER` (default `tinfoil`; also try
 `near-ai`, `venice`, `chutes`).
 
@@ -79,19 +79,19 @@ To check the same routes for FREE, with no key and no spend, run the live probes
 instead -- they confirm both media routes answer `401 ticket_required` without a
 ticket and that the control origin serves no media content at all:
 ```bash
-ANONROUTER_LIVE_GATEWAY_ORIGIN=https://api.private.anonrouter.ai \
-ANONROUTER_LIVE_PUBLIC_ORIGIN=https://api.anonrouter.ai \
+ANONROUTER_LIVE_GATEWAY_ORIGIN=https://api.anonrouter.ai \
+ANONROUTER_LIVE_PUBLIC_ORIGIN=https://control.anonrouter.ai \
   npx vitest run test/live-media.test.ts
 ```
 
-Env: `ANONROUTER_IMAGE_MODEL` (default `venice/flux-dev`),
-`ANONROUTER_SPEECH_MODEL` (default `venice/tts-kokoro`),
+Env: `ANONROUTER_IMAGE_MODEL` (default `alibaba/z-image-turbo`),
+`ANONROUTER_SPEECH_MODEL` (default `venice/kokoro-text-to-speech`),
 `ANONROUTER_SPEECH_VOICE`, `ANONROUTER_BASE_URL`, `ANONROUTER_CONTROL_URL`.
 
 ## Notes
 - `ANONROUTER_BASE_URL` is the confidential inference origin and defaults to
-  `https://api.private.anonrouter.ai`. `ANONROUTER_CONTROL_URL` is the
-  content-free identity/billing origin and defaults to `https://api.anonrouter.ai`.
+  `https://api.anonrouter.ai`. `ANONROUTER_CONTROL_URL` is the
+  content-free identity/billing origin and defaults to `https://control.anonrouter.ai`.
   Both may point at one loopback origin for a monolithic local deployment.
 - The API key needs the `inference` scope. It is sent only on the authenticated,
   content-free control requests, never to the relay.

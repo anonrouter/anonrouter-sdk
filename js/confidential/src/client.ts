@@ -66,7 +66,7 @@ import { validateE2eeMessages, validateE2eeRequest, type RawTurnMessage } from "
 import { joinUrl, type FetchLike, type HttpContext } from "./transport/types.js";
 
 export interface CreateClientOptions {
-  /** Confidential inference origin, e.g. "https://api.private.anonrouter.ai".
+  /** Confidential inference origin, e.g. "https://api.anonrouter.ai".
    *  Gateway/provider evidence and encrypted request content all use this exact
    *  origin, so verification can never be detached from the route it protects.
    *  Must be an origin
@@ -87,10 +87,10 @@ export interface CreateClientOptions {
   inferenceBaseUrl?: string;
   /**
    * Identity/billing control origin. The split production architecture mints
-   * content-free single-use tickets at https://api.anonrouter.ai while evidence
+   * content-free single-use tickets at https://control.anonrouter.ai while evidence
    * and encrypted inference stay on the confidential `baseUrl`. Defaults to
-   * `baseUrl` for monolithic/local deployments, and to AnonRouter's production
-   * control origin when no origin is configured at all.
+   * `baseUrl` for custom deployments and to AnonRouter's production control
+   * origin whenever a production content name is used.
    *
    * This does NOT permit split verification: both attestation hops and all
    * request content remain on `baseUrl`. Only the API key, route metadata, and
@@ -114,6 +114,10 @@ export interface CreateClientOptions {
 
 /** Loopback hosts, where plaintext http can be opted into for local development. */
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
+const PRODUCTION_INFERENCE_ORIGINS = new Set([
+  DEFAULT_INFERENCE_ORIGIN,
+  "https://api.private.anonrouter.ai"
+]);
 
 /**
  * Normalize and validate the API origin.
@@ -536,12 +540,14 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
   }
   const configuredInference = options.inferenceBaseUrl ?? options.baseUrl;
   const origin = normalizeApiOrigin(configuredInference ?? DEFAULT_INFERENCE_ORIGIN, allowInsecureHttp);
-  // Defaulting the control origin to the inference origin is the correct
-  // behaviour for a monolithic or local deployment and is preserved exactly.
-  // It is only when NOTHING is configured that both take production values,
-  // which is the one case where they are known to be two different hosts.
+  // Preserve same-origin behaviour for custom/self-hosted deployments. Both
+  // production content names, however, always use the credential-only control
+  // origin unless the caller explicitly overrides it.
+  const implicitControlOrigin = PRODUCTION_INFERENCE_ORIGINS.has(origin)
+    ? DEFAULT_CONTROL_ORIGIN
+    : origin;
   const controlOrigin = normalizeApiOrigin(
-    options.controlBaseUrl ?? configuredInference ?? DEFAULT_CONTROL_ORIGIN,
+    options.controlBaseUrl ?? implicitControlOrigin,
     allowInsecureHttp
   );
   if (typeof options.apiKey !== "string" || options.apiKey.length === 0) {
@@ -1251,8 +1257,8 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
       "Ticketed media needs two distinct origins: the API key mints a ticket at the control "
       + "origin and the prompt goes to the confidential inference origin. Both are currently "
       + `${origin}, so one host would receive the key and the content together. Set `
-      + "controlBaseUrl (production: https://api.anonrouter.ai) alongside the confidential "
-      + "inferenceBaseUrl (production: https://api.private.anonrouter.ai)."
+      + "controlBaseUrl (production: https://control.anonrouter.ai) alongside the confidential "
+      + "inferenceBaseUrl (production: https://api.anonrouter.ai)."
     );
   }
 

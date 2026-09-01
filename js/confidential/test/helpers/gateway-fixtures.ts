@@ -30,7 +30,7 @@ const OFF_RTMR0 = 376;
 const OFF_REPORT_DATA = 568;
 
 /**
- * Shape of MRCONFIGID as observed on Phala prod5 (dstack-dev-0.5.9): a 33-byte
+ * Shape of MRCONFIGID as observed on the production TDX CVM: a 33-byte
  * compressed SEC1 point, zero-padded to 48. Hard-coded here so a test that pins
  * it is exercising the real field layout rather than a convenient zero.
  */

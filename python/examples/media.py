@@ -4,8 +4,8 @@ BILLABLE. This performs real generations against real providers, so it is not ru
 by CI and it is not run without a key. Everything before the generation is free:
 if you only want to confirm the routes exist and fail closed, run
 
-    ANONROUTER_LIVE_GATEWAY_ORIGIN=https://api.private.anonrouter.ai \\
-    ANONROUTER_LIVE_PUBLIC_ORIGIN=https://api.anonrouter.ai pytest tests/test_live_media.py
+    ANONROUTER_LIVE_GATEWAY_ORIGIN=https://api.anonrouter.ai \\
+    ANONROUTER_LIVE_PUBLIC_ORIGIN=https://control.anonrouter.ai pytest tests/test_live_media.py
 
 which probes both origins with no credential and no spend.
 
@@ -26,8 +26,8 @@ import sys
 
 from anonrouter_confidential import MediaError, create_client
 
-IMAGE_MODEL = os.environ.get("ANONROUTER_IMAGE_MODEL", "venice/flux-dev")
-SPEECH_MODEL = os.environ.get("ANONROUTER_SPEECH_MODEL", "venice/tts-kokoro")
+IMAGE_MODEL = os.environ.get("ANONROUTER_IMAGE_MODEL", "alibaba/z-image-turbo")
+SPEECH_MODEL = os.environ.get("ANONROUTER_SPEECH_MODEL", "venice/kokoro-text-to-speech")
 VOICE = os.environ.get("ANONROUTER_SPEECH_VOICE")
 
 

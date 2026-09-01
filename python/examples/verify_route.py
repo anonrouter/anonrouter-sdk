@@ -3,8 +3,8 @@
     ANONROUTER_API_KEY=ar_... python examples/verify_route.py
 
 Optional env:
-    ANONROUTER_BASE_URL   default https://api.private.anonrouter.ai
-    ANONROUTER_CONTROL_URL default https://api.anonrouter.ai
+    ANONROUTER_BASE_URL   default https://api.anonrouter.ai
+    ANONROUTER_CONTROL_URL default https://control.anonrouter.ai
     ANONROUTER_MODEL      default venice-uncensored
     ANONROUTER_PROVIDER   default venice
 
@@ -20,8 +20,8 @@ import sys
 from anonrouter_confidential import at_least, create_client, describe_state
 from anonrouter_confidential.gateway.dcap import create_anonrouter_dcap_verifier
 
-BASE_URL = os.environ.get("ANONROUTER_BASE_URL", "https://api.private.anonrouter.ai")
-CONTROL_URL = os.environ.get("ANONROUTER_CONTROL_URL", "https://api.anonrouter.ai")
+BASE_URL = os.environ.get("ANONROUTER_BASE_URL", "https://api.anonrouter.ai")
+CONTROL_URL = os.environ.get("ANONROUTER_CONTROL_URL", "https://control.anonrouter.ai")
 MODEL = os.environ.get("ANONROUTER_MODEL", "venice-uncensored")
 PROVIDER = os.environ.get("ANONROUTER_PROVIDER", "venice")
 

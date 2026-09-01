@@ -739,8 +739,16 @@ describe("a configuration that would collapse the privacy boundary is refused", 
     const rec = recorder((_c, index) => (index === 0 ? jsonResponse({ ticket: "tkt" }) : imageOk()));
     const c = createClient({ apiKey: API_KEY, fetch: rec.fetch });
     await c.images.generate({ model: "m", prompt: "p" });
-    expect(rec.calls[0].url).toBe("https://api.anonrouter.ai/v1/inference/tickets");
-    expect(rec.calls[1].url).toBe("https://api.private.anonrouter.ai/v1/images/generations");
+    expect(rec.calls[0].url).toBe("https://control.anonrouter.ai/v1/inference/tickets");
+    expect(rec.calls[1].url).toBe("https://api.anonrouter.ai/v1/images/generations");
+  });
+
+  it("keeps the production split when baseUrl is the canonical customer origin", async () => {
+    const rec = recorder((_c, index) => (index === 0 ? jsonResponse({ ticket: "tkt" }) : imageOk()));
+    const c = createClient({ baseUrl: "https://api.anonrouter.ai", apiKey: API_KEY, fetch: rec.fetch });
+    await c.images.generate({ model: "m", prompt: "p" });
+    expect(rec.calls[0].url).toBe("https://control.anonrouter.ai/v1/inference/tickets");
+    expect(rec.calls[1].url).toBe("https://api.anonrouter.ai/v1/images/generations");
   });
 
   it("keeps controlBaseUrl defaulting to baseUrl for an existing single-origin caller", () => {

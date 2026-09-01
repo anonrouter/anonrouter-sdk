@@ -683,8 +683,14 @@ def test_disagreeing_origins_are_refused_rather_than_resolved() -> None:
 
 def test_nothing_configured_defaults_to_the_production_pair() -> None:
     client = create_client(api_key=API_KEY)
-    assert client.control_origin == "https://api.anonrouter.ai"
-    assert client.origin == "https://api.private.anonrouter.ai"
+    assert client.control_origin == "https://control.anonrouter.ai"
+    assert client.origin == "https://api.anonrouter.ai"
+
+
+def test_canonical_customer_base_url_keeps_the_production_split() -> None:
+    client = create_client("https://api.anonrouter.ai", api_key=API_KEY)
+    assert client.control_origin == "https://control.anonrouter.ai"
+    assert client.origin == "https://api.anonrouter.ai"
 
 
 def test_control_still_defaults_to_base_url_for_an_existing_caller() -> None:

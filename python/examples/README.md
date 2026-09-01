@@ -17,8 +17,8 @@ Runs `verify_route()` and prints what each hop established, what it did not, and
 why, then exits nonzero if the route did not reach the threshold. Attestation
 only, so it spends nothing.
 
-Env: `ANONROUTER_BASE_URL` (default `https://api.private.anonrouter.ai`),
-`ANONROUTER_CONTROL_URL` (default `https://api.anonrouter.ai`),
+Env: `ANONROUTER_BASE_URL` (default `https://api.anonrouter.ai`),
+`ANONROUTER_CONTROL_URL` (default `https://control.anonrouter.ai`),
 `ANONROUTER_MODEL`, `ANONROUTER_PROVIDER`.
 
 ## 2. Verify, then call (real gateway, your key, BILLABLE)
@@ -54,13 +54,13 @@ instead -- they confirm both media routes answer `401 ticket_required` without a
 ticket and that the control origin serves no media content at all:
 
 ```bash
-ANONROUTER_LIVE_GATEWAY_ORIGIN=https://api.private.anonrouter.ai \
-ANONROUTER_LIVE_PUBLIC_ORIGIN=https://api.anonrouter.ai \
+ANONROUTER_LIVE_GATEWAY_ORIGIN=https://api.anonrouter.ai \
+ANONROUTER_LIVE_PUBLIC_ORIGIN=https://control.anonrouter.ai \
   pytest tests/test_live_media.py
 ```
 
-Env: `ANONROUTER_IMAGE_MODEL` (default `venice/flux-dev`),
-`ANONROUTER_SPEECH_MODEL` (default `venice/tts-kokoro`),
+Env: `ANONROUTER_IMAGE_MODEL` (default `alibaba/z-image-turbo`),
+`ANONROUTER_SPEECH_MODEL` (default `venice/kokoro-text-to-speech`),
 `ANONROUTER_SPEECH_VOICE`, `ANONROUTER_BASE_URL`, `ANONROUTER_CONTROL_URL`.
 
 ## Notes

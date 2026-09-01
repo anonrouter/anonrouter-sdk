@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
   "_readme": [
-    "Accepted-measurement policies for AnonRouter's OWN confidential gateway (the",
+    "Accepted-measurement policies for AnonRouter's own confidential gateway (the",
     "first of the two hops this SDK verifies). The second hop, the upstream model",
     "provider's enclave, is pinned separately in measurements.json.",
     "",
     "THIS FILE MUST NEVER BE FETCHED FROM THE GATEWAY IT DESCRIBES. A verifier that",
     "downloads its allowlist from the server it is verifying can always be handed an",
     "allowlist naming that server. It ships inside the published packages instead, and",
-    "the CI parity gate proves the JS and Python copies never drift.",
+    "the CI parity gate proves the JavaScript and Python copies never drift.",
     "",
     "status=published  a released plane, resolved by verifyGateway() by default.",
     "status=candidate  a reviewed but pre-release plane whose pins are expected to",
@@ -21,53 +21,20 @@
   "policies": [
     {
       "status": "published",
-      "reviewedAt": "2026-08-30",
-      "notes": "AnonRouter confidential data plane on Phala prod5 (Intel TDX, dstack). Published from the independently retained production release manifest with SHA-256 46da4d4210c21ea76681ef044dd2da29d8a3a4cff135348ef9f168f6a09c6bf4. That manifest binds the production origin, source commit, exact measured app-compose, content-plane image digest, app id, instance id, TLS SPKI and platform measurements. The earlier rejected refresh is retained below as history; its missing production-origin manifest was subsequently supplied. The release_id is not treated as sufficient identity: app id, compose hash and every platform measurement remain independently pinned. Three third-party source-to-digest provenance gaps named in the manifest remain supply-chain limitations, not attestation bypasses. requireHardwareVerified remains true, so verification fails closed unless a DCAP chain verifier is supplied.",
-      "reviewedRefreshAttempt": {
-        "date": "2026-08-29",
-        "candidateRelease": "anonrouter-tee@xl-7b1b12a",
-        "outcome": "rejected",
-        "summary": "The live origin serves a build whose MEASUREMENT identity is corroborated by independent evidence, but whose ORIGIN is not. Every reviewed identity record covering this CVM names the preproduction hostname, and the project's own acceptance target marks those values preproduction-only and refuses them for a production tuple by name. Pinning a public SDK's default trust anchor for a production origin on preproduction review artifacts is the circular step this process exists to prevent.",
-        "corroborated": [
-          "app_id 91c6a04e... , compose_hash d5fc4ac2... and os_image_hash bd369a8c... all appear in the independently produced identity record .evidence/content-plane/pinned-identity.json (recorded 2026-08-27T22:00Z) in the product repo.",
-          "mrTd, rtmr1 and rtmr2 are byte-identical to the already-reviewed 731c719 production pin, consistent with an unchanged guest OS image.",
-          "rtmr0 ec216f1d... appears in the committed .evidence/prod-release-2026-08-27/content-plane-attestation.json for the same CVM.",
-          "transport is in-tee-tls and the certificate actually served on the origin was independently observed to equal the SPKI the TD attests, so the transport binding genuinely holds.",
-          "Every cryptographic check in this SDK passes against live evidence bound to a fresh nonce."
-        ],
-        "notCovered": [
-          "ORIGIN. The reviewed record names host preprod-usw1-xl.private.anonrouter.ai, not the production origin above. Both names resolve to the same Phala prod5 host, but the record documents the CVM under its preproduction identity and acceptance/targets/preproduction-usw1-xl.json is explicitly mode=preproduction and refused for production by acceptance/g18-target.mjs.",
-          "RELEASE ID. anonrouter-tee@xl-7b1b12a is injected at deploy time via the GATEWAY_RELEASE_ID environment variable and carries no measurements. No release manifest for it exists anywhere in the product repository's history, and the nearest recorded attestation names a different release, xl-119f181.",
-          "PRODUCTION SPKI. The reviewed record carries the preproduction hostname's certificate; the production origin's SPKI appears only as a deployment input."
-        ],
-        "toPromote": [
-          "An identity record produced for the production origin itself, not for the preproduction hostname.",
-          "A release manifest binding anonrouter-tee@xl-7b1b12a to reviewed source, so the release id means more than what an env var was set to.",
-          "mrTd and rtmr0..2 reproduced offline with dstack-mr from the OS image and vm_config, rather than carried over or observed."
-        ],
-        "reconfirmed": {
-          "date": "2026-08-30",
-          "outcome": "still rejected, and the case for rejecting it is now stronger",
-          "observed": [
-            "The live plane's compose_hash moved again, from d5fc4ac2... on 2026-08-29 to 07d803b3... on 2026-08-30, and app_id moved to 91c6a04e... with mrConfigId now encoding the compose hash directly (01 || compose_hash || zero padding).",
-            "release_id did NOT move. It is still anonrouter-tee@xl-7b1b12a across both measured configurations.",
-            "Every structural and cryptographic check still passes against the live plane under this pin; only app_id_pinned, compose_hash_pinned, release_pinned and platform_measurements_pinned fail.",
-            "With the reviewed DCAP engine and Intel PCS collateral the quote chains to Intel's roots with tcb/qe/platform all UpToDate and no advisories, and the leaf SPKI observed independently on the origin equals the SPKI the TD attests."
-          ],
-          "whyThisSettlesIt": "A release id that stays fixed while the measured configuration changes underneath it is not an identity. Pinning releaseIds to anonrouter-tee@xl-7b1b12a would authorize every future compose hash deployed under the same environment variable, which is the opposite of what a pin is for. The hardware is genuine and the transport binding holds; neither fact supplies the missing production-origin identity record."
-        }
-      },
+      "reviewedAt": "2026-09-01",
+      "notes": "AnonRouter confidential content plane running in an Intel TDX CVM. Published from the independently retained production release manifest with SHA-256 ebb976a12b274afc34fb31459578e3ef107764d697ef074d1a82b27d79b1707c. That manifest binds reviewed source commit e792667508edc4e2c06b5f058cccd7b3e077b0a8, the exact measured app compose, digest-pinned content-plane image, app id, instance id, canonical production origin, TLS SPKI and platform measurements. api.private.anonrouter.ai is retained as an attested alias; api.anonrouter.ai is the customer default. The release id is not treated as sufficient identity: app id, compose hash and every platform measurement remain independently pinned. Three third-party source-to-digest provenance gaps named in the manifest remain supply-chain limitations, not attestation bypasses. requireHardwareVerified remains true, so verification fails closed unless a DCAP chain verifier is supplied.",
       "policy": {
-        "source": "anonrouter-release-manifest-sha256:46da4d4210c21ea76681ef044dd2da29d8a3a4cff135348ef9f168f6a09c6bf4",
-        "version": "2026-08-30-auto",
+        "source": "anonrouter-release-manifest-sha256:ebb976a12b274afc34fb31459578e3ef107764d697ef074d1a82b27d79b1707c",
+        "version": "2026-08-31-api-base-url",
         "origins": [
+          "https://api.anonrouter.ai",
           "https://api.private.anonrouter.ai"
         ],
         "appIds": [
           "91c6a04ea7044f28d53142449c9badddbc30eff7"
         ],
         "composeHashes": [
-          "07d803b31848727ce72600f1a047eac743392e9a1482936ae66672674ffe64d8"
+          "031015cb34bb1a95b57d6611f4d0f6d6ea26fd16d7ee91c5ff512f28658141d6"
         ],
         "releaseIds": [
           "anonrouter-tee@xl-7b1b12a"
@@ -78,7 +45,7 @@
             "f06dfda6dce1cf904d4e2bab1dc370634cf95cefa2ceb2de2eee127c9382698090d7a4a13e14c536ec6c9c3c8fa87077"
           ],
           "mrConfigId": [
-            "0107d803b31848727ce72600f1a047eac743392e9a1482936ae66672674ffe64d8000000000000000000000000000000"
+            "01031015cb34bb1a95b57d6611f4d0f6d6ea26fd16d7ee91c5ff512f28658141d6000000000000000000000000000000"
           ],
           "rtmr0": [
             "ec216f1d1d591468ff4741b9b192f016b26d3f90303bfa9dbb97557273853183981f21a4bcb3ae908247538d371ad072"

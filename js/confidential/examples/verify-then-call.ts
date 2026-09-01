@@ -35,8 +35,8 @@ import {
 } from "../src/index.js";
 import { createAnonRouterDcapVerifier, describeDcapInstallation } from "../src/gateway/dcap/index.js";
 
-const BASE_URL = process.env.ANONROUTER_BASE_URL ?? "https://api.private.anonrouter.ai";
-const CONTROL_URL = process.env.ANONROUTER_CONTROL_URL ?? "https://api.anonrouter.ai";
+const BASE_URL = process.env.ANONROUTER_BASE_URL ?? "https://api.anonrouter.ai";
+const CONTROL_URL = process.env.ANONROUTER_CONTROL_URL ?? "https://control.anonrouter.ai";
 const MODEL = process.env.ANONROUTER_MODEL ?? "openai/gpt-oss-120b";
 const PROVIDER = process.env.ANONROUTER_PROVIDER ?? "near-ai";
 const PROMPT = process.env.PROMPT ?? "In one sentence: what does attestation prove?";

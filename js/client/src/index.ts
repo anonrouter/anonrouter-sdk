@@ -31,15 +31,15 @@ export interface ClientOptions {
    * AnonRouter API origin, e.g. "https://api.anonrouter.ai". A trailing slash is
    * tolerated. Paths like /v1/models are appended by the client.
    *
-   * When `controlBaseUrl` / `inferenceBaseUrl` are not set, this single origin
-   * serves both roles, which is the correct topology for a monolithic or local
-   * deployment and is the behaviour this option has always had.
+   * Custom origins serve both roles unless `controlBaseUrl` is set. The two
+   * production content names automatically use AnonRouter's separate production
+   * control origin, so `baseUrl: "https://api.anonrouter.ai"` is safe by default.
    */
   baseUrl?: string;
   /**
    * Identity and billing origin: model listing and ticket issuance. This is the
-   * ONLY origin the API key is sent to. Defaults to `baseUrl`, and to
-   * AnonRouter's production control origin when no origin is configured at all.
+   * ONLY origin the API key is sent to. Defaults to `baseUrl` for custom
+   * deployments and to AnonRouter's control origin for production content names.
    */
   controlBaseUrl?: string;
   /**
@@ -62,8 +62,12 @@ export interface ClientOptions {
 }
 
 /** AnonRouter's production origins. The two are different hosts on purpose. */
-export const DEFAULT_CONTROL_ORIGIN = "https://api.anonrouter.ai";
-export const DEFAULT_INFERENCE_ORIGIN = "https://api.private.anonrouter.ai";
+export const DEFAULT_CONTROL_ORIGIN = "https://control.anonrouter.ai";
+export const DEFAULT_INFERENCE_ORIGIN = "https://api.anonrouter.ai";
+const PRODUCTION_INFERENCE_ORIGINS = new Set([
+  DEFAULT_INFERENCE_ORIGIN,
+  "https://api.private.anonrouter.ai"
+]);
 
 /** The {object, data} list envelope AnonRouter returns for collections. */
 export interface ListResponse<T> {
@@ -262,11 +266,14 @@ export function createClient(options: ClientOptions): AnonrouterClient {
   }
 
   const configuredInference = options.inferenceBaseUrl ?? options.baseUrl;
-  // Defaulting the control origin to `baseUrl` is the correct behaviour for a
-  // monolithic or local deployment and is preserved exactly. It is only when
-  // NOTHING is configured that both take production values, which is the one
-  // case where they are known to be two different hosts.
-  const controlOrigin = trimOrigin(options.controlBaseUrl ?? configuredInference ?? DEFAULT_CONTROL_ORIGIN);
+  // Preserve same-origin behaviour for custom/self-hosted deployments. Both
+  // production content names use the credential-only control origin unless the
+  // caller explicitly overrides it.
+  const normalizedInference = configuredInference === undefined ? undefined : trimOrigin(configuredInference);
+  const implicitControlOrigin = normalizedInference === undefined || PRODUCTION_INFERENCE_ORIGINS.has(normalizedInference)
+    ? DEFAULT_CONTROL_ORIGIN
+    : normalizedInference;
+  const controlOrigin = trimOrigin(options.controlBaseUrl ?? implicitControlOrigin);
   const inferenceOrigin = trimOrigin(configuredInference ?? DEFAULT_INFERENCE_ORIGIN);
   /** URL for a content-free, API-key-authenticated request. */
   const controlUrl = (path: string): string => `${controlOrigin}/${path.replace(/^\/+/, "")}`;

@@ -68,9 +68,9 @@ the other:
 from anonrouter_confidential import create_client
 
 with create_client(
-    "https://api.private.anonrouter.ai",
+    "https://api.anonrouter.ai",
     api_key="...",
-    control_base_url="https://api.anonrouter.ai",
+    control_base_url="https://control.anonrouter.ai",
 ) as client:
     result = client.verify_attestation(model="venice-uncensored", provider="venice")
     verdict = result["verdict"]            # OUR independent NormalizedVerdict
@@ -137,8 +137,8 @@ chaining only the CPU quote would claim more than was checked.
 ## Verify from a terminal
 
 ```bash
-anonrouter-verify doctor --origin https://api.private.anonrouter.ai
-anonrouter-verify gateway --origin https://api.private.anonrouter.ai --dcap \
+anonrouter-verify doctor --origin https://api.anonrouter.ai
+anonrouter-verify gateway --origin https://api.anonrouter.ai --dcap \
   --require hardware_verified
 echo $?   # 0 met, 1 not met, 2 the command itself was wrong
 ```
@@ -218,7 +218,7 @@ from anonrouter_confidential import create_client
 client = create_client(api_key=os.environ["ANONROUTER_API_KEY"])
 
 image = client.images.generate(
-    model="venice/flux-dev",
+    model="alibaba/z-image-turbo",
     prompt="a lighthouse in a storm",
     size="1024x1024",
 )
@@ -226,7 +226,7 @@ open("out.png", "wb").write(image.data[0].data)
 print(image.selected_model, image.data[0].mime_type)
 
 speech = client.audio.speech.create(
-    model="venice/tts-kokoro",
+    model="venice/kokoro-text-to-speech",
     input="The quick brown fox.",
     voice="af_sky",
 )
