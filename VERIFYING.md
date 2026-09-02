@@ -23,8 +23,8 @@ says nothing about where inference actually ran.
 import { createClient, atLeast } from "@anonrouter/confidential";
 
 const client = createClient({
-  baseUrl: "https://api.private.anonrouter.ai",
-  controlBaseUrl: "https://api.anonrouter.ai",
+  baseUrl: "https://api.anonrouter.ai",
+  controlBaseUrl: "https://control.anonrouter.ai",
   apiKey: KEY
 });
 
@@ -43,9 +43,9 @@ if (!atLeast(verdict.overallState, "cryptographically_checked")) {
 from anonrouter_confidential import create_client, at_least
 
 with create_client(
-    "https://api.private.anonrouter.ai",
+    "https://api.anonrouter.ai",
     api_key=KEY,
-    control_base_url="https://api.anonrouter.ai",
+    control_base_url="https://control.anonrouter.ai",
 ) as client:
     verdict = client.verify_route(
         model="openai/gpt-oss-120b", provider="near-ai", gateway=True
@@ -221,11 +221,11 @@ detect for you.
 ## Verifying from a terminal
 
 ```bash
-anonrouter-verify doctor  --origin https://api.private.anonrouter.ai
-anonrouter-verify gateway --origin https://api.private.anonrouter.ai \
+anonrouter-verify doctor  --origin https://api.anonrouter.ai
+anonrouter-verify gateway --origin https://api.anonrouter.ai \
   --policy ./reviewed-policy.json --dcap --require hardware_verified
-anonrouter-verify route --origin https://api.private.anonrouter.ai \
-  --control-origin https://api.anonrouter.ai --provider venice --model MODEL \
+anonrouter-verify route --origin https://api.anonrouter.ai \
+  --control-origin https://control.anonrouter.ai --provider venice --model MODEL \
   --policy ./reviewed-policy.json --dcap --require cryptographically_checked
 echo $?
 ```
