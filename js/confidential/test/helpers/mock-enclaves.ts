@@ -82,7 +82,7 @@ function ethAddress(pubHex: string): string {
 export interface VeniceMockEnclave {
   enclavePubHex: string;
   address: string;
-  attestationResponse(nonce: string): { evidence: Record<string, unknown>; provider: string; upstream_model: string; protocol: string; attestation: NormalizedVerdict };
+  attestationResponse(nonce: string): { evidence: Record<string, unknown>; provider: string; model: string; upstream_model: string; privacy_class: string; protocol: string; attestation: NormalizedVerdict };
   evidence(nonce: string): Record<string, unknown>;
   /** Decrypt request messages and produce an encrypted SSE reply. */
   handleInference(init: RequestInit, replyDeltas?: string[]): { decrypted: string[]; reply: string; response: Response };
@@ -128,7 +128,13 @@ export function createVeniceMockEnclave(upstreamModel: string): VeniceMockEnclav
       return {
         evidence: evidence(nonce),
         provider: "venice",
+        // The deployed relay echoes the FULL route binding the ticket carries:
+        // catalog model, upstream model and privacy class, all bound at mint
+        // time. The fixture says so too, because a client's route cross-binding
+        // can only be exercised against a response that carries the fields.
+        model: upstreamModel,
         upstream_model: upstreamModel,
+        privacy_class: "e2ee",
         protocol: "venice-legacy",
         attestation: okView({ attested_encryption_key: enclavePubHex, attested_signing_key: address, nonce })
       };
@@ -157,7 +163,7 @@ export interface ChutesMockEnclave {
   instanceId: string;
   instancePubB64: string;
   nonce: string;
-  attestationResponse(callerNonceHex: string): { evidence: Record<string, unknown>; provider: string; upstream_model: string; protocol: string; attestation: NormalizedVerdict };
+  attestationResponse(callerNonceHex: string): { evidence: Record<string, unknown>; provider: string; model: string; upstream_model: string; privacy_class: string; protocol: string; attestation: NormalizedVerdict };
   /** Decrypt the request body and produce an encrypted octet-stream reply. */
   handleInference(bodyBytes: Uint8Array, reply?: Record<string, unknown>): { decrypted: Record<string, unknown>; response: Response };
 }
@@ -195,7 +201,9 @@ export function createChutesMockEnclave(upstreamModel: string): ChutesMockEnclav
       return {
         evidence: evidence(callerNonceHex),
         provider: "chutes",
+        model: upstreamModel,
         upstream_model: upstreamModel,
+        privacy_class: "e2ee",
         protocol: "chutes-mlkem-v1",
         attestation: okView({ attested_encryption_key: instancePubB64, nonce: callerNonceHex })
       };

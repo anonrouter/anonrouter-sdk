@@ -67,6 +67,11 @@ from .verify.state import describe_state
 from .verify.types import AttestationExpectations, NormalizedVerdict
 
 _E2EE_PROVIDERS = {"near-ai", "venice", "chutes"}
+#: The wire protocol each E2EE provider speaks. The provider NAME does not settle
+#: it: a provider that gained a second E2EE protocol would keep echoing the same
+#: name while this client encrypted to the wrong scheme, so the protocol the
+#: gateway offers is checked against the one about to be spoken.
+_E2EE_PROTOCOLS = {"near-ai": "near-v2", "venice": "venice-legacy", "chutes": "chutes-mlkem-v1"}
 # Whole-body opaque relays: the entire request and response are one encrypted blob,
 # so the gateway cannot meter them token by token and requires a ticket reserving
 # the route's full output ceiling. The streaming providers are metered as they go.
@@ -288,6 +293,78 @@ class ConfidentialClient(MediaOwner):
     def __exit__(self, *exc: object) -> None:
         self.close()
 
+    def _attest_route(
+        self,
+        model: str,
+        provider: str,
+        nonce: str | None = None,
+        *,
+        privacy_modality: str | None = None,
+        upstream_model: str | None = None,
+    ) -> dict[str, Any]:
+        """Fetch evidence, resolve the route facts and verify. Does NOT raise on a
+        route disagreement.
+
+        The split from ``verify_attestation`` is what makes cross-binding work.
+        A disagreement used to be raised, and ``verify_route`` catches exceptions
+        and turns them into a bare "the provider hop failed" -- so the mismatch
+        list stayed empty, the caller was told the enclave was bad when the real
+        problem was that AnonRouter served a different route, and every
+        cross-binding rule was reachable only from a hand-built test.
+        """
+        nonce = nonce or os.urandom(32).hex()
+        attestation = self._fetch_attestation_for_route(model, provider, nonce)
+
+        served_provider = as_str(attestation.get("provider"))
+        served_model = as_str(attestation.get("model"))
+        raw_evidence = attestation.get("evidence")
+        upstream_model = upstream_model or as_str(attestation.get("upstream_model")) or model
+
+        # THE MODALITY IS A PROPERTY OF THE ROUTE. A caller pin wins, because
+        # pinning is how a caller says which contract they reviewed. Otherwise the
+        # class the gateway bound into the single-use ticket at mint time is used:
+        # a catalog fact about one row, not a guess, and what lets one SDK verify
+        # a `tee` route and an `e2ee` route on the SAME provider.
+        #
+        # `tee` is the fallback when nobody states one, and it is conservative in
+        # both directions: as a REPORT it is the weaker privacy claim, and as a
+        # VERIFICATION CONTRACT it never skips a check (no verifier makes a
+        # required check conditional on `e2ee`; Tinfoil makes one conditional on
+        # `tee`). This used to be `"tee" if provider == "tinfoil" else "e2ee"`, a
+        # hard-coded map from a provider NAME to a privacy property, which is
+        # wrong the moment any provider serves two classes.
+        served_class = as_str(attestation.get("privacy_class"))
+        served_class = served_class if served_class in ("tee", "e2ee") else None
+        modality = privacy_modality or served_class or "tee"
+        modality_source = (
+            "caller-pinned" if privacy_modality else "gateway-attested" if served_class else "unestablished"
+        )
+
+        expectations = self._expectations(provider, upstream_model, nonce, modality)
+        verdict = verify_raw_evidence(provider, raw_evidence, expectations)
+        gateway_verdict = attestation.get("attestation")
+        return {
+            "provider": provider,
+            "model": model,
+            "upstream_model": upstream_model,
+            "privacy_modality": modality,
+            "privacy_modality_source": modality_source,
+            # THE GATEWAY'S OWN WORDS, kept separate from anything derived here.
+            # Feeding a derived value back into the cross-binder compares a thing
+            # to itself, which is how a check stops being a check while still
+            # looking present.
+            "gateway_route": {
+                "provider": served_provider,
+                "model": served_model,
+                "upstream_model": as_str(attestation.get("upstream_model")),
+                "privacy_class": served_class,
+                "protocol": as_str(attestation.get("protocol")),
+            },
+            "verdict": verdict,
+            "gateway_verdict": gateway_verdict,
+            "raw_evidence": raw_evidence,
+        }
+
     # -- public API --------------------------------------------------------
     def verify_attestation(
         self,
@@ -310,47 +387,41 @@ class ConfidentialClient(MediaOwner):
         talking to a gateway old enough not to report the field. An explicit value
         always wins over what the gateway says.
 
-        Returns a dict with ``provider``, ``model``, ``privacy_modality``, ``verdict``
-        (our NormalizedVerdict), ``gateway_verdict`` (what the gateway returned; never
-        trusted alone), and ``raw_evidence`` (verbatim, for further checks).
-        """
-        nonce = nonce or os.urandom(32).hex()
-        attestation = self._fetch_attestation_for_route(model, provider, nonce)
+        ``privacy_modality`` pins the class you reviewed. Unset, the class the
+        gateway bound into the ticket is used and reported as
+        ``privacy_modality_source``.
 
-        # Bind the route the gateway actually served. Substituted evidence would
-        # fail the verifier's own parse anyway, but failing here names the real
-        # problem (AnonRouter routed elsewhere) instead of surfacing it as
-        # malformed evidence.
-        served_provider = as_str(attestation.get("provider"))
-        if served_provider and served_provider != provider:
+        Returns a dict with ``provider``, ``model``, ``privacy_modality``,
+        ``privacy_modality_source``, ``gateway_route`` (exactly what the gateway
+        echoed), ``verdict`` (our NormalizedVerdict), ``gateway_verdict`` (what the
+        gateway returned; never trusted alone), and ``raw_evidence``.
+
+        Raises on a route disagreement: a single-hop caller asked about ONE route
+        and did not get it, and there is no second hop here whose verdict could
+        carry the nuance. ``verify_route`` reports the same facts as structured
+        mismatches instead.
+        """
+        result = self._attest_route(
+            model,
+            provider,
+            nonce,
+            privacy_modality=privacy_modality,
+            upstream_model=upstream_model,
+        )
+        echo = result["gateway_route"]
+        if echo["provider"] and echo["provider"] != provider:
             raise ConfidentialError(
                 "the attestation was bound to a different provider than the one requested"
             )
-        raw_evidence = attestation.get("evidence")
-        upstream_model = upstream_model or as_str(attestation.get("upstream_model")) or model
-        modality = privacy_modality or ("tee" if provider == "tinfoil" else "e2ee")
-
-        # A route the gateway itself labels `tee` cannot carry client-opaque E2EE,
-        # so verifying it under an e2ee expectation would check the wrong contract.
-        served_class = as_str(attestation.get("privacy_class"))
-        if served_class in ("tee", "e2ee") and served_class != modality:
+        if echo["model"] and echo["model"] != model:
             raise ConfidentialError(
-                f"the gateway served a {served_class} route for {provider}, which is not the "
-                "privacy modality this SDK verifies for that provider"
+                "the attestation was bound to a different model than the one requested"
             )
-
-        expectations = self._expectations(provider, upstream_model, nonce, modality)
-        verdict = verify_raw_evidence(provider, raw_evidence, expectations)
-        gateway_verdict = attestation.get("attestation")
-        return {
-            "provider": provider,
-            "model": model,
-            "upstream_model": upstream_model,
-            "privacy_modality": modality,
-            "verdict": verdict,
-            "gateway_verdict": gateway_verdict,
-            "raw_evidence": raw_evidence,
-        }
+        if privacy_modality and echo["privacy_class"] and echo["privacy_class"] != privacy_modality:
+            raise ConfidentialError(
+                f"the gateway served a {echo['privacy_class']} route where {privacy_modality} was pinned"
+            )
+        return result
 
     # -- hop 1: AnonRouter's own confidential routing plane ------------------
     def verify_gateway(
@@ -428,6 +499,7 @@ class ConfidentialClient(MediaOwner):
         *,
         nonce: str | None = None,
         upstream_model: str | None = None,
+        privacy_class: str | None = None,
         gateway: bool | dict[str, Any] = False,
     ) -> RouteVerdict:
         """Establish the route end to end and report what actually held.
@@ -451,20 +523,29 @@ class ConfidentialClient(MediaOwner):
         attestation: dict[str, Any] | None = None
         provider_failure: str | None = None
         try:
-            attestation = self.verify_attestation(
-                model, provider, nonce, upstream_model=upstream_model
+            attestation = self._attest_route(
+                model,
+                provider,
+                nonce,
+                privacy_modality=privacy_class,
+                upstream_model=upstream_model,
             )
         except ConfidentialError as exc:
             provider_failure = str(exc)
 
         if attestation is not None:
             provider_hop = provider_hop_verdict(attestation["verdict"])
+            # THE GATEWAY'S OWN WORDS. Echoing back the modality this client just
+            # derived compared a value to itself and could never fire.
+            served = attestation["gateway_route"]
             echo: dict[str, Any] | None = {
-                "provider": attestation.get("provider"),
-                "privacy_class": attestation.get("privacy_modality"),
+                "provider": served["provider"],
+                "model": served["model"],
+                "privacy_class": served["privacy_class"],
             }
-            attested_upstream = attestation.get("upstream_model")
+            attested_upstream = served["upstream_model"]
             modality = attestation["privacy_modality"]
+            modality_source = attestation["privacy_modality_source"]
         else:
             provider_hop = RouteHopVerdict(
                 requested=True,
@@ -475,10 +556,16 @@ class ConfidentialClient(MediaOwner):
             )
             echo = None
             attested_upstream = None
-            modality = "tee" if provider == "tinfoil" else "e2ee"
+            modality = "tee"
+            modality_source = "unestablished"
 
         return assemble_route_verdict(
-            route=RequestedRoute(provider=provider, model=model, privacy_modality=modality),
+            route=RequestedRoute(
+                provider=provider,
+                model=model,
+                privacy_modality=modality,
+                privacy_modality_source=modality_source,
+            ),
             gateway=gateway_hop,
             provider=provider_hop,
             gateway_echo=echo,
@@ -699,8 +786,28 @@ class ConfidentialClient(MediaOwner):
         ticket = self._mint_attestation_ticket(model, provider)
         nonce = os.urandom(32).hex()
         attestation = self._fetch_attestation(ticket, nonce)
+        # Every check here runs BEFORE the paid inference ticket below, so a
+        # substituted route costs nothing.
         if attestation.get("provider") not in (None, provider):
             raise ConfidentialError("attestation was bound to a different provider")
+        served_model = as_str(attestation.get("model"))
+        if served_model and served_model != model:
+            raise ConfidentialError("attestation was bound to a different model than the one requested")
+        # A `tee` route has no client-opaque channel: encrypting to it would send a
+        # body the enclave cannot read, on a route whose plaintext AnonRouter's
+        # build handles anyway.
+        if as_str(attestation.get("privacy_class")) == "tee":
+            raise ConfidentialError(
+                f"{provider}/{model} is served as a TEE route, which has no client-opaque "
+                "encryption; verify it with verify_route() and call it as an ordinary route"
+            )
+        served_protocol = as_str(attestation.get("protocol"))
+        expected_protocol = _E2EE_PROTOCOLS[provider]
+        if served_protocol and served_protocol != expected_protocol:
+            raise ConfidentialError(
+                f"the gateway offered the {served_protocol} protocol where this client speaks "
+                f"{expected_protocol}; nothing was encrypted or sent"
+            )
         raw_evidence = attestation.get("evidence")
         upstream_model = attestation.get("upstream_model")
         if not isinstance(upstream_model, str) or not upstream_model:

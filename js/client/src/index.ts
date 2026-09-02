@@ -79,6 +79,37 @@ export interface ListResponse<T> {
  * A model as returned by GET /v1/models. Fields mirror the public gateway shape.
  * Additional fields may be present on newer gateways and are preserved verbatim.
  */
+/**
+ * One provider's route to a model, as the catalog publishes it.
+ *
+ * THIS IS THE ROW THAT MATTERS for anything privacy-related. A `ModelInfo`
+ * carries a top-level `privacy_class` describing its BEST route, so a consumer
+ * that reads only that will both miss a confidential route on a model whose
+ * headline is `private`, and claim one for a provider that serves the same model
+ * plainly. The same model id is regularly `tee` at one provider, `e2ee` at a
+ * second and `private` at a third.
+ *
+ * Enumerate these to answer "which routes can I verify?" rather than keeping a
+ * list of provider names in your own code: a written-down list is wrong the next
+ * time a row moves, and silently so in both directions.
+ */
+export interface ProviderRoute {
+  provider: string;
+  provider_name?: string;
+  /** `plain`, `anonymous`, `private`, `tee` or `e2ee`. */
+  privacy_class: string;
+  provider_privacy_class?: string;
+  /** Whether this exact route can be called right now. */
+  callable?: boolean;
+  context_window?: number;
+  max_output_tokens?: number | null;
+  pricing?: {
+    input_usd_per_million_tokens: number;
+    output_usd_per_million_tokens: number;
+    unit_usd?: number | null;
+  };
+}
+
 export interface ModelInfo {
   id: string;
   object: "model";
@@ -86,9 +117,13 @@ export interface ModelInfo {
   owned_by: string;
   display_name?: string;
   provider: string;
-  model_type?: "text" | "image" | "tts";
+  /** `embedding` is served too, and is the only modality on some TEE routes. */
+  model_type?: "text" | "image" | "tts" | "embedding";
+  /** The model's BEST route's class. Per-route classes are in `provider_routes`. */
   privacy_class: string;
   provider_privacy_class: string;
+  /** Every provider that serves this model, with that route's own privacy class. */
+  provider_routes?: ProviderRoute[];
   context_window: number;
   max_output_tokens?: number | null;
   pricing: {
@@ -149,6 +184,51 @@ export interface ChatRequest {
   signal?: AbortSignal;
 }
 
+/**
+ * An embedding request over the same two-origin ticketed flow as chat.
+ *
+ * Embeddings are the cheapest real call AnonRouter serves, which makes them the
+ * natural canary for "this route actually runs" on a route family whose only
+ * published model is an embedding model — AnonRouter's single Tinfoil TEE
+ * embedding row is exactly that, and a chat request cannot reach it at all.
+ */
+export interface EmbeddingRequest {
+  model: string;
+  /** Pin a provider. Omit for Auto, which selects a route per request. */
+  provider?: ProviderRequest;
+  input: string | string[];
+  encodingFormat?: "float" | "base64";
+  dimensions?: number;
+  signal?: AbortSignal;
+}
+
+/**
+ * Everything the control plane is told in order to mint a ticket. Routing and
+ * authorization metadata only: no messages, no embedding input, no prompt.
+ */
+interface TicketRequest {
+  model: string;
+  provider?: ProviderRequest;
+  /** Omitted for chat, which is the control plane's default operation. */
+  operation?: "embeddings";
+  maxTokens?: number;
+  reasoningEffort?: string;
+  signal?: AbortSignal;
+}
+
+export interface EmbeddingVector {
+  object: string;
+  index: number;
+  embedding: number[] | string;
+}
+
+export interface EmbeddingResponse {
+  object: string;
+  model: string;
+  data: EmbeddingVector[];
+  usage?: { prompt_tokens: number; total_tokens: number };
+}
+
 export interface ChatCompletionMessage {
   role: "assistant";
   content: string | null;
@@ -199,6 +279,8 @@ export interface AnonrouterClient {
   chat(request: ChatRequest & { stream?: false }): Promise<ChatCompletion>;
   /** Fallback overload for callers whose stream flag is not a literal. */
   chat(request: ChatRequest): Promise<Response | ChatCompletion>;
+  /** Embeddings, over the same ticketed split: key to control, content to the relay. */
+  embeddings(request: EmbeddingRequest): Promise<EmbeddingResponse>;
 }
 
 interface ApiErrorBody {
@@ -297,7 +379,14 @@ export function createClient(options: ClientOptions): AnonrouterClient {
   // Control-plane request: exchanges the API key for a short-lived, single-use
   // inference ticket. This is the only request that carries the API key and it
   // carries no content, only routing and authorization metadata.
-  async function requestTicket(request: ChatRequest): Promise<string> {
+  //
+  // It takes its OWN narrow shape rather than a chat or embedding request. The
+  // boundary this client exists to hold is "the credential and the content never
+  // travel together", and a function that accepts the whole content-bearing
+  // request and remembers to leave the content out is one careless spread away
+  // from breaking it. What can be sent here is what this type can express.
+  async function requestTicket(request: TicketRequest): Promise<string> {
+    const { operation, maxTokens, reasoningEffort } = request;
     const response = await doFetch(controlUrl("/v1/inference/tickets"), {
       method: "POST",
       headers: {
@@ -307,8 +396,9 @@ export function createClient(options: ClientOptions): AnonrouterClient {
       body: JSON.stringify({
         model: request.model,
         ...(request.provider !== undefined ? { provider: request.provider } : {}),
-        ...(request.maxTokens !== undefined ? { max_completion_tokens: request.maxTokens } : {}),
-        ...(request.reasoningEffort ? { reasoning_effort: request.reasoningEffort } : {})
+        ...(operation !== undefined ? { operation } : {}),
+        ...(maxTokens !== undefined ? { max_completion_tokens: maxTokens } : {}),
+        ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {})
       }),
       signal: request.signal
     });
@@ -320,6 +410,41 @@ export function createClient(options: ClientOptions): AnonrouterClient {
       throw new Error("AnonRouter returned an invalid inference ticket.");
     }
     return issued.ticket;
+  }
+
+  async function embeddings(request: EmbeddingRequest): Promise<EmbeddingResponse> {
+    // `operation: "embeddings"` is what makes the control plane price and reserve
+    // this as an embedding rather than a chat turn; without it the mint refuses
+    // an embedding-only model with `model_not_chat`.
+    const ticket = await requestTicket({
+      model: request.model,
+      provider: request.provider,
+      operation: "embeddings",
+      signal: request.signal
+    });
+
+    const response = await doFetch(contentUrl("/v1/embeddings"), {
+      method: "POST",
+      // Content request: the single-use ticket and nothing else. Same rule as
+      // chat -- the text being embedded is content, and content never travels
+      // with the account credential.
+      credentials: "omit",
+      headers: {
+        "content-type": "application/json",
+        "x-anonrouter-ticket": ticket
+      },
+      body: JSON.stringify({
+        model: request.model,
+        input: request.input,
+        ...(request.encodingFormat ? { encoding_format: request.encodingFormat } : {}),
+        ...(request.dimensions !== undefined ? { dimensions: request.dimensions } : {})
+      }),
+      signal: request.signal
+    });
+    if (!response.ok) {
+      throw await toApiError(response);
+    }
+    return (await response.json()) as EmbeddingResponse;
   }
 
   async function chat(request: ChatRequest): Promise<Response | ChatCompletion> {
@@ -360,6 +485,7 @@ export function createClient(options: ClientOptions): AnonrouterClient {
 
   return {
     models,
-    chat: chat as AnonrouterClient["chat"]
+    chat: chat as AnonrouterClient["chat"],
+    embeddings
   };
 }

@@ -2,11 +2,17 @@
 // confidential inference from your own Node or browser app. "Don't trust us, verify."
 //
 // TEE means the workload runs in a verified enclave; it does NOT by itself hide
-// your content from AnonRouter. Only the E2EE providers (near-ai, venice, chutes)
-// keep request/response content opaque to the gateway. This package makes that
-// distinction explicit and never emits a `hardware-verified` claim: the vendor-root
-// chain is deliberately not wired, so the honest ceiling is `provider-attested`
-// (near/venice/chutes) or `sdk-verified` (tinfoil, via its official SDK).
+// your content from AnonRouter. An E2EE route does: the request is encrypted to
+// the provider's attested key, so AnonRouter's own build is out of your trust
+// set. This package makes that distinction explicit and never emits a
+// `hardware-verified` claim: the vendor-root chain is deliberately not wired, so
+// the honest ceiling is `provider-attested` (near/venice/chutes) or
+// `sdk-verified` (tinfoil, via its official SDK).
+//
+// WHICH CLASS A ROUTE IS is a per-route catalog fact, read from the route the
+// gateway actually served or pinned by the caller — never inferred from the
+// provider name. The same provider publishes rows in more than one class, and
+// the same model id can be `tee` at one provider and `e2ee` at another.
 
 // ---- Client -----------------------------------------------------------------
 export {
@@ -149,6 +155,7 @@ export {
   type RouteHopVerdict,
   type RouteBindingMismatch,
   type RequestedRoute,
+  type PrivacyModalitySource,
   type AssembleRouteVerdictInput
 } from "./verify/route.js";
 

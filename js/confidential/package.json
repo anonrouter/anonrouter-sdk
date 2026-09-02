@@ -46,7 +46,9 @@
     "gen:attestation-vectors": "tsx scripts/gen-attestation-vectors.ts",
     "gen:gateway-binding-vectors": "tsx scripts/gen-gateway-binding-vectors.ts",
     "gen:gateway-verdict-vectors": "tsx scripts/gen-gateway-verdict-vectors.ts",
-    "gen:dcap-vectors": "tsx scripts/gen-dcap-vectors.ts"
+    "gen:dcap-vectors": "tsx scripts/gen-dcap-vectors.ts",
+    "example:route-matrix": "tsx examples/route-matrix.ts",
+    "example:negative-controls": "tsx examples/negative-controls.ts"
   },
   "keywords": ["anonrouter", "tee", "e2ee", "attestation", "confidential", "tdx", "ml-kem", "verify"],
   "dependencies": {
@@ -59,6 +61,7 @@
     "tinfoil": "^1.2.1"
   },
   "devDependencies": {
+    "@anonrouter/client": "*",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^4.1.10"

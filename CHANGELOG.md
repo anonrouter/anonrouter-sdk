@@ -16,6 +16,52 @@ already exercised.
 
 Initial public release.
 
+### Fixed
+- **The route cross-binding was three dead checks.** `verifyRoute` /
+  `verify_route` fed the client's OWN derived values back into the cross-binder
+  as if they were the gateway's, so `provider` and `privacy_modality` were
+  compared against themselves and could never fire, and a pinned `upstreamModel`
+  overrode the gateway's echo before being compared to it. The mismatch list was
+  reachable only from hand-built calls, which is why every existing test passed.
+  Each hop's echo is now carried out of the verification path intact and compared
+  against what the caller asked for. Twenty-five new tests across both languages;
+  eight of the Python ones and seven of the JavaScript ones fail on the previous
+  code.
+- **A model substitution was accepted as a trusted route.** Nothing compared the
+  CATALOG model the caller named against the one the gateway echoed, so a gateway
+  serving a different (cheaper, or less private) model on the right provider
+  produced `trusted: true` with sound evidence for the wrong enclave. It is now a
+  `requested_model` mismatch, checked with no caller pin — naming the model is
+  the request.
+- **The privacy class was inferred from the provider NAME.** `provider ===
+  "tinfoil" ? "tee" : "e2ee"` decided both the verification contract and the
+  `contentVisibleToAnonRouter` claim. That is a privacy property asserted from no
+  evidence, and it is wrong the moment a provider serves two classes — which the
+  catalog already permits, and which one provider is one column away from. The
+  class now comes from the caller's `privacyClass` pin or from the class bound
+  into the single-use ticket, and `route.privacyModalitySource` says which.
+  With neither, the modality is `unestablished` and the verdict reports the
+  WEAKER claim (`contentVisibleToAnonRouter: true`) rather than the stronger one.
+- **A TEE route was described as unverifiable.** The SDK told callers that
+  "attestation tickets are issued for E2EE-capable routes; a TEE-only route
+  cannot be verified against this host". That generalized one deployment's
+  `model_not_e2ee` refusal into a rule. AnonRouter's mint issues for any callable
+  `tee` or `e2ee` route with a registered verifier, so the ticketed path is the
+  normal path for a TEE route; the message now reports the refusal that was
+  actually observed.
+- **`chat()` did not check the protocol it was about to speak.** The provider
+  name does not settle the wire scheme: a provider that gained a second E2EE
+  protocol would keep echoing the same name while the client encrypted to the
+  wrong one. The echoed `protocol` is now required to match, and a `tee` route is
+  refused outright rather than encrypted to. Both refusals happen before the paid
+  inference ticket, so a substituted route costs nothing.
+
+### Changed
+- **`verifyAttestation` no longer refuses a route merely for being `tee`.**
+  Reporting a TEE route honestly is correct for a caller who did not pin a class;
+  the refusal now fires on a caller pin, and on `chat()`, which is the only one of
+  these that sends content. The privacy claim still fails safe either way.
+
 ### Added
 - **Ticketed media: `client.images.generate(...)` and
   `client.audio.speech.create(...)`, in both languages.** Image generation and

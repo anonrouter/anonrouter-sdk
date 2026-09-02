@@ -86,6 +86,45 @@ itself perfectly while serving a different provider, model, or privacy class tha
 you asked for. `verifyRoute` cross-binds them; any disagreement lands in
 `bindingMismatches` and forces `untrusted`, however strong the hops were.
 
+## What the route binding actually checks
+
+AnonRouter mints the attestation ticket against exactly one catalog row, and the
+relay echoes back everything that row bound. Each field is a separate binding
+because a substitution can move one without moving the others.
+
+| `bindingMismatches[].field` | Question | Checked when |
+| --- | --- | --- |
+| `provider` | Did the enclave that answered belong to the provider you named? | always |
+| `requested_model` | Is the CATALOG model the one you asked for? | always — naming the model is the request |
+| `model` | Is the provider-native (upstream) model the one you pinned? | only with `upstreamModel` set |
+| `privacy_modality` | Was the route served under the class you pinned? | only with `privacyClass` set |
+
+The nonce is the fifth binding and is checked inside the hop verdict, not here:
+your fresh nonce must appear in the evidence, and a stale document fails
+`nonce_binding`. The sixth is the ticket itself, which is single-use and expires
+in about a minute, so a redeemed ticket cannot be replayed.
+
+### The privacy class comes from the route, not the provider
+
+`verdict.route.privacyModality` is `tee` or `e2ee`, and
+`verdict.route.privacyModalitySource` says how the SDK learned it:
+
+| Source | Meaning |
+| --- | --- |
+| `caller-pinned` | You passed `privacyClass`. A route served under another class is a mismatch. |
+| `gateway-attested` | Read from the class bound into your single-use ticket at mint time. |
+| `unestablished` | Nothing stated it. No privacy property was proved. |
+
+`contentVisibleToAnonRouter` follows from that, and on `unestablished` it is
+`true` — the weaker claim. `false` is a positive assertion that AnonRouter's build
+is outside your trust set, and it is only ever made from a pin or an attested
+class.
+
+This matters because a provider is not a privacy class. AnonRouter publishes
+`private` and `e2ee` rows for the same provider today, and the same model id can
+be `tee` at one provider and `e2ee` at another. Pin `privacyClass` when the
+distinction is what you are relying on.
+
 ## Interpreting a failure
 
 `verdict.gateway.failedChecks` and `verdict.provider.failedChecks` name the exact

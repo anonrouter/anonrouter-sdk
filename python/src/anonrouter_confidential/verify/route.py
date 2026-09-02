@@ -29,6 +29,15 @@ class RequestedRoute:
     model: str
     #: ``e2ee`` means the content must stay opaque to AnonRouter.
     privacy_modality: str
+    #: How ``privacy_modality`` was established: ``caller-pinned``,
+    #: ``gateway-attested`` or ``unestablished``.
+    #:
+    #: The modality is a PER-ROUTE catalog fact, not a property of the provider.
+    #: AnonRouter publishes ``private``, ``e2ee`` and ``tee`` rows for the same
+    #: provider, and the same model id can be ``tee`` at one provider and
+    #: ``e2ee`` at another, so a client that derives it from the provider NAME
+    #: reports a privacy property it never established.
+    privacy_modality_source: str = "unestablished"
 
 
 @dataclass
@@ -92,6 +101,12 @@ class RouteVerdict:
     #: True on a ``tee`` route: AnonRouter's relay handles your PLAINTEXT in order
     #: to route and meter it. False on ``e2ee``, where it only holds ciphertext.
     #:
+    #: WHEN THE MODALITY WAS NOT ESTABLISHED this is True, the weaker and
+    #: therefore honest claim. False is a positive assertion that AnonRouter's
+    #: build is out of your trust set, and is only ever made from a caller pin or
+    #: an attested route class -- never from a provider name. Read
+    #: ``route.privacy_modality_source`` to tell them apart.
+    #:
     #: WHAT THIS DOES AND DOES NOT MEAN. It is not "AnonRouter reads your
     #: prompts". On the production confidential origin the relay runs inside an
     #: attested Intel TDX CVM and terminates TLS in-enclave (the shipped policy
@@ -120,6 +135,7 @@ class RouteVerdict:
                 "provider": self.route.provider,
                 "model": self.route.model,
                 "privacy_modality": self.route.privacy_modality,
+                "privacy_modality_source": self.route.privacy_modality_source,
             },
             "overall_state": self.overall_state,
             "trusted": self.trusted,
@@ -198,6 +214,16 @@ def assemble_route_verdict(
         mismatches.append(
             RouteBindingMismatch("provider", route.provider, echoed_provider, "gateway")
         )
+    # The CATALOG model. Distinct from the upstream check below, and needing no
+    # caller pin: naming the model IS the request, so a gateway that echoes a
+    # different one has substituted the route however sound the enclave is.
+    echoed_model = echo.get("model")
+    if isinstance(echoed_model, str) and echoed_model and echoed_model != route.model:
+        mismatches.append(
+            RouteBindingMismatch("requested_model", route.model, echoed_model, "gateway")
+        )
+    # Only bites when the caller PINNED a class: with no pin the route's modality
+    # is read FROM this echo, so comparing them would be a tautology.
     echoed_class = echo.get("privacy_class")
     if (
         isinstance(echoed_class, str)

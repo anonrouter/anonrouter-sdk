@@ -390,6 +390,25 @@ describe("verify (both hops)", () => {
     expect(report.route.privacyModality).toBe("e2ee");
     expect(report.route.contentVisibleToAnonRouter).toBe(false);
   });
+
+  it("does not claim the content is hidden when no route class was attested", async () => {
+    // `contentVisibleToAnonRouter: false` is a positive claim that AnonRouter's
+    // build is outside the caller's trust set. A gateway that said nothing about
+    // the class established no such thing, so the weaker claim is the honest one.
+    // This used to read `false` for every provider except Tinfoil, from a
+    // hard-coded name-to-modality map and no evidence at all.
+    const enclave = createVeniceMockEnclave(MODEL);
+    const stub = stubGateway({ enclave });
+    const silent: FetchLike = async (url, init) => {
+      const response = await stub.fetchImpl(url, init);
+      if (new URL(url).pathname !== "/v1/tee/attestation") return response;
+      const { privacy_class: _dropped, ...rest } = await response.json() as Record<string, unknown>;
+      return new Response(JSON.stringify(rest), { status: 200 });
+    };
+    const c = createClient({ baseUrl: ORIGIN, apiKey: "ar_test", fetch: silent });
+    const report = await c.verify({ model: MODEL, provider: "venice" });
+    expect(report.route.contentVisibleToAnonRouter).toBe(true);
+  });
 });
 
 describe("chat with a required gateway hop", () => {
@@ -466,18 +485,88 @@ describe("provider-hop route binding", () => {
       .rejects.toMatchObject({ code: "attestation_untrusted" });
   });
 
-  it("refuses a route the gateway itself labels as plaintext-visible tee", async () => {
+  /**
+   * A gateway that serves a `tee` route where an `e2ee` one was expected.
+   *
+   * This case USED TO be a flat refusal, because the SDK decided the modality
+   * from the provider name and anything else was a contradiction. That test has
+   * been split into the three assertions below, which is a deliberate contract
+   * change and a stronger result rather than a weaker one:
+   *
+   *   - REPORTING a TEE route honestly is correct. A caller who did not say
+   *     "e2ee" asked what the route is, and refusing to answer serves nobody.
+   *   - The privacy claim still fails safe: `contentVisibleToAnonRouter` becomes
+   *     true, which is the whole property the old refusal was protecting.
+   *   - The refusal survives where it belongs: on a caller PIN, and on `chat()`,
+   *     which is the only one of these that sends content.
+   */
+  function downgradingClient() {
     const enclave = createVeniceMockEnclave(MODEL);
     const stub = stubGateway({ enclave });
     const downgrading: FetchLike = async (url, init) => {
       const response = await stub.fetchImpl(url, init);
       if (new URL(url).pathname !== "/v1/tee/attestation") return response;
       const body = await response.json() as Record<string, unknown>;
-      return new Response(JSON.stringify({ ...body, privacy_class: "tee" }), { status: 200 });
+      return new Response(JSON.stringify({ ...body, privacy_class: "tee", protocol: null }), { status: 200 });
     };
-    const c = createClient({ baseUrl: ORIGIN, apiKey: "ar_test", fetch: downgrading });
-    const error = await c.verifyAttestation({ model: MODEL, provider: "venice" }).catch((e) => e);
+    return { stub, client: createClient({ baseUrl: ORIGIN, apiKey: "ar_test", fetch: downgrading }) };
+  }
+
+  it("reports a tee route as tee, and says the content is visible", async () => {
+    const { client: c } = downgradingClient();
+    const verdict = await c.verifyRoute({ model: MODEL, provider: "venice" });
+    expect(verdict.route.privacyModality).toBe("tee");
+    expect(verdict.route.privacyModalitySource).toBe("gateway-attested");
+    expect(verdict.contentVisibleToAnonRouter).toBe(true);
+  });
+
+  it("refuses a tee route when the caller pinned e2ee", async () => {
+    const { client: c } = downgradingClient();
+    const error = await c.verifyAttestation({ model: MODEL, provider: "venice", privacyClass: "e2ee" })
+      .catch((e) => e);
     expect(error).toBeInstanceOf(ConfidentialError);
     expect((error as ConfidentialError).code).toBe("attestation_untrusted");
+
+    const verdict = await c.verifyRoute({ model: MODEL, provider: "venice", privacyClass: "e2ee" });
+    expect(verdict.trusted).toBe(false);
+    expect(verdict.bindingMismatches[0].field).toBe("privacy_modality");
+  });
+
+  it("never encrypts to a tee route, and spends nothing trying", async () => {
+    const { client: c, stub } = downgradingClient();
+    await expect(c.chat({
+      model: MODEL,
+      provider: "venice",
+      messages: [{ role: "user", content: CANARY }],
+      maxOutputTokens: 32
+    })).rejects.toMatchObject({ code: "provider_unsupported" });
+
+    // Refused after the free attestation and BEFORE the paid inference ticket.
+    expect(stub.paths).not.toContain("/v1/inference/tickets");
+    expect(stub.paths).not.toContain("/v1/chat/completions");
+    expect(stub.bodies.join("")).not.toContain(CANARY);
+  });
+
+  it("refuses to encrypt under a protocol the gateway did not offer", async () => {
+    // The provider name does not settle the scheme. A provider that gained a
+    // second E2EE protocol would keep echoing the same name while this client
+    // encrypted to the wrong one, so the echoed protocol is checked directly.
+    const enclave = createVeniceMockEnclave(MODEL);
+    const stub = stubGateway({ enclave });
+    const reprotocol: FetchLike = async (url, init) => {
+      const response = await stub.fetchImpl(url, init);
+      if (new URL(url).pathname !== "/v1/tee/attestation") return response;
+      const body = await response.json() as Record<string, unknown>;
+      return new Response(JSON.stringify({ ...body, protocol: "venice-hpke-v2" }), { status: 200 });
+    };
+    const c = createClient({ baseUrl: ORIGIN, apiKey: "ar_test", fetch: reprotocol });
+    await expect(c.chat({
+      model: MODEL,
+      provider: "venice",
+      messages: [{ role: "user", content: CANARY }],
+      maxOutputTokens: 32
+    })).rejects.toMatchObject({ code: "attestation_untrusted" });
+    expect(stub.paths).not.toContain("/v1/inference/tickets");
+    expect(stub.bodies.join("")).not.toContain(CANARY);
   });
 });

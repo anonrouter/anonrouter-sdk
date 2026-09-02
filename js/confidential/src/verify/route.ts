@@ -34,12 +34,31 @@ import {
 } from "./state.js";
 import type { GatewayVerificationResult } from "../gateway/verify.js";
 
+/**
+ * How the route's privacy modality was established.
+ *
+ * It is a PER-ROUTE catalog fact, not a property of the provider: AnonRouter
+ * publishes `private`, `e2ee` and `tee` rows for the same provider, and the same
+ * model id can be served by one provider as `tee` and another as `e2ee`. So the
+ * modality has to come from the route that was actually served, and the client
+ * has to be able to say which of the three ways it learned it.
+ */
+export type PrivacyModalitySource =
+  /** The caller pinned it, and any disagreement is a binding mismatch. */
+  | "caller-pinned"
+  /** Read from the class the gateway bound into the single-use ticket at mint. */
+  | "gateway-attested"
+  /** Nobody stated it. The verdict must then assume the WEAKER privacy claim. */
+  | "unestablished";
+
 /** What the caller asked to be routed to. Every hop is bound back to this. */
 export interface RequestedRoute {
   provider: string;
   model: string;
   /** Expected privacy modality. `e2ee` means the content must stay opaque to AnonRouter. */
   privacyModality: "tee" | "e2ee";
+  /** Where `privacyModality` came from. Absent is read as `unestablished`. */
+  privacyModalitySource?: PrivacyModalitySource;
 }
 
 /** One hop's outcome in the stable contract. */
@@ -59,7 +78,15 @@ export interface RouteHopVerdict {
 
 /** A disagreement between what was asked for and what a hop attested. */
 export interface RouteBindingMismatch {
-  field: "provider" | "model" | "privacy_modality";
+  /**
+   * `requested_model` is the CATALOG id the caller named; `model` is the
+   * provider-native upstream id the evidence attested. They are separate
+   * bindings because a substitution can move either one on its own: serving a
+   * different catalog model leaves the upstream id internally consistent, and
+   * serving different weights under the same catalog id leaves the catalog id
+   * intact.
+   */
+  field: "provider" | "requested_model" | "model" | "privacy_modality";
   expected: string;
   observed: string;
   /** Which side reported the observed value. */
@@ -115,6 +142,12 @@ export interface RouteVerdict {
    * So `true` means "this route requires you to trust our attested build";
    * `false` means "it does not". The name predates the confidential data plane
    * and is kept for compatibility.
+   *
+   * WHEN THE MODALITY WAS NOT ESTABLISHED this is `true`, which is the weaker
+   * privacy claim and therefore the honest one. `false` is a positive assertion
+   * that AnonRouter's build is out of your trust set, and it is only ever made
+   * from a caller pin or an attested route class — never from a provider name.
+   * Read `route.privacyModalitySource` to tell the two apart.
    */
   contentVisibleToAnonRouter: boolean;
 }
@@ -175,8 +208,15 @@ export interface AssembleRouteVerdictInput {
   route: RequestedRoute;
   gateway: RouteHopVerdict;
   provider: RouteHopVerdict;
-  /** What the gateway echoed about the route it served, when it said anything. */
-  gatewayEcho?: { provider?: string | null; privacyClass?: string | null };
+  /**
+   * What the gateway echoed about the route it served, when it said anything.
+   *
+   * These are the values the GATEWAY reported, never values the client derived.
+   * Feeding a client-derived value back in here would make the comparison a
+   * tautology that can never fire, which is the exact way a cross-binding check
+   * dies quietly while still looking present.
+   */
+  gatewayEcho?: { provider?: string | null; model?: string | null; privacyClass?: string | null };
   /** The provider-native model the evidence attested, when known. */
   attestedUpstreamModel?: string | null;
   /** The upstream model the caller expected, when they pinned one. */
@@ -205,6 +245,22 @@ export function assembleRouteVerdict(input: AssembleRouteVerdictInput): RouteVer
       source: "gateway"
     });
   }
+  // The catalog model. Distinct from the upstream check below: this one needs no
+  // caller pin, because naming the model IS the request. A gateway that echoes a
+  // different one has substituted the route, however sound the enclave is.
+  const echoedModel = input.gatewayEcho?.model;
+  if (typeof echoedModel === "string" && echoedModel.length > 0 && echoedModel !== input.route.model) {
+    mismatches.push({
+      field: "requested_model",
+      expected: input.route.model,
+      observed: echoedModel,
+      source: "gateway"
+    });
+  }
+  // Only bites when the caller PINNED a class: with no pin the route's modality
+  // is read FROM this echo, so comparing them would be a tautology. That is not
+  // a weakening — an unpinned caller has asserted nothing to contradict — and the
+  // pin is how a caller says "I reviewed an e2ee route; refuse a tee one".
   const echoedClass = input.gatewayEcho?.privacyClass;
   if (typeof echoedClass === "string" && (echoedClass === "tee" || echoedClass === "e2ee")
     && echoedClass !== input.route.privacyModality) {
@@ -255,7 +311,7 @@ export function assembleRouteVerdict(input: AssembleRouteVerdictInput): RouteVer
           : null;
 
   return {
-    route: input.route,
+    route: { privacyModalitySource: "unestablished", ...input.route },
     overallState,
     trusted: isTrusted(overallState) && mismatches.length === 0,
     reason,

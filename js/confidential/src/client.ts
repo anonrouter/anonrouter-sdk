@@ -39,6 +39,7 @@ import {
   hopNotRequested,
   hopUnavailable,
   providerHopVerdict,
+  type PrivacyModalitySource,
   type RouteVerdict
 } from "./verify/route.js";
 import { GATEWAY_NONCE_HEX_LENGTH } from "./gateway/binding.js";
@@ -174,6 +175,17 @@ export interface VerifyAttestationInput {
    *  as a `model_binding` failure on otherwise valid evidence). An explicit value
    *  always wins over whatever the gateway says. */
   upstreamModel?: string;
+  /**
+   * Pin the privacy class you reviewed for this route: `e2ee` (the content stays
+   * opaque to AnonRouter) or `tee` (it runs in a verified enclave that AnonRouter
+   * operates, so its build is in your trust set).
+   *
+   * Normally you leave it unset and the class the gateway bound into the ticket
+   * is used. Set it when the distinction matters to you: a route served under a
+   * class other than the pinned one is then refused as a substitution instead of
+   * verified under whichever contract the server named.
+   */
+  privacyClass?: PrivacyModality;
   signal?: AbortSignal;
 }
 
@@ -183,6 +195,18 @@ export interface VerifyAttestationResult {
   /** The provider-native model id the evidence was bound against. */
   upstreamModel: string;
   privacyModality: PrivacyModality;
+  /** How `privacyModality` was established. `unestablished` means nothing stated
+   *  it, so no privacy property was proved and the weaker claim is reported. */
+  privacyModalitySource: PrivacyModalitySource;
+  /** Exactly what the gateway echoed about the route it served. Raw, so a caller
+   *  can cross-bind it themselves; the SDK does that in `verifyRoute`. */
+  gatewayRoute: {
+    provider: string | null;
+    model: string | null;
+    upstreamModel: string | null;
+    privacyClass: PrivacyModality | null;
+    protocol: string | null;
+  };
   /** OUR independent verification of the raw evidence. Authoritative. */
   verdict: NormalizedVerdict;
   /** What the gateway returned. Never trusted by itself. */
@@ -445,6 +469,13 @@ export interface VerifyRouteInput {
    */
   upstreamModel?: string;
   /**
+   * Pin the privacy class this route must be served under. A route served under
+   * a different class lands in `bindingMismatches` and forces `untrusted`.
+   * Unset, the class the gateway bound into the ticket is used and reported as
+   * `route.privacyModalitySource`.
+   */
+  privacyClass?: PrivacyModality;
+  /**
    * Establish hop 1 as well. Defaults to false, because most deployments do not
    * run inside a CVM and a verdict must never imply a hop it skipped. The
    * resulting `gateway.requested` always says which way this went.
@@ -455,8 +486,50 @@ export interface VerifyRouteInput {
 
 const ACCEPTED_LEVELS = new Set<VerificationLevel>(["provider-attested", "sdk-verified", "hardware-verified"]);
 
-function privacyModalityFor(provider: string): PrivacyModality {
-  return provider === "tinfoil" ? "tee" : "e2ee";
+/**
+ * The modality to verify under when NOBODY has stated one.
+ *
+ * `tee` is the conservative choice in both directions, which is why it is safe
+ * as a default and `e2ee` would not be:
+ *
+ *   - as a REPORT it is the weaker privacy claim (`contentVisibleToAnonRouter`
+ *     becomes true), so an unestablished route can never read as stronger than
+ *     one that was actually attested; and
+ *   - as a VERIFICATION CONTRACT it never skips a check. No verifier makes a
+ *     required check conditional on `e2ee`; Tinfoil makes one conditional on
+ *     `tee` (`serving_modality_supported`), so defaulting the other way would
+ *     fail closed on a perfectly good TEE route.
+ *
+ * This used to be `provider === "tinfoil" ? "tee" : "e2ee"` — a hard-coded map
+ * from a PROVIDER NAME to a privacy property. It happened to match the catalog
+ * on the day it was written and is wrong the moment any provider serves two
+ * classes, which the catalog already permits and which Venice (private + e2ee)
+ * and Tinfoil (tee on seven routes) are one column away from.
+ */
+const UNESTABLISHED_MODALITY: PrivacyModality = "tee";
+
+/** Read the route facts the relay echoes back, keeping "absent" distinct from
+ *  "present and wrong": only the second is a substitution. */
+function readRouteEcho(body: AttestationResponse): RouteEcho {
+  const text = (value: unknown): string | null =>
+    typeof value === "string" && value.length > 0 ? value : null;
+  const modality = text(body.privacy_class);
+  return {
+    provider: text(body.provider),
+    model: text((body as { model?: unknown }).model),
+    upstreamModel: text(body.upstream_model),
+    privacyClass: modality === "tee" || modality === "e2ee" ? modality : null,
+    protocol: text((body as { protocol?: unknown }).protocol)
+  };
+}
+
+/** What the gateway said about the route it served. Never client-derived. */
+interface RouteEcho {
+  provider: string | null;
+  model: string | null;
+  upstreamModel: string | null;
+  privacyClass: PrivacyModality | null;
+  protocol: string | null;
 }
 
 function freshNonce(): string {
@@ -516,6 +589,8 @@ function gateGatewayVerdict(verdict: NormalizedVerdict | undefined, nonce: strin
 interface AttestationResponse {
   evidence: unknown;
   provider?: string;
+  /** The CATALOG model id the ticket was minted against. */
+  model?: string;
   upstream_model?: string;
   /** "tee" or "e2ee": what the gateway says this route is. Cross-checked, never trusted. */
   privacy_class?: string;
@@ -569,9 +644,18 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
    *     carrying an account key is refused there, by design, because that relay
    *     never accepts account credentials alongside a route it serves. This path
    *     also reports `upstream_model`, which the model binding needs.
-   *  2. Key-authenticated GET, for a deployment that serves this route directly.
-   *     Attestation tickets are only issued for E2EE-capable models, so this is
-   *     also the only path that can verify a TEE-only route such as Tinfoil.
+   *  2. Key-authenticated GET, for a deployment that serves this route directly
+   *     — a single-origin monolith whose control process also holds a provider
+   *     worker. The split production control plane deliberately holds neither,
+   *     and answers 501 here.
+   *
+   * A NOTE THAT USED TO BE WRONG. This said attestation tickets are issued only
+   * for E2EE-capable models, so a TEE-only route such as Tinfoil could only be
+   * verified through path 2. That described a defect, not a rule: the mint
+   * refused every non-E2EE route with `model_not_e2ee`, which shut the ticket
+   * path for exactly the routes whose whole point is the enclave. It now issues
+   * for any callable `tee` or `e2ee` route with a registered verifier, so path 1
+   * is the normal path for a TEE route too.
    *
    * Neither path ever carries content, and attestation is not a billable
    * inference call.
@@ -610,8 +694,11 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
       // the legacy key-authenticated fallback below is safe only when both
       // roles are served by the same origin.
       if (controlOrigin !== origin) throw cause;
-      // A TEE-only route cannot be issued an attestation ticket. Fall through to
-      // the key-authenticated path rather than reporting it as a hard failure.
+      // Single origin only: the same host already holds the key, so trying the
+      // key-authenticated route costs no isolation. A mint can be refused for
+      // reasons that have nothing to do with the enclave (an ambiguous model, a
+      // rate limit, a deployment too old to mint for this class), so a
+      // single-origin deployment gets the second path rather than a hard stop.
       if (cause instanceof ConfidentialError && cause.code === "cancelled") throw cause;
       ticket = null;
     }
@@ -668,15 +755,35 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
     }
     if (response.ok) return parse(response);
     if (response.status === 401 && !ticket) {
+      // Say what was OBSERVED, not a rule about which routes are ticketable.
+      // The previous message asserted that a TEE-only route cannot be verified
+      // against this host, which was a generalization from one deployment's
+      // `model_not_e2ee` and stopped being true when the mint learned to issue
+      // for `tee`. A caller who reads that stops looking; a caller who reads the
+      // refusal goes and checks whether the route is callable and has a verifier.
       throw new ConfidentialError(
         "attestation_failed",
-        `This deployment serves attestation only through the credential-isolated relay, which takes a single-use ticket, and ${provider}/${model} was not issued one. Attestation tickets are issued for E2EE-capable routes; a TEE-only route cannot be verified against this host.`
+        `This deployment serves attestation only through the credential-isolated relay, which takes a single-use ticket, and no ticket was issued for ${provider}/${model}. The mint issues for a callable tee or e2ee route with a registered verifier; check the mint's own refusal for which of those did not hold.`
       );
     }
     throw new ConfidentialError("attestation_failed", `Attestation request failed with status ${response.status}.`);
   }
 
-  async function verifyAttestation(input: VerifyAttestationInput): Promise<VerifyAttestationResult> {
+  /**
+   * Fetch evidence, resolve the route facts, and verify. Does NOT throw on a
+   * route disagreement.
+   *
+   * The split from `verifyAttestation` is what makes cross-binding work at all.
+   * A disagreement used to be raised as an exception, and `verifyRoute` catches
+   * exceptions and turns them into a bare "the provider hop failed" — so the
+   * mismatch list stayed empty, the caller was told the enclave was bad when the
+   * real problem was that AnonRouter served a different route, and every
+   * cross-binding rule was reachable only from a hand-built test. Here the echo
+   * is carried out intact and the two callers each decide what to do with it.
+   */
+  async function attestRoute(
+    input: VerifyAttestationInput
+  ): Promise<{ result: VerifyAttestationResult; echo: RouteEcho }> {
     const provider = input.provider;
     const model = input.model;
     const nonce = input.nonce ?? freshNonce();
@@ -687,23 +794,20 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
     await enableNodeCrypto();
 
     const body = await fetchAttestationEvidence(model, provider, nonce, input.signal);
+    const echo = readRouteEcho(body);
 
-    // Bind the route the gateway actually served. Substituted evidence would fail
-    // the verifier's own parse anyway, but failing here names the real problem
-    // (AnonRouter routed elsewhere) instead of surfacing it as malformed evidence.
-    if (typeof body.provider === "string" && body.provider !== provider) {
-      throw new ConfidentialError("attestation_untrusted", "The attestation was bound to a different provider than the one requested.");
-    }
-    // A route the gateway itself labels `tee` cannot carry client-opaque E2EE, so
-    // verifying it under an e2ee expectation would be checking the wrong contract.
-    if (typeof body.privacy_class === "string"
-      && body.privacy_class !== privacyModalityFor(provider)
-      && (body.privacy_class === "tee" || body.privacy_class === "e2ee")) {
-      throw new ConfidentialError(
-        "attestation_untrusted",
-        `The gateway served a ${body.privacy_class} route for ${provider}, which is not the privacy modality this SDK verifies for that provider.`
-      );
-    }
+    // THE MODALITY IS A PROPERTY OF THE ROUTE, and this is where it is decided.
+    // A caller pin wins, because pinning is how a caller says which contract they
+    // reviewed. Otherwise the class the gateway bound into the single-use ticket
+    // at mint time is used: it is a catalog fact about one row, not a guess, and
+    // choosing the verification contract from it is what lets one SDK verify a
+    // `tee` route and an `e2ee` route on the SAME provider.
+    const privacyModality = input.privacyClass ?? echo.privacyClass ?? UNESTABLISHED_MODALITY;
+    const privacyModalitySource: PrivacyModalitySource = input.privacyClass
+      ? "caller-pinned"
+      : echo.privacyClass
+        ? "gateway-attested"
+        : "unestablished";
 
     // Precedence: what the caller pinned, then what the gateway reports, then the
     // catalog id as a last resort. The last resort is only correct when the two ids
@@ -711,10 +815,7 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
     // silently binding to the wrong name.
     const upstreamModel = typeof input.upstreamModel === "string" && input.upstreamModel.length > 0
       ? input.upstreamModel
-      : typeof body.upstream_model === "string" && body.upstream_model.length > 0
-        ? body.upstream_model
-        : model;
-    const privacyModality = privacyModalityFor(provider);
+      : echo.upstreamModel ?? model;
     const gatewayVerdict = coerceGatewayVerdict(body.attestation);
 
     // Our independent verdict over the RAW evidence. This is authoritative.
@@ -725,7 +826,48 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
       privacyModality
     });
 
-    return { provider, model, upstreamModel, privacyModality, verdict, gatewayVerdict, rawEvidence: body.evidence };
+    return {
+      result: {
+        provider,
+        model,
+        upstreamModel,
+        privacyModality,
+        privacyModalitySource,
+        gatewayRoute: { ...echo },
+        verdict,
+        gatewayVerdict,
+        rawEvidence: body.evidence
+      },
+      echo
+    };
+  }
+
+  async function verifyAttestation(input: VerifyAttestationInput): Promise<VerifyAttestationResult> {
+    const { result, echo } = await attestRoute(input);
+
+    // Single-hop callers get a hard failure on a route disagreement: they asked
+    // about ONE route and did not get it, and there is no second hop here whose
+    // verdict could carry the nuance. `verifyRoute` reports the same facts as
+    // structured mismatches instead.
+    if (echo.provider && echo.provider !== input.provider) {
+      throw new ConfidentialError(
+        "attestation_untrusted",
+        "The attestation was bound to a different provider than the one requested."
+      );
+    }
+    if (echo.model && echo.model !== input.model) {
+      throw new ConfidentialError(
+        "attestation_untrusted",
+        "The attestation was bound to a different model than the one requested."
+      );
+    }
+    if (input.privacyClass && echo.privacyClass && echo.privacyClass !== input.privacyClass) {
+      throw new ConfidentialError(
+        "attestation_untrusted",
+        `The gateway served a ${echo.privacyClass} route where ${input.privacyClass} was pinned.`
+      );
+    }
+    return result;
   }
 
   // ---- Hop 1: AnonRouter's own confidential routing plane --------------------
@@ -787,9 +929,19 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
       throw new ConfidentialError("attestation_failed", "Could not reach the gateway attestation service.");
     }
     // 503 is the documented answer from a deployment that is not running inside an
-    // attestable CVM; 404 is a gateway too old to serve the route. Both mean "this
-    // hop cannot be established here", which is different from "it failed".
-    if (response.status === 503 || response.status === 404) return GATEWAY_UNAVAILABLE;
+    // attestable CVM; 404 is a gateway too old to serve the route; 429 is the
+    // endpoint's flood guard. All three mean "this hop could not be established",
+    // which is different from "it was established and failed".
+    //
+    // 429 IS NOT A LOOSENING. `unavailable` is a failure state: it never satisfies
+    // `atLeast`, so a rate-limited gateway hop still refuses the route. What it
+    // changes is the SHAPE of the failure — previously this threw, which in
+    // `verifyRoute` escaped past the whole verdict and took the provider hop's
+    // findings with it. "We could not look" is a verdict the caller can act on
+    // (back off and retry); an exception is one they can only crash on.
+    if (response.status === 503 || response.status === 404 || response.status === 429) {
+      return GATEWAY_UNAVAILABLE;
+    }
     if (!response.ok) {
       throw new ConfidentialError("attestation_failed", `Gateway attestation failed with status ${response.status}.`);
     }
@@ -963,7 +1115,6 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
    */
   async function verifyRoute(input: VerifyRouteInput): Promise<RouteVerdict> {
     const gatewayOption = gatewayOptionToInput(input.gateway);
-    const privacyModality = privacyModalityFor(input.provider);
 
     let gatewayHop = gatewayOption === null ? hopNotRequested() : null;
     if (gatewayOption !== null) {
@@ -971,19 +1122,24 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
       gatewayHop = hop.verdict;
     }
 
-    // The provider hop can throw on a route-binding refusal (the gateway served
-    // a different provider or privacy class). That is a mismatch, not a crash,
-    // so it is turned back into a verdict the caller can read.
+    // The provider hop can still fail outright — an unreachable relay, a refused
+    // ticket, unparseable evidence. That is a hop failure. A route DISAGREEMENT
+    // is different and is no longer raised as one: `attestRoute` returns the echo
+    // so the mismatch can be named rather than collapsed into "verification
+    // failed", which is what the caller needs to tell a broken enclave apart from
+    // a substituted route.
     let attestation: VerifyAttestationResult | null = null;
+    let echo: RouteEcho | null = null;
     let providerFailure: string | null = null;
     try {
-      attestation = await verifyAttestation({
+      ({ result: attestation, echo } = await attestRoute({
         model: input.model,
         provider: input.provider,
         upstreamModel: input.upstreamModel,
+        privacyClass: input.privacyClass,
         nonce: input.nonce,
         signal: input.signal
-      });
+      }));
     } catch (error) {
       if (error instanceof ConfidentialError && error.code === "cancelled") throw error;
       providerFailure = error instanceof ConfidentialError ? error.code : "provider_verification_failed";
@@ -994,13 +1150,24 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
       : hopFromFailure(providerFailure ?? "provider_verification_failed");
 
     return assembleRouteVerdict({
-      route: { provider: input.provider, model: input.model, privacyModality },
+      route: {
+        provider: input.provider,
+        model: input.model,
+        // Resolved from the pin or the served route, never from the provider
+        // name. With no attestation at all there is nothing to report, so the
+        // weaker claim stands.
+        privacyModality: attestation?.privacyModality ?? UNESTABLISHED_MODALITY,
+        privacyModalitySource: attestation?.privacyModalitySource ?? "unestablished"
+      },
       gateway: gatewayHop ?? hopNotRequested(),
       provider: providerHop,
-      gatewayEcho: attestation
-        ? { provider: attestation.provider, privacyClass: attestation.privacyModality }
+      // THE GATEWAY'S OWN WORDS, not ours. Feeding back the value the SDK just
+      // derived would compare a thing to itself, which is how these three checks
+      // silently stopped being checks.
+      gatewayEcho: echo
+        ? { provider: echo.provider, model: echo.model, privacyClass: echo.privacyClass }
         : undefined,
-      attestedUpstreamModel: attestation?.upstreamModel ?? null,
+      attestedUpstreamModel: echo?.upstreamModel ?? null,
       expectedUpstreamModel: input.upstreamModel ?? null
     });
   }
@@ -1162,12 +1329,36 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
     throwIfAborted(input.signal);
 
     // 4. Bind the route: the gateway echoes what the ticket was bound to.
-    if (typeof attestation.provider === "string" && attestation.provider !== input.provider) {
+    //    Every check here runs BEFORE the paid inference ticket in step 7, so a
+    //    substituted route costs nothing.
+    const echo = readRouteEcho(attestation);
+    if (echo.provider && echo.provider !== input.provider) {
       throw new ConfidentialError("attestation_untrusted", "The attestation was bound to a different provider.");
     }
-    const upstreamModel = typeof attestation.upstream_model === "string" && attestation.upstream_model.length > 0
-      ? attestation.upstream_model
-      : input.model;
+    if (echo.model && echo.model !== input.model) {
+      throw new ConfidentialError("attestation_untrusted", "The attestation was bound to a different model than the one requested.");
+    }
+    // A `tee` route has no client-opaque channel: encrypting to it would send a
+    // body the enclave cannot read, on a route whose plaintext AnonRouter's build
+    // handles anyway. Refuse rather than pay for a request that cannot work and
+    // would not mean what the caller thinks it means.
+    if (echo.privacyClass === "tee") {
+      throw new ConfidentialError(
+        "provider_unsupported",
+        `${input.provider}/${input.model} is served as a TEE route, which has no client-opaque encryption. Verify it with verifyRoute() and call it as an ordinary route, or choose an e2ee route.`
+      );
+    }
+    // THE PROTOCOL BINDING. The provider NAME does not settle which scheme to
+    // encrypt under: a provider that gained a second E2EE protocol would keep
+    // echoing the same name while this client encrypted to the wrong one. Absent
+    // stays tolerated (older relays omit it); present-and-wrong does not.
+    if (echo.protocol && echo.protocol !== transport.protocol) {
+      throw new ConfidentialError(
+        "attestation_untrusted",
+        `The gateway offered the ${echo.protocol} protocol where this client speaks ${transport.protocol}. Nothing was encrypted or sent.`
+      );
+    }
+    const upstreamModel = echo.upstreamModel ?? input.model;
 
     // 5. Gate on the gateway's normalized verdict (bound to our fresh nonce)...
     const gatewayVerdict = coerceGatewayVerdict(attestation.attestation);

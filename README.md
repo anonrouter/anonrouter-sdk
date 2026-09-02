@@ -161,6 +161,32 @@ caps at `provider-attested`, because several provider routes run GPU enclaves
 whose NVIDIA attestation chain is not available to verify. Chaining only the CPU
 quote and printing `hardware_verified` would claim more than was checked.
 
+### Checking every confidential route at once
+
+Two runnable harnesses live in `js/confidential/examples`. Both read the live
+catalog rather than a written-down provider list, and both write content-free
+evidence: statuses, verdict fields, check names, timings — never a prompt, a
+key, or an evidence body.
+
+```bash
+cd js/confidential
+
+# Every callable tee/e2ee route in the live catalog, both hops, with the
+# reproducible DCAP engine on PATH so hop 1 can reach hardware_verified.
+npm run example:route-matrix -- --env-file ~/path/to/.env --out matrix.json
+
+# ...and one minimal real provider-pinned request per route, so the matrix says
+# the route RUNS rather than only that it verifies. This spends money.
+npm run example:route-matrix -- --env-file ~/path/to/.env --paid
+
+# The refusals: what the mint, the redemption, and this SDK must each reject.
+npm run example:negative-controls -- --env-file ~/path/to/.env --out controls.json
+```
+
+`--env-file` reads one variable out of a `.env` you already have, so a key that
+already lives somewhere is not copied to a second file to satisfy a tool.
+`--key-file` remains for a file whose whole contents are the key.
+
 ### The trust boundary that actually earns the claim
 
 Verification is only as strong as where the verifier runs.

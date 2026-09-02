@@ -254,3 +254,74 @@ describe("createClient origins", () => {
     }
   });
 });
+
+describe("createClient embeddings", () => {
+  it("mints an embeddings ticket on control and sends the input only to the relay", async () => {
+    // The embedding INPUT is content. The rule this asserts is the same one chat
+    // holds: the credential goes to one origin, the content to another, and
+    // neither request carries both.
+    const CANARY = "embedding-input-canary-do-not-leak";
+    const calls: RecordedCall[] = [];
+    const fetchStub = vi.fn(async (input: string, init?: RequestInit): Promise<Response> => {
+      calls.push({ url: input, init });
+      if (input.endsWith("/v1/inference/tickets")) {
+        return jsonResponse({ ticket: "tkt_emb_1", operation: "embeddings" });
+      }
+      if (input.endsWith("/v1/embeddings")) {
+        return jsonResponse({
+          object: "list",
+          model: "nomic-ai/nomic-embed-text",
+          data: [{ object: "embedding", index: 0, embedding: [0.1, 0.2] }],
+          usage: { prompt_tokens: 6, total_tokens: 6 }
+        });
+      }
+      throw new Error(`unexpected url ${input}`);
+    });
+    vi.stubGlobal("fetch", fetchStub);
+
+    const client = createClient({
+      baseUrl: "https://api.anonrouter.ai",
+      controlBaseUrl: "https://control.anonrouter.ai",
+      apiKey: "ar_key_canary"
+    });
+    const result = await client.embeddings({
+      model: "nomic-ai/nomic-embed-text",
+      provider: "tinfoil",
+      input: CANARY
+    });
+    expect(result.data).toHaveLength(1);
+
+    const ticketCall = calls.find((c) => c.url.endsWith("/v1/inference/tickets"))!;
+    const contentCall = calls.find((c) => c.url.endsWith("/v1/embeddings"))!;
+
+    // The ticket names the operation and the pinned provider, and carries no input.
+    expect(ticketCall.url.startsWith("https://control.anonrouter.ai")).toBe(true);
+    expect(headerValue(ticketCall.init, "authorization")).toBe("Bearer ar_key_canary");
+    const ticketBody = JSON.parse(String(ticketCall.init?.body));
+    expect(ticketBody).toEqual({
+      model: "nomic-ai/nomic-embed-text",
+      provider: "tinfoil",
+      operation: "embeddings"
+    });
+    expect(String(ticketCall.init?.body)).not.toContain(CANARY);
+
+    // The content request carries the ticket, the input, and no credential.
+    expect(contentCall.url.startsWith("https://api.anonrouter.ai")).toBe(true);
+    expect(headerValue(contentCall.init, "authorization")).toBeNull();
+    expect(headerValue(contentCall.init, "x-anonrouter-ticket")).toBe("tkt_emb_1");
+    expect(String(contentCall.init?.body)).toContain(CANARY);
+  });
+
+  it("surfaces a refusal with its status rather than a bare throw", async () => {
+    const fetchStub = vi.fn(async (input: string): Promise<Response> => {
+      if (input.endsWith("/v1/inference/tickets")) {
+        return jsonResponse({ error: { type: "model_not_embedding", message: "not an embedding model" } }, 400);
+      }
+      throw new Error(`unexpected url ${input}`);
+    });
+    vi.stubGlobal("fetch", fetchStub);
+    const client = createClient({ apiKey: "ar_key" });
+    await expect(client.embeddings({ model: "openai/gpt-oss-120b", input: "x" }))
+      .rejects.toBeInstanceOf(AnonrouterApiError);
+  });
+});
