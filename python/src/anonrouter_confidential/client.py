@@ -38,6 +38,7 @@ from .crypto import chutes as chutes_crypto
 from .crypto import near as near_crypto
 from .crypto import venice as venice_crypto
 from .errors import ConfidentialError
+from .route_policy import is_route_withheld_by_service, withheld_route_message
 from .gateway.binding import GATEWAY_NONCE_HEX_LENGTH
 from .gateway.policy import GatewayMeasurementPolicy, pinned_gateway_policy_for
 from .gateway.verify import TdxChainVerifier, verify_gateway_attestation
@@ -763,6 +764,20 @@ class ConfidentialClient(MediaOwner):
         to the relay. Gates on our own attestation verdict BEFORE minting the paid
         inference ticket.
         """
+        # A ROUTE THE SERVICE WITHHOLDS FAILS HERE, before the first
+        # authenticated call and long before anything is encrypted or sent. The
+        # mint would refuse it anyway; refusing here turns "your ticket request
+        # failed" into a sentence that names the route and says why.
+        # SCOPED TO THE PRODUCTION ORIGINS, because that is what the policy
+        # describes. A self-hosted deployment, a staging origin or a test double
+        # has its own catalog, and refusing a route there on the strength of
+        # AnonRouter's production decisions would be this SDK inventing policy
+        # for somebody else's service.
+        if self.origin in {
+            DEFAULT_INFERENCE_ORIGIN,
+            "https://api.private.anonrouter.ai",
+        } and is_route_withheld_by_service(provider, model, "e2ee"):
+            raise ConfidentialError(withheld_route_message(provider, model, "e2ee"))
         if provider not in _E2EE_PROVIDERS:
             raise ConfidentialError(f"provider {provider!r} has no client-opaque E2EE route")
         if not isinstance(max_output_tokens, int) or max_output_tokens <= 0:

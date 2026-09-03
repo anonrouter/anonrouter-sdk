@@ -6,6 +6,7 @@
 //
 //   measurements.json      pins for the UPSTREAM provider enclaves (hop 2)
 //   gateway-policies.json  pins for AnonRouter's own confidential plane (hop 1)
+//   confidential-route-policy.json  which confidential routes AnonRouter offers
 
 export const SYNCED_FILES = {
   "shared/measurements.json": [
@@ -15,5 +16,9 @@ export const SYNCED_FILES = {
   "shared/gateway-policies.json": [
     "js/confidential/src/gateway/gateway-policies.json",
     "python/src/anonrouter_confidential/gateway_policies.json"
+  ],
+  "shared/confidential-route-policy.json": [
+    "js/confidential/src/confidential-route-policy.json",
+    "python/src/anonrouter_confidential/confidential_route_policy.json"
   ]
 };

@@ -62,6 +62,7 @@ import {
   type AudioApi,
   type ImagesApi
 } from "./media.js";
+import { isRouteWithheldByService, withheldRouteMessage } from "./routePolicy.js";
 import { transportFor } from "./transport/index.js";
 import { validateE2eeMessages, validateE2eeRequest, type RawTurnMessage } from "./transport/validation.js";
 import { joinUrl, type FetchLike, type HttpContext } from "./transport/types.js";
@@ -1264,6 +1265,22 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
 
   async function chat(input: ChatInput): Promise<ChatResult> {
     const transport = transportFor(input.provider);
+    // A ROUTE THE SERVICE WITHHOLDS FAILS HERE, before the first authenticated
+    // call and long before anything is encrypted or sent. The mint would refuse
+    // it anyway; refusing here turns "your ticket request failed" into a
+    // sentence that names the route and says why.
+    // SCOPED TO THE PRODUCTION ORIGINS, because that is what the policy
+    // describes. A self-hosted deployment, a staging origin or a test double
+    // has its own catalog, and refusing a route there on the strength of
+    // AnonRouter's production decisions would be this SDK inventing policy for
+    // somebody else's service.
+    if (PRODUCTION_INFERENCE_ORIGINS.has(origin)
+      && isRouteWithheldByService(input.provider, input.model, "e2ee")) {
+      throw new ConfidentialError(
+        "provider_unsupported",
+        withheldRouteMessage(input.provider, input.model, "e2ee")
+      );
+    }
     // Fail fast on an unsupported request BEFORE spending an attestation ticket.
     validateE2eeMessages(input.messages);
     if (!Number.isInteger(input.maxOutputTokens) || input.maxOutputTokens <= 0) {

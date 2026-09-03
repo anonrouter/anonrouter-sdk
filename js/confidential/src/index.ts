@@ -209,6 +209,20 @@ export {
   type TinfoilAcceptedRelease
 } from "./measurements.js";
 
+// ---- Which routes the service currently offers -------------------------------
+// A CONVENIENCE, not a security control: it refuses a withheld route early so a
+// caller gets a clear answer instead of a confusing mint failure. Nothing here
+// ever decides that something verified.
+export {
+  isRouteWithheldByService,
+  withheldRouteClassification,
+  withheldRouteMessage,
+  OFFERED_CONFIDENTIAL_ROUTES,
+  WITHHELD_CONFIDENTIAL_ROUTES,
+  CONFIDENTIAL_ROUTE_POLICY_VERSION,
+  type OfferedRouteKey
+} from "./routePolicy.js";
+
 // ---- Tinfoil (optional dependency) ------------------------------------------
 export { verifyTinfoilEnclave, type TinfoilVerifyOptions } from "./tinfoil.js";
 

@@ -25,6 +25,14 @@ from .gateway import (
     pinned_gateway_policy_for,
     verify_gateway_attestation,
 )
+from .route_policy import (
+    confidential_route_policy_version,
+    is_route_withheld_by_service,
+    offered_confidential_routes,
+    withheld_confidential_routes,
+    withheld_route_classification,
+    withheld_route_message,
+)
 from .measurements import (
     load_measurements,
     pinned_endpoint_identity_for,
@@ -167,6 +175,12 @@ __all__ = [
     "TDX_TEE_TYPE",
     # pins
     "load_measurements",
+    "confidential_route_policy_version",
+    "is_route_withheld_by_service",
+    "offered_confidential_routes",
+    "withheld_confidential_routes",
+    "withheld_route_classification",
+    "withheld_route_message",
     "pinned_measurement_policy_for",
     "pinned_endpoint_identity_for",
     "tdx_tee_type",

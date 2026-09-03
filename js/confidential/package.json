@@ -33,7 +33,7 @@
   "engines": { "node": ">=22" },
   "publishConfig": { "access": "public" },
   "scripts": {
-    "build": "tsc -p tsconfig.json && node -e \"const f=require('fs');f.copyFileSync('src/measurements.json','dist/measurements.json');f.mkdirSync('dist/gateway',{recursive:true});f.copyFileSync('src/gateway/gateway-policies.json','dist/gateway/gateway-policies.json')\"",
+    "build": "tsc -p tsconfig.json && node -e \"const f=require('fs');f.copyFileSync('src/measurements.json','dist/measurements.json');f.copyFileSync('src/confidential-route-policy.json','dist/confidential-route-policy.json');f.mkdirSync('dist/gateway',{recursive:true});f.copyFileSync('src/gateway/gateway-policies.json','dist/gateway/gateway-policies.json')\"",
     "test": "vitest run",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.examples.json",
     "prepublishOnly": "npm run build",

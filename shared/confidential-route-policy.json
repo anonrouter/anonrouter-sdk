@@ -1,0 +1,86 @@
+{
+  "$comment": [
+    "Which AnonRouter confidential routes are OFFERED, copied from the service",
+    "that decides it. Generated from config/confidential-route-policy.json in the",
+    "AnonRouter repository; do not edit by hand.",
+    "",
+    "This is a CONVENIENCE, not a security control. The SDK refuses a withheld",
+    "route early so a caller gets a clear answer before spending a ticket, but it",
+    "never RELIES on this list: every route still fetches fresh evidence and every",
+    "verdict is still computed from that evidence. A route missing from this file",
+    "is not thereby trusted, and a route listed in it is not thereby verified."
+  ],
+  "version": "2026-09-03-venice-e2ee-per-route",
+  "verified": [
+    {
+      "provider": "venice",
+      "model": "google/gemma-4-26b-a4b-uncensored",
+      "privacyClass": "e2ee"
+    },
+    {
+      "provider": "venice",
+      "model": "openai/gpt-oss-20b",
+      "privacyClass": "e2ee"
+    },
+    {
+      "provider": "venice",
+      "model": "qwen/qwen-2.5-7b",
+      "privacyClass": "e2ee"
+    },
+    {
+      "provider": "venice",
+      "model": "z-ai/glm-5.2",
+      "privacyClass": "e2ee"
+    }
+  ],
+  "withheld": [
+    {
+      "provider": "venice",
+      "model": "deepseek/deepseek-v4-flash",
+      "privacyClass": "e2ee",
+      "classification": "provider_evidence_insufficient"
+    },
+    {
+      "provider": "venice",
+      "model": "qwen/qwen-3.6-35b-a3b-fp8",
+      "privacyClass": "e2ee",
+      "classification": "provider_evidence_insufficient"
+    },
+    {
+      "provider": "venice",
+      "model": "z-ai/glm-5.1",
+      "privacyClass": "e2ee",
+      "classification": "provider_evidence_insufficient"
+    },
+    {
+      "provider": "venice",
+      "model": "google/gemma-3-27b",
+      "privacyClass": "e2ee",
+      "classification": "provider_availability"
+    },
+    {
+      "provider": "venice",
+      "model": "openai/gpt-oss-120b",
+      "privacyClass": "e2ee",
+      "classification": "provider_availability"
+    }
+  ],
+  "governedProviders": {
+    "venice": {
+      "privacyClass": "e2ee",
+      "rule": "allowlist",
+      "$comment": [
+        "An ALLOWLIST, not a denylist, and the direction is the point. A Venice",
+        "e2ee route that appears in the catalog tomorrow is withheld until",
+        "somebody measures it, rather than offered until somebody notices it is",
+        "broken. Adding a tenth route therefore fails a test instead of shipping",
+        "itself."
+      ]
+    }
+  },
+  "reEnableGate": {
+    "successfulSamples": 6,
+    "interleaved": true,
+    "minimumSpanMinutes": 30
+  }
+}
