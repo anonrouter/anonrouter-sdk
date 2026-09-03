@@ -103,7 +103,18 @@ def verify_venice(evidence: Any, expectations: AttestationExpectations) -> Norma
         None if address_report_prefix else "attested signing address was malformed",
     ))
 
+    # ABSENT IS NOT THE SAME AS WRONG, and the difference decides what anyone
+    # does next. "Did not match" says the provider asserted two contradictory
+    # things -- an inconsistency to report to them. "Carried nothing" says the
+    # provider asserted nothing at all -- a route to withhold until it does.
+    # Three live Venice routes take the second path today and were being
+    # reported as the first, which sends a reader hunting for a mismatch that
+    # does not exist.
+    #
+    # The VERDICT is identical either way: a binding nobody stated is a binding
+    # that did not hold. Only the reason changes.
     attestation = as_dict(payload.get("attestation"))
+    nested_document_present = len(attestation) > 0
     reported_report_data = _str_or_none(attestation.get("report_data"))
     evidence_block = as_dict(attestation.get("evidence"))
     evidence_report_data = _str_or_none(evidence_block.get("quote_report_data"))
@@ -116,7 +127,13 @@ def verify_venice(evidence: Any, expectations: AttestationExpectations) -> Norma
         "reported_quote_binding",
         reported_quote_bound,
         True,
-        None if reported_quote_bound else "nested attestation report_data did not match the quote",
+        None
+        if reported_quote_bound
+        else "the evidence carried no nested attestation document, so nothing restates the quote's report_data"
+        if not nested_document_present
+        else "the nested attestation document omits report_data"
+        if reported_report_data is None or evidence_report_data is None
+        else "nested attestation report_data did not match the quote",
     ))
 
     keyset = as_dict(attestation.get("workload_keyset"))
@@ -133,7 +150,11 @@ def verify_venice(evidence: Any, expectations: AttestationExpectations) -> Norma
         "workload_keyset_binding",
         key_in_workload,
         True,
-        None if key_in_workload else "signing key was not in the attested workload keyset",
+        None
+        if key_in_workload
+        else "the evidence attests no workload keyset, so nothing binds the signing key to the workload that ran"
+        if not isinstance(keyset_keys, list)
+        else "the attested workload keyset does not contain the signing key",
     ))
 
     gpu = payload.get("nvidia_payload")

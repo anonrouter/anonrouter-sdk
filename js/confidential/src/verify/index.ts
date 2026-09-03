@@ -35,7 +35,8 @@ export interface VerifyExpectations {
   /** Endpoint identity the evidence must be bound to (defaults to the pinned direct
    *  host for NEAR, else the provider name). */
   endpointIdentity?: string;
-  /** Privacy modality (defaults to `tee` for tinfoil, `e2ee` for the others). */
+  /** Privacy modality. Defaults to `tee`: the weaker claim, and the contract
+   *  that skips no check. State it explicitly whenever you know the route. */
   privacyModality?: PrivacyModality;
   /** Injectable clock (ms) for deterministic freshness/expiry. */
   now?: number;
@@ -55,8 +56,33 @@ export function verifierFor(provider: string): TeeVerifier | null {
   return (VERIFIERS as Record<string, TeeVerifier>)[provider] ?? null;
 }
 
-function defaultPrivacyModality(provider: string): PrivacyModality {
-  return provider === "tinfoil" ? "tee" : "e2ee";
+/**
+ * The modality to verify under when the caller states none.
+ *
+ * THIS USED TO BE `provider === "tinfoil" ? "tee" : "e2ee"`, and the direction
+ * was the problem rather than the map. For every provider but one it defaulted
+ * to `e2ee` — the STRONGER claim — so a caller who simply did not mention a
+ * modality got a verdict asserting the content was opaque to AnonRouter, from
+ * nothing but the provider's name. `verifyRawEvidence` is a public export, so
+ * that reached anyone using the pure verifier directly.
+ *
+ * `tee` is conservative in both directions, which is what makes it safe as a
+ * default where `e2ee` was not:
+ *
+ *   - as a REPORT it is the weaker claim, so an unstated modality can never
+ *     read as stronger than one that was actually established; and
+ *   - as a VERIFICATION CONTRACT it never skips a check. No verifier makes a
+ *     required check conditional on `e2ee`; Tinfoil makes one conditional on
+ *     `tee` (`serving_modality_supported`), so defaulting the other way also
+ *     failed closed on a perfectly good TEE route.
+ *
+ * The Python package has no equivalent default at all: `AttestationExpectations`
+ * requires `privacy_modality`. That asymmetry is deliberate and Python is the
+ * stricter of the two; this is the closest a language with optional fields gets
+ * to the same property.
+ */
+function defaultPrivacyModality(_provider: string): PrivacyModality {
+  return "tee";
 }
 
 /** Build full internal expectations from the public shape, resolving pins. */

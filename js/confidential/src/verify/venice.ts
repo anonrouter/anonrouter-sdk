@@ -86,6 +86,19 @@ export class VeniceTeeVerifier implements TeeVerifier {
       && hexEqual(parsed.reportData.slice(0, 64), addressReportPrefix)), true,
     addressReportPrefix ? undefined : "attested signing address was malformed"));
 
+    // ABSENT IS NOT THE SAME AS WRONG, and the difference decides what anyone
+    // does next. "Did not match" says the provider asserted two things that
+    // contradict each other — an inconsistency to report to them. "Carried
+    // nothing" says the provider asserted nothing at all — a route to withhold
+    // until it does. Three live Venice routes take the second path today and
+    // were being reported as the first, which sends a reader looking for a
+    // mismatch that does not exist.
+    //
+    // The VERDICT is identical either way: a binding nobody stated is a binding
+    // that did not hold. Only the reason changes.
+    const nested = payload?.attestation;
+    const nestedDocumentPresent = Boolean(nested) && typeof nested === "object"
+      && Object.keys(nested as Record<string, unknown>).length > 0;
     const reportedReportData = typeof payload?.attestation?.report_data === "string" ? payload.attestation.report_data : null;
     const evidenceReportData = typeof payload?.attestation?.evidence?.quote_report_data === "string"
       ? payload.attestation.evidence.quote_report_data : null;
@@ -93,7 +106,13 @@ export class VeniceTeeVerifier implements TeeVerifier {
       && hexEqual(reportedReportData, parsed.reportData)
       && hexEqual(evidenceReportData, parsed.reportData));
     checks.push(check("reported_quote_binding", reportedQuoteBound, true,
-      reportedQuoteBound ? undefined : "nested attestation report_data did not match the quote"));
+      reportedQuoteBound
+        ? undefined
+        : !nestedDocumentPresent
+          ? "the evidence carried no nested attestation document, so nothing restates the quote's report_data"
+          : reportedReportData === null || evidenceReportData === null
+            ? "the nested attestation document omits report_data"
+            : "nested attestation report_data did not match the quote"));
 
     const keysetKeys = payload?.attestation?.workload_keyset?.e2ee_public_keys;
     const keyInWorkload = Array.isArray(keysetKeys) && keysetKeys.some((entry) =>
@@ -103,7 +122,11 @@ export class VeniceTeeVerifier implements TeeVerifier {
       && hexEqual(entry.public_key, signingPublicKey)
     );
     checks.push(check("workload_keyset_binding", keyInWorkload, true,
-      keyInWorkload ? undefined : "signing key was not in the attested workload keyset"));
+      keyInWorkload
+        ? undefined
+        : !Array.isArray(keysetKeys)
+          ? "the evidence attests no workload keyset, so nothing binds the signing key to the workload that ran"
+          : "the attested workload keyset does not contain the signing key"));
 
     const gpuPresent = typeof payload?.nvidia_payload === "string" && payload.nvidia_payload.length > 0;
     checks.push(check("gpu_evidence_present", gpuPresent, true, gpuPresent ? undefined : "no NVIDIA GPU evidence"));

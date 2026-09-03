@@ -461,13 +461,11 @@ async function main() {
     : hopUnavailable(gatewayError ?? "gateway hop not established");
 
   const results: RouteResult[] = [];
-  for (const route of routes) {
-    const started = Date.now();
-    // Sample until a route establishes both hops, or until the budget is spent.
-    // A route is only called failing when EVERY sample agreed, so a single
-    // upstream 503 cannot demote a working route.
-    let detail = "";
-    const attest = async () => {
+
+  /**
+   * Attest one route once. Returns a verdict; never throws for a route reason.
+   */
+  const attestOnce = async (route: Route, onDetail: (text: string) => void) => {
       await paceMint();
       try {
         const result = await confidential.verifyAttestation({
@@ -499,7 +497,7 @@ async function main() {
         const code = error instanceof ConfidentialError ? error.code : "provider_verification_failed";
         // Kept out of the evidence file: it is upstream text. Used only to tell
         // one refusal apart from another, against our own error vocabulary.
-        detail = error instanceof Error ? error.message : "";
+        onDetail(error instanceof Error ? error.message : "");
         return assembleRouteVerdict({
           route: {
             provider: route.provider,
@@ -518,13 +516,42 @@ async function main() {
           }
         });
       }
-    };
-    let verdict = await attest();
-    let samples = 1;
-    while (!verdict.trusted && samples < SAMPLES) {
-      samples += 1;
-      verdict = await attest();
+  };
+
+  /**
+   * SAMPLE IN ROUNDS, not route by route.
+   *
+   * The obvious loop — retry one route until it passes, then move on — spends
+   * every one of a route's samples inside a few seconds. A provider outage
+   * window is far longer than that, so all three land inside it, the route is
+   * recorded as broken, and the outage is written down as a property of the
+   * route. That is exactly what happened on the first run of this matrix:
+   * `z-ai/glm-5.2` was recorded as failing while a spaced re-measurement had it
+   * verifying in every healthy window.
+   *
+   * Round-robin instead. Each round attests every route that has not yet
+   * passed, so a route's samples are separated by a full pass over the others,
+   * and the mint pacer spreads those further. An outage then shows up as a
+   * BAD ROUND across many routes, which is what it is, instead of as several
+   * independently broken routes.
+   */
+  const state = new Map<Route, { verdict: RouteVerdict | null; samples: number; detail: string; startedAt: number }>();
+  for (const route of routes) state.set(route, { verdict: null, samples: 0, detail: "", startedAt: Date.now() });
+
+  for (let round = 0; round < SAMPLES; round += 1) {
+    const outstanding = routes.filter((route) => !state.get(route)!.verdict?.trusted);
+    if (outstanding.length === 0) break;
+    if (round > 0) console.log(`  round ${round + 1}: re-sampling ${outstanding.length} route(s) that have not established both hops`);
+    for (const route of outstanding) {
+      const entry = state.get(route)!;
+      entry.verdict = await attestOnce(route, (text) => { entry.detail = text; });
+      entry.samples += 1;
     }
+  }
+
+  for (const route of routes) {
+    const { verdict: maybeVerdict, samples, detail, startedAt: started } = state.get(route)!;
+    const verdict = maybeVerdict!;
     const result: RouteResult = {
       provider: route.provider,
       model: route.model,
