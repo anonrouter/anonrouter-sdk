@@ -10,7 +10,7 @@
     "verdict is still computed from that evidence. A route missing from this file",
     "is not thereby trusted, and a route listed in it is not thereby verified."
   ],
-  "version": "2026-09-03-venice-e2ee-per-route",
+  "version": "2026-09-04-confidential-e2ee-per-route",
   "verified": [
     {
       "provider": "venice",
@@ -30,6 +30,16 @@
     {
       "provider": "venice",
       "model": "z-ai/glm-5.2",
+      "privacyClass": "e2ee"
+    },
+    {
+      "provider": "chutes",
+      "model": "deepseek/deepseek-v3.2",
+      "privacyClass": "e2ee"
+    },
+    {
+      "provider": "chutes",
+      "model": "qwen/qwen3-32b",
       "privacyClass": "e2ee"
     }
   ],
@@ -63,6 +73,18 @@
       "model": "openai/gpt-oss-120b",
       "privacyClass": "e2ee",
       "classification": "provider_availability"
+    },
+    {
+      "provider": "chutes",
+      "model": "z-ai/glm-5.2",
+      "privacyClass": "e2ee",
+      "classification": "deployment_admission_limit"
+    },
+    {
+      "provider": "chutes",
+      "model": "moonshotai/kimi-k2.6",
+      "privacyClass": "e2ee",
+      "classification": "deployment_admission_limit"
     }
   ],
   "governedProviders": {
@@ -75,6 +97,14 @@
         "somebody measures it, rather than offered until somebody notices it is",
         "broken. Adding a tenth route therefore fails a test instead of shipping",
         "itself."
+      ]
+    },
+    "chutes": {
+      "privacyClass": "e2ee",
+      "rule": "allowlist",
+      "$comment": [
+        "Only routes that both verify and fit the deployment's opaque-input",
+        "admission ceiling are offered."
       ]
     }
   },

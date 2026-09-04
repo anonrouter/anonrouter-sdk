@@ -1,4 +1,4 @@
-// The five routes AnonRouter withheld, refused here before anything is sent.
+// The seven routes AnonRouter withheld, refused here before anything is sent.
 //
 // WHAT THIS IS AND IS NOT. The shipped route policy is a CONVENIENCE: it turns
 // "your ticket request failed" into a sentence naming the route and the reason,
@@ -26,44 +26,47 @@ const CONTROL = "https://control.anonrouter.ai";
 
 /** The owner's decision, written out independently of the file under test. */
 const WITHHELD = [
-  "deepseek/deepseek-v4-flash",
-  "qwen/qwen-3.6-35b-a3b-fp8",
-  "z-ai/glm-5.1",
-  "google/gemma-3-27b",
-  "openai/gpt-oss-120b"
+  ["venice", "deepseek/deepseek-v4-flash"],
+  ["venice", "qwen/qwen-3.6-35b-a3b-fp8"],
+  ["venice", "z-ai/glm-5.1"],
+  ["venice", "google/gemma-3-27b"],
+  ["venice", "openai/gpt-oss-120b"],
+  ["chutes", "z-ai/glm-5.2"],
+  ["chutes", "moonshotai/kimi-k2.6"]
 ] as const;
 
 const ALLOWED = [
-  "google/gemma-4-26b-a4b-uncensored",
-  "openai/gpt-oss-20b",
-  "qwen/qwen-2.5-7b",
-  "z-ai/glm-5.2"
+  ["venice", "google/gemma-4-26b-a4b-uncensored"],
+  ["venice", "openai/gpt-oss-20b"],
+  ["venice", "qwen/qwen-2.5-7b"],
+  ["venice", "z-ai/glm-5.2"],
+  ["chutes", "deepseek/deepseek-v3.2"],
+  ["chutes", "qwen/qwen3-32b"]
 ] as const;
 
 describe("the shipped policy matches the decision", () => {
-  it("withholds exactly the five Venice e2ee routes", () => {
-    expect(WITHHELD_CONFIDENTIAL_ROUTES.map((r) => r.model).sort()).toEqual([...WITHHELD].sort());
-    for (const r of WITHHELD_CONFIDENTIAL_ROUTES) {
-      expect(r.provider).toBe("venice");
-      expect(r.privacyClass).toBe("e2ee");
-    }
+  it("withholds exactly the seven reviewed e2ee routes", () => {
+    expect(WITHHELD_CONFIDENTIAL_ROUTES.map((r) => `${r.provider}:${r.model}`).sort())
+      .toEqual(WITHHELD.map(([provider, model]) => `${provider}:${model}`).sort());
+    for (const r of WITHHELD_CONFIDENTIAL_ROUTES) expect(r.privacyClass).toBe("e2ee");
   });
 
-  it("offers exactly the four measured-working ones", () => {
-    expect(OFFERED_CONFIDENTIAL_ROUTES.map((r) => r.model).sort()).toEqual([...ALLOWED].sort());
+  it("offers exactly the six measured-working and admissible ones", () => {
+    expect(OFFERED_CONFIDENTIAL_ROUTES.map((r) => `${r.provider}:${r.model}`).sort())
+      .toEqual(ALLOWED.map(([provider, model]) => `${provider}:${model}`).sort());
   });
 });
 
 describe("the predicate is per route", () => {
-  it("withholds each of the five", () => {
-    for (const model of WITHHELD) {
-      expect(isRouteWithheldByService("venice", model, "e2ee"), model).toBe(true);
+  it("withholds each of the seven", () => {
+    for (const [provider, model] of WITHHELD) {
+      expect(isRouteWithheldByService(provider, model, "e2ee"), `${provider}:${model}`).toBe(true);
     }
   });
 
-  it("allows each of the four", () => {
-    for (const model of ALLOWED) {
-      expect(isRouteWithheldByService("venice", model, "e2ee"), model).toBe(false);
+  it("allows each of the six", () => {
+    for (const [provider, model] of ALLOWED) {
+      expect(isRouteWithheldByService(provider, model, "e2ee"), `${provider}:${model}`).toBe(false);
     }
   });
 
@@ -76,16 +79,17 @@ describe("the predicate is per route", () => {
     expect(isRouteWithheldByService("deepinfra", "z-ai/glm-5.1", "private")).toBe(false);
   });
 
-  it("withholds an unknown Venice e2ee route, and no other provider's", () => {
+  it("withholds unknown governed e2ee routes, and no ungoverned provider's", () => {
     expect(isRouteWithheldByService("venice", "someone/new", "e2ee")).toBe(true);
-    for (const provider of ["chutes", "near-ai", "tinfoil"]) {
+    expect(isRouteWithheldByService("chutes", "someone/new", "e2ee")).toBe(true);
+    for (const provider of ["near-ai", "tinfoil"]) {
       expect(isRouteWithheldByService(provider, "someone/new", "e2ee"), provider).toBe(false);
     }
   });
 
   it("names a classification for each withheld route", () => {
-    for (const model of WITHHELD) {
-      expect(withheldRouteClassification("venice", model, "e2ee"), model).toBeTruthy();
+    for (const [provider, model] of WITHHELD) {
+      expect(withheldRouteClassification(provider, model, "e2ee"), `${provider}:${model}`).toBeTruthy();
     }
   });
 
@@ -118,11 +122,11 @@ function watchedClient(baseUrl: string) {
 describe("chat() against production", () => {
   const CANARY = "withheld-route-canary-do-not-send";
 
-  it.each(WITHHELD)("refuses %s before any network call", async (model) => {
+  it.each(WITHHELD)("refuses %s:%s before any network call", async (provider, model) => {
     const { client, calls } = watchedClient(PRODUCTION);
     await expect(client.chat({
       model,
-      provider: "venice",
+      provider,
       messages: [{ role: "user", content: CANARY }],
       maxOutputTokens: 16
     })).rejects.toMatchObject({ code: "provider_unsupported" });
@@ -132,14 +136,14 @@ describe("chat() against production", () => {
     expect(calls).toEqual([]);
   });
 
-  it.each(ALLOWED)("does not refuse %s on policy grounds", async (model) => {
+  it.each(ALLOWED)("does not refuse %s:%s on policy grounds", async (provider, model) => {
     // THE POSITIVE CONTROL. The stub answers every path with a ticket shape, so
     // this call fails LATER, on evidence — never with the policy refusal. A gate
     // that refused everything would pass the block above and fail here.
     const { client } = watchedClient(PRODUCTION);
     const error = await client.chat({
       model,
-      provider: "venice",
+      provider,
       messages: [{ role: "user", content: CANARY }],
       maxOutputTokens: 16
     }).catch((e: unknown) => e);

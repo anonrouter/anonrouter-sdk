@@ -1,4 +1,4 @@
-"""The five routes AnonRouter withheld, refused here before anything is sent.
+"""The seven routes AnonRouter withheld, refused here before anything is sent.
 
 Mirrors ``js/confidential/test/route-policy.test.ts`` case for case.
 
@@ -32,40 +32,43 @@ CONTROL = "https://control.anonrouter.ai"
 
 #: The owner's decision, written out independently of the file under test.
 WITHHELD = [
-    "deepseek/deepseek-v4-flash",
-    "qwen/qwen-3.6-35b-a3b-fp8",
-    "z-ai/glm-5.1",
-    "google/gemma-3-27b",
-    "openai/gpt-oss-120b",
+    ("venice", "deepseek/deepseek-v4-flash"),
+    ("venice", "qwen/qwen-3.6-35b-a3b-fp8"),
+    ("venice", "z-ai/glm-5.1"),
+    ("venice", "google/gemma-3-27b"),
+    ("venice", "openai/gpt-oss-120b"),
+    ("chutes", "z-ai/glm-5.2"),
+    ("chutes", "moonshotai/kimi-k2.6"),
 ]
 
 ALLOWED = [
-    "google/gemma-4-26b-a4b-uncensored",
-    "openai/gpt-oss-20b",
-    "qwen/qwen-2.5-7b",
-    "z-ai/glm-5.2",
+    ("venice", "google/gemma-4-26b-a4b-uncensored"),
+    ("venice", "openai/gpt-oss-20b"),
+    ("venice", "qwen/qwen-2.5-7b"),
+    ("venice", "z-ai/glm-5.2"),
+    ("chutes", "deepseek/deepseek-v3.2"),
+    ("chutes", "qwen/qwen3-32b"),
 ]
 
 
-def test_shipped_policy_withholds_exactly_the_five() -> None:
-    assert sorted(r["model"] for r in withheld_confidential_routes()) == sorted(WITHHELD)
+def test_shipped_policy_withholds_exactly_the_seven() -> None:
+    assert sorted((r["provider"], r["model"]) for r in withheld_confidential_routes()) == sorted(WITHHELD)
     for route in withheld_confidential_routes():
-        assert route["provider"] == "venice"
         assert route["privacyClass"] == "e2ee"
 
 
-def test_shipped_policy_offers_exactly_the_four() -> None:
-    assert sorted(r["model"] for r in offered_confidential_routes()) == sorted(ALLOWED)
+def test_shipped_policy_offers_exactly_the_six() -> None:
+    assert sorted((r["provider"], r["model"]) for r in offered_confidential_routes()) == sorted(ALLOWED)
 
 
-@pytest.mark.parametrize("model", WITHHELD)
-def test_each_withheld_route_is_withheld(model: str) -> None:
-    assert is_route_withheld_by_service("venice", model, "e2ee") is True
+@pytest.mark.parametrize(("provider", "model"), WITHHELD)
+def test_each_withheld_route_is_withheld(provider: str, model: str) -> None:
+    assert is_route_withheld_by_service(provider, model, "e2ee") is True
 
 
-@pytest.mark.parametrize("model", ALLOWED)
-def test_each_allowed_route_is_allowed(model: str) -> None:
-    assert is_route_withheld_by_service("venice", model, "e2ee") is False
+@pytest.mark.parametrize(("provider", "model"), ALLOWED)
+def test_each_allowed_route_is_allowed(provider: str, model: str) -> None:
+    assert is_route_withheld_by_service(provider, model, "e2ee") is False
 
 
 def test_other_routes_for_the_same_models_are_untouched() -> None:
@@ -77,9 +80,10 @@ def test_other_routes_for_the_same_models_are_untouched() -> None:
     assert is_route_withheld_by_service("deepinfra", "z-ai/glm-5.1", "private") is False
 
 
-def test_unknown_venice_e2ee_route_is_withheld_by_default() -> None:
+def test_unknown_governed_e2ee_route_is_withheld_by_default() -> None:
     assert is_route_withheld_by_service("venice", "someone/new", "e2ee") is True
-    for provider in ("chutes", "near-ai", "tinfoil"):
+    assert is_route_withheld_by_service("chutes", "someone/new", "e2ee") is True
+    for provider in ("near-ai", "tinfoil"):
         assert is_route_withheld_by_service(provider, "someone/new", "e2ee") is False
 
 
@@ -109,24 +113,24 @@ def _watched_client(base_url: str) -> tuple[ConfidentialClient, list[str]]:
     return client, seen
 
 
-@pytest.mark.parametrize("model", WITHHELD)
-def test_chat_refuses_a_withheld_route_before_any_network_call(model: str) -> None:
+@pytest.mark.parametrize(("provider", "model"), WITHHELD)
+def test_chat_refuses_a_withheld_route_before_any_network_call(provider: str, model: str) -> None:
     client, seen = _watched_client(PRODUCTION)
     with pytest.raises(ConfidentialError, match="not currently offering"):
-        client.chat(model, "venice", [{"role": "user", "content": "canary"}], 16)
+        client.chat(model, provider, [{"role": "user", "content": "canary"}], 16)
     # Refused BEFORE the first authenticated call: no ticket spent, no model
     # named to the service, and the content never left the process.
     assert seen == []
 
 
-@pytest.mark.parametrize("model", ALLOWED)
-def test_chat_does_not_refuse_an_allowed_route_on_policy_grounds(model: str) -> None:
+@pytest.mark.parametrize(("provider", "model"), ALLOWED)
+def test_chat_does_not_refuse_an_allowed_route_on_policy_grounds(provider: str, model: str) -> None:
     # THE POSITIVE CONTROL. The stub answers every path with a ticket shape, so
     # this call fails LATER, on evidence -- never with the policy refusal. A gate
     # that refused everything would pass the block above and fail here.
     client, _ = _watched_client(PRODUCTION)
     with pytest.raises(ConfidentialError) as excinfo:
-        client.chat(model, "venice", [{"role": "user", "content": "canary"}], 16)
+        client.chat(model, provider, [{"role": "user", "content": "canary"}], 16)
     assert "not currently offering" not in str(excinfo.value)
 
 
