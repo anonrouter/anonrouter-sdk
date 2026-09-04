@@ -258,7 +258,7 @@
       "endpointIdentity": "inference.tinfoil.sh",
       "measurementPolicy": {
         "source": "tinfoil-sdk+sigstore-transparency-log",
-        "version": "confidential-model-router/v0.0.140+v0.0.141/2026-08-14",
+        "version": "confidential-model-router/v0.0.140+v0.0.141+v0.0.144/2026-09-04",
         "kind": "tinfoil-release",
         "accepted": [
           {
@@ -272,6 +272,12 @@
             "releaseDigest": "7dcf6bade47993752689e9574ae6fba39ebed0fa98427329fc184558488ad8f6",
             "codeFingerprint": "6d657b353726893ee7202d33efc7c849a62693049c646f9394a8c6e2a165ed9936c024c4200878927767317ba3cbca7a",
             "enclaveFingerprint": "6d657b353726893ee7202d33efc7c849a62693049c646f9394a8c6e2a165ed9936c024c4200878927767317ba3cbca7a"
+          },
+          {
+            "releaseTag": "v0.0.144",
+            "releaseDigest": "32a9731d47629d4af429f5a3a540d411f764a936d54829f9dfef9f7dd4411145",
+            "codeFingerprint": "cc1cc66656c4c673c31df51c77c0c7527f6b8065aa82b485e61fcdec26a9003c7783176d2020bae8e5d00ae8ef7a469e",
+            "enclaveFingerprint": "cc1cc66656c4c673c31df51c77c0c7527f6b8065aa82b485e61fcdec26a9003c7783176d2020bae8e5d00ae8ef7a469e"
           }
         ]
       }
