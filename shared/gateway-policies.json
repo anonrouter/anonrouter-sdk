@@ -21,11 +21,11 @@
   "policies": [
     {
       "status": "published",
-      "reviewedAt": "2026-09-01",
-      "notes": "AnonRouter confidential content plane running in an Intel TDX CVM. Published from the independently retained production release manifest with SHA-256 ebb976a12b274afc34fb31459578e3ef107764d697ef074d1a82b27d79b1707c. That manifest binds reviewed source commit e792667508edc4e2c06b5f058cccd7b3e077b0a8, the exact measured app compose, digest-pinned content-plane image, app id, instance id, canonical production origin, TLS SPKI and platform measurements. api.private.anonrouter.ai is retained as an attested alias; api.anonrouter.ai is the customer default. The release id is not treated as sufficient identity: app id, compose hash and every platform measurement remain independently pinned. Three third-party source-to-digest provenance gaps named in the manifest remain supply-chain limitations, not attestation bypasses. requireHardwareVerified remains true, so verification fails closed unless a DCAP chain verifier is supplied.",
+      "reviewedAt": "2026-09-04",
+      "notes": "AnonRouter confidential content plane running in an Intel TDX CVM (Large class). Published from the independently retained production release manifest with SHA-256 83205494da15f59b4b9a86ce3be77d331ef06d212ab9ed1a9cacfea1cdcbb730, which corresponds to the operator-side policy generation 2026-09-04-tinfoil-verifier. That manifest binds reviewed source commit 696b8dde01ed3087611ba43c7572d50098360b98, the exact measured app compose c6f11cc59aeafc71eb02245fa90fcceac00afbc4706071e39c582c26b8427a0e, the digest-pinned content-plane image sha256:76981a773b6fe1bebd56a32a6f1e7f9eeee20b15ea073c2e9f64acf9994d4070 and eleven further digest-pinned images, the app id, the instance id, the canonical production origin, the TLS SPKI and the platform measurements. Every value here was re-observed on 2026-09-04 in two independent nonce-bound quotes, one per origin, and the leaf SPKI each quote names was separately observed on the wire for that hostname. api.private.anonrouter.ai is retained as an attested alias; api.anonrouter.ai is the customer default. The release id is not treated as sufficient identity: app id, compose hash and every platform measurement remain independently pinned, and mrConfigId independently re-states the compose hash in a register the guest cannot re-narrate. RTMR0 is the hardware-configuration register and moves with CVM size; it was not reproduced offline with dstack-mr, so it rests on agreeing independent quotes and the retained manifest rather than on an offline recomputation. Two third-party source-to-digest provenance gaps named in the manifest (caddy-edge-base, node-base-image) remain supply-chain limitations, not attestation bypasses. requireHardwareVerified remains true, so verification fails closed unless a DCAP chain verifier is supplied.",
       "policy": {
-        "source": "anonrouter-release-manifest-sha256:ebb976a12b274afc34fb31459578e3ef107764d697ef074d1a82b27d79b1707c",
-        "version": "2026-08-31-api-base-url",
+        "source": "anonrouter-release-manifest-sha256:83205494da15f59b4b9a86ce3be77d331ef06d212ab9ed1a9cacfea1cdcbb730",
+        "version": "2026-09-04-content-plane-v1.0.17",
         "origins": [
           "https://api.anonrouter.ai",
           "https://api.private.anonrouter.ai"
@@ -34,10 +34,10 @@
           "91c6a04ea7044f28d53142449c9badddbc30eff7"
         ],
         "composeHashes": [
-          "031015cb34bb1a95b57d6611f4d0f6d6ea26fd16d7ee91c5ff512f28658141d6"
+          "c6f11cc59aeafc71eb02245fa90fcceac00afbc4706071e39c582c26b8427a0e"
         ],
         "releaseIds": [
-          "anonrouter-tee@xl-7b1b12a"
+          "anonrouter-tee@xl-696b8dd"
         ],
         "keyProviderId": "3059301306072a8648ce3d020106082a8648ce3d030107034200048844eb42ccdf8c52fd4f174f362fcb9bbd19c45fd48f1edec2d8f1ca23536ec1a74021b4cee610c074f8294d431b2b7fee2c39e5333fdaf0a4522d43fb159d9f",
         "platform": {
@@ -45,10 +45,10 @@
             "f06dfda6dce1cf904d4e2bab1dc370634cf95cefa2ceb2de2eee127c9382698090d7a4a13e14c536ec6c9c3c8fa87077"
           ],
           "mrConfigId": [
-            "01031015cb34bb1a95b57d6611f4d0f6d6ea26fd16d7ee91c5ff512f28658141d6000000000000000000000000000000"
+            "01c6f11cc59aeafc71eb02245fa90fcceac00afbc4706071e39c582c26b8427a0e000000000000000000000000000000"
           ],
           "rtmr0": [
-            "ec216f1d1d591468ff4741b9b192f016b26d3f90303bfa9dbb97557273853183981f21a4bcb3ae908247538d371ad072"
+            "fb14dc139f33d6fcf474bc8332cac001259fb31cfbcb6b34d4ceeb552a2c4466884a0cbde45ad98a05c5c060c23ad65a"
           ],
           "rtmr1": [
             "07e6f51aa763abfe75c3ddfbf4f425fe3f0ceff66d807a75e049303dce9addf68e7218729bd419638af63a370f65878c"

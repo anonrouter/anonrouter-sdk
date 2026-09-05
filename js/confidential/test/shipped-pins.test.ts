@@ -25,14 +25,19 @@ describe("shipped gateway pins", () => {
   });
 
   it("ships the manifest-bound production pin and resolves it by default", () => {
-    // The 2026-09-01 production-origin manifest closed the gap that caused the
-    // earlier refresh to be rejected. Pin the source digest here too, so changing
-    // the default trust anchor is always a deliberate test update.
+    // Pin the source digest here too, so changing the default trust anchor is
+    // always a deliberate test update rather than a quiet edit to a data file.
     const published = registry.filter((e) => e.status === "published");
     expect(published).toHaveLength(1);
     expect(published[0]?.policy.source).toBe(
-      "anonrouter-release-manifest-sha256:ebb976a12b274afc34fb31459578e3ef107764d697ef074d1a82b27d79b1707c"
+      "anonrouter-release-manifest-sha256:83205494da15f59b4b9a86ce3be77d331ef06d212ab9ed1a9cacfea1cdcbb730"
     );
+    // The pin must name the live content plane, not a superseded one. These are
+    // the two values a stale refresh gets wrong first.
+    expect(published[0]?.policy.composeHashes).toEqual([
+      "c6f11cc59aeafc71eb02245fa90fcceac00afbc4706071e39c582c26b8427a0e"
+    ]);
+    expect(published[0]?.policy.releaseIds).toEqual(["anonrouter-tee@xl-696b8dd"]);
     for (const entry of published) {
       for (const origin of entry.policy.origins) {
         expect(pinnedGatewayPolicyFor(origin)?.status, `${origin} must resolve by default`).toBe("published");

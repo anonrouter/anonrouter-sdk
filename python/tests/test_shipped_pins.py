@@ -25,15 +25,21 @@ def test_parses_every_shipped_entry_under_the_same_rules_as_a_user_policy() -> N
 
 
 def test_ships_the_manifest_bound_production_pin_and_resolves_it_by_default() -> None:
-    # The 2026-08-30 production-origin manifest closed the earlier review gap.
-    # Pin its digest here so changing the default trust anchor is deliberate.
+    # Pin the source digest here so changing the default trust anchor is always a
+    # deliberate test update rather than a quiet edit to a data file.
     registry = gateway_policy_registry()
     published = [entry for entry in registry if entry.status == "published"]
     assert len(published) == 1
     assert published[0].policy.source == (
         "anonrouter-release-manifest-sha256:"
-        "ebb976a12b274afc34fb31459578e3ef107764d697ef074d1a82b27d79b1707c"
+        "83205494da15f59b4b9a86ce3be77d331ef06d212ab9ed1a9cacfea1cdcbb730"
     )
+    # The pin must name the live content plane, not a superseded one. These are
+    # the two values a stale refresh gets wrong first.
+    assert published[0].policy.compose_hashes == [
+        "c6f11cc59aeafc71eb02245fa90fcceac00afbc4706071e39c582c26b8427a0e"
+    ]
+    assert published[0].policy.release_ids == ["anonrouter-tee@xl-696b8dd"]
     for entry in published:
         for origin in entry.policy.origins:
             resolved = pinned_gateway_policy_for(origin)
