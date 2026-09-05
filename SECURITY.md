@@ -49,6 +49,35 @@ change and the pins must be rotated. The process is deliberate:
 Retire an old pin only after the corresponding provider deployment is fully gone,
 and note the retirement in the version string.
 
+### Rotating the hop-1 gateway pin
+
+`shared/gateway-policies.json` describes AnonRouter's own confidential plane, and
+it rotates on a different trigger and under a stricter rule: **the values must
+never come from the gateway being pinned.** A server that could hand you the list
+of builds you accept could always name itself. `scripts/capture-gateway-pins.mjs`
+therefore writes an *observation* with an unresolved review checklist, and
+deliberately cannot write a policy.
+
+What has to be true before an observation becomes a pin:
+
+1. every identity field appears in a release manifest produced and retained
+   OUTSIDE the deployment, naming that exact origin, and not a preproduction one;
+2. the `source` field records that manifest by SHA-256, so which document a pin
+   came from stays checkable afterwards;
+3. the served leaf key is observed on the wire, per hostname, and equals the one
+   the quote names — the quote's claim about a key it holds is not enough on its
+   own;
+4. anything that could not be independently derived is written into `notes`
+   rather than left to be assumed. The current entry says plainly that RTMR0 was
+   not recomputed offline with `dstack-mr`, and why.
+
+The plane's compose hash, release id and RTMR0 all move when the deployment
+changes — RTMR0 moves on a resize alone, because it measures hardware
+configuration. A stale hop-1 pin does not fail soft: it makes the SDK report the
+live service as unverified. Rotating it is a release, not a maintenance edit, and
+`shipped-pins` in both suites pins the source digest, compose hash and release id
+so the change cannot arrive quietly.
+
 ## Trust model: what verification does and does not prove
 
 This SDK is built to be honest about its own limits. The headline guarantee it

@@ -10,8 +10,8 @@
 // Optional env:
 //   ANONROUTER_BASE_URL   default https://api.anonrouter.ai
 //   ANONROUTER_CONTROL_URL default https://control.anonrouter.ai
-//   E2EE_MODEL            default openai/gpt-oss-120b
-//   E2EE_PROVIDER         default near-ai   (E2EE only: near-ai | venice | chutes)
+//   E2EE_MODEL            default z-ai/glm-5.2
+//   E2EE_PROVIDER         default venice   (E2EE today: venice | chutes)
 //   MAX_TOKENS            default 32
 //   PROMPT                default a short prompt containing a unique canary
 
@@ -25,8 +25,8 @@ if (!apiKey) {
 }
 const baseUrl = process.env.ANONROUTER_BASE_URL ?? "https://api.anonrouter.ai";
 const controlBaseUrl = process.env.ANONROUTER_CONTROL_URL ?? "https://control.anonrouter.ai";
-const model = process.env.E2EE_MODEL ?? "openai/gpt-oss-120b";
-const provider = process.env.E2EE_PROVIDER ?? "near-ai";
+const model = process.env.E2EE_MODEL ?? "z-ai/glm-5.2";
+const provider = process.env.E2EE_PROVIDER ?? "venice";
 const maxOutputTokens = Number(process.env.MAX_TOKENS ?? "32");
 
 const canary = "CANARY-" + Math.random().toString(36).slice(2);

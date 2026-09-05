@@ -21,9 +21,14 @@ presented to the relay with a single-use ticket and no account credential attach
 
 ## Install
 
+Not on npm yet. Install from the repository:
+
 ```bash
-npm install @anonrouter/client
+git clone https://github.com/anonrouter/anonrouter-sdk
+cd anonrouter-sdk/js && npm ci && npm run build
 ```
+
+Once it is published, `npm install @anonrouter/client` will be the whole of it.
 
 ## Quickstart
 

@@ -9,7 +9,7 @@
 //   ANONROUTER_BASE_URL   default https://api.anonrouter.ai
 //   ANONROUTER_CONTROL_URL default https://control.anonrouter.ai
 //   TEE_MODEL             default openai/gpt-oss-120b
-//   TEE_PROVIDER          default tinfoil   (try: tinfoil | near-ai | venice | chutes)
+//   TEE_PROVIDER          default tinfoil   (try: tinfoil | venice | chutes)
 
 import "./_env.js";
 import { createClient } from "../src/index.js";

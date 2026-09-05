@@ -22,9 +22,11 @@ Both `@anonrouter/confidential` and `anonrouter-confidential` also install an
 `anonrouter-verify` command. See [Verify from a terminal](#verify-from-a-terminal).
 
 **None of the three is on a registry yet.** The registry column above is where each
-one is headed. Install from a clone until then; the artifacts are built and used
-from empty environments on every CI run, so publishing is an owner decision rather
-than a technical gap.
+one is headed. Install from this repository until then — see the quickstarts
+below. The exact tarball, wheel and sdist a registry would carry are built and
+installed into empty environments on every CI run, and the `v0.1.0` release
+carries them with checksums, so publishing is an account decision rather than a
+technical gap.
 
 Layout:
 
@@ -37,9 +39,10 @@ js/
   confidential/           # @anonrouter/confidential
   client/                 # @anonrouter/client
 python/                   # anonrouter-confidential
+native/dcap-verifier/     # the offline Intel DCAP engine, AGPL-3.0-only, build it yourself
 docs/                     # what the live origins serve; the ticketed media contract
-scripts/                  # sync, parity gates, artifact smoke installs
-.github/workflows/        # CI: js, python, parity, CLI parity, packaging
+scripts/                  # sync, parity gates, artifact smoke installs, release artifacts
+.github/workflows/        # CI: js, python, parity, CLI parity, packaging; and the release
 ```
 
 ## What "confidential" means here, honestly
@@ -60,12 +63,15 @@ on any of them, because the words matter.
   being a matter of faith is that a build changed to exfiltrate it would change
   the measurements, so hop 1 stops verifying. Cheating is *detectable* — provided
   you actually verify, which is what this SDK is for.
-- **E2EE removes us from the trust set entirely.** On the E2EE providers
-  (`near-ai`, `venice`, `chutes`) the SDK encrypts your request to a key bound to
-  the *provider's* attested enclave, so AnonRouter's relay holds ciphertext
-  whatever code it happens to be running. Use this when the requirement is that
-  AnonRouter cannot read your content **even if we wanted to and shipped code to
-  try**, rather than that we would be caught doing so.
+- **E2EE removes us from the trust set entirely.** On an E2EE route the SDK
+  encrypts your request to a key bound to the *provider's* attested enclave, so
+  AnonRouter's relay holds ciphertext whatever code it happens to be running. Use
+  this when the requirement is that AnonRouter cannot read your content **even if
+  we wanted to and shipped code to try**, rather than that we would be caught
+  doing so. The SDK ships E2EE transports and verifiers for `venice`, `chutes`
+  and `near-ai`; which of them the catalog actually serves changes, so read
+  `client.models()` rather than this list — `npm run example:route-matrix` prints
+  it.
 - **`@anonrouter/client` is the plaintext client.** It speaks the ordinary
   OpenAI-style chat surface over the ticketed flow, and it neither verifies the
   plane nor encrypts anything — so while it benefits from the same in-enclave
@@ -130,8 +136,12 @@ be an unreviewed version of the single component whose failure mode is printing
 
 What ships instead is a first-class adapter to the reviewed engine, plus the Intel
 collateral acquisition that engine needs (it performs no network access, on
-purpose). Install `anonrouter-dcap-verifier`, put it on PATH or name it in
-`ANONROUTER_DCAP_VERIFIER_BIN`, and hop 1 can reach `hardware_verified`:
+purpose). The engine's source is in [`native/dcap-verifier`](native/dcap-verifier)
+under AGPL-3.0-only, and `scripts/build-dcap-verifier.sh --reproduce` builds it
+twice from clean in a digest-pinned container and fails unless the two outputs are
+byte-identical. The release also carries a checksummed `linux/amd64` build of that
+same source, so you can compare rather than trust. Put the binary on PATH or name
+it in `ANONROUTER_DCAP_VERIFIER_BIN`, and hop 1 can reach `hardware_verified`:
 
 ```ts
 import { createAnonRouterDcapVerifier } from "@anonrouter/confidential/dcap";
@@ -231,7 +241,8 @@ The SDK reports a `verification_level` and never inflates it:
 # npm install @anonrouter/confidential
 
 # Until then, from a clone of this repo:
-cd js && npm ci && npm run build
+git clone https://github.com/anonrouter/anonrouter-sdk
+cd anonrouter-sdk/js && npm ci && npm run build
 ```
 
 Node 22 or newer. The verification core and the E2EE transports are browser-safe
@@ -253,8 +264,8 @@ const client = createClient({
 // Verify BOTH hops and gate on the result. This is the stable contract; see
 // VERIFYING.md for the five states and what each one does and does not prove.
 const verdict = await client.verifyRoute({
-  model: "openai/gpt-oss-120b",
-  provider: "near-ai",
+  model: "z-ai/glm-5.2",
+  provider: "venice",
   gateway: { chainVerifier: createAnonRouterDcapVerifier() }
 });
 if (!atLeast(verdict.overallState, "cryptographically_checked")) {
@@ -265,8 +276,8 @@ if (!atLeast(verdict.overallState, "cryptographically_checked")) {
 // reaches AnonRouter's relay, and requireGateway re-establishes hop 1 with a new
 // nonce BEFORE a ticket is spent or a model is named.
 const reply = await client.chat({
-  model: "openai/gpt-oss-120b",
-  provider: "near-ai",
+  model: "z-ai/glm-5.2",
+  provider: "venice",
   messages: [{ role: "user", content: "Draft a private message." }],
   maxOutputTokens: 512,
   requireGateway: { chainVerifier: createAnonRouterDcapVerifier() }
@@ -277,15 +288,16 @@ console.log(reply.content);
 ## Quickstart: `anonrouter-confidential` (Python)
 
 > **Not published yet.** None of the three packages is on a registry at the time of
-> writing (`@anonrouter/confidential`, `@anonrouter/client` and
-> `anonrouter-confidential` all 404). Install from a clone. The artifacts are built
-> and exercised on every CI run by `scripts/smoke-artifacts.mjs`, which installs
-> them into empty environments and uses them there, so what a registry would carry
-> is the thing that is already being tested; publishing is an owner decision, not a
-> technical gap.
+> writing. Install from this repository. The artifacts are built and exercised on
+> every CI run by `scripts/smoke-artifacts.mjs`, which installs them into empty
+> environments and uses them there, so what a registry would carry is the thing
+> that is already being tested; publishing is an account decision, not a technical
+> gap.
 
 ```bash
 # From a clone of this repo:
+git clone https://github.com/anonrouter/anonrouter-sdk
+cd anonrouter-sdk
 pip install "./python[mlkem]"                  # mlkem extra enables the Chutes route
 
 # Once it is on PyPI:
@@ -309,16 +321,16 @@ client = create_client(
 # Verify BOTH hops and gate on the result. This is the stable contract; see
 # VERIFYING.md for the five states and what each one does and does not prove.
 verdict = client.verify_route(
-    model="openai/gpt-oss-120b",
-    provider="near-ai",
+    model="z-ai/glm-5.2",
+    provider="venice",
     gateway={"chain_verifier": create_anonrouter_dcap_verifier()},
 )
 if not at_least(verdict.overall_state, "cryptographically_checked"):
     raise SystemExit(f"route not established: {verdict.reason}")
 
 reply = client.chat(
-    model="openai/gpt-oss-120b",
-    provider="near-ai",
+    model="z-ai/glm-5.2",
+    provider="venice",
     messages=[{"role": "user", "content": "Draft a private message."}],
     max_output_tokens=512,
 )
@@ -328,7 +340,8 @@ print(reply["content"])
 ## Quickstart: `@anonrouter/client` (plaintext API client)
 
 ```bash
-npm install @anonrouter/client
+# Same clone as above; this package is a workspace in js/.
+cd anonrouter-sdk/js && npm ci && npm run build
 ```
 
 ```ts
@@ -345,7 +358,7 @@ const models = await client.models();
 // single-use ticket accompanies the content. Content on this route is visible
 // to the gateway: use @anonrouter/confidential when it must not be.
 const completion = await client.chat({
-  model: "openai/gpt-oss-120b",
+  model: "z-ai/glm-5.2",
   messages: [{ role: "user", content: "Hello." }]
 });
 ```

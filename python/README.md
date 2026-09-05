@@ -15,7 +15,10 @@ sdist are built and installed into clean virtualenvs on every CI run, so what Py
 would carry is the thing already being tested; publishing is an owner decision
 rather than a technical gap.
 
-```
+```bash
+git clone https://github.com/anonrouter/anonrouter-sdk
+cd anonrouter-sdk
+
 pip install ./python                  # verify + NEAR/Venice E2EE + TDX
 pip install "./python[mlkem]"         # adds the Chutes ML-KEM-768 transport
 pip install "./python[tinfoil]"       # adds Tinfoil SDK verification
@@ -107,7 +110,10 @@ explicit operator choice rather than an opaque wheel payload.
 
 What ships instead is a strict adapter to the reviewed engine, plus the
 Intel-signed collateral it needs (the engine performs no network access, on
-purpose). Install `anonrouter-dcap-verifier`, put it on PATH or name it in
+purpose). Get `anonrouter-dcap-verifier` either as the checksummed `linux/amd64`
+[release asset](https://github.com/anonrouter/anonrouter-sdk/releases) or, better,
+by building the same source yourself with `scripts/build-dcap-verifier.sh
+--reproduce` and comparing digests. Put it on PATH or name it in
 `ANONROUTER_DCAP_VERIFIER_BIN`, and hop 1 can reach `hardware_verified`:
 
 ```python

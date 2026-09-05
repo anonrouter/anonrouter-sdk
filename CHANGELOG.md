@@ -8,15 +8,41 @@ The three packages (`@anonrouter/confidential`, `@anonrouter/client`,
 `anonrouter-confidential`) are versioned together, and share one set of
 measurement pins and known-answer vectors, so a given version means the same
 verification in both languages. None of the three is on a registry yet; install
-from a clone. `scripts/smoke-artifacts.mjs` builds every artifact and installs it
-into an empty environment on each CI run, so the thing a registry would carry is
-already exercised.
+from this repository, or from the checksummed artifacts attached to the release.
+`scripts/smoke-artifacts.mjs` builds every artifact and installs it into an empty
+environment on each CI run, so the thing a registry would carry is already
+exercised.
 
-## [0.1.0] - Unreleased
+## [0.1.0] - 2026-09-04
 
 Initial public release.
 
 ### Fixed
+- **The shipped hop-1 pin named a content plane that is no longer running.** It
+  carried compose `031015cb…` and release `anonrouter-tee@xl-7b1b12a`; production
+  has moved to `content-plane v1.0.17`, compose `c6f11cc5…`, release
+  `anonrouter-tee@xl-696b8dd`, and a different RTMR0 — that register measures
+  hardware configuration, and the CVM was resized. Verified against live
+  production, the old pin does not merely age out: it fails `compose_hash_pinned`,
+  `release_pinned` and `platform_measurements_pinned`, so publishing it would have
+  shipped an SDK that reports the real service as unverified. The new values come
+  from the independently retained release manifest
+  `83205494…`, never from the gateway, and were re-observed in two nonce-bound
+  quotes with the served leaf key checked on the wire for each hostname.
+- **Chutes routes recorded no model binding at all, in either direction.** The
+  provider's evidence names the instance, its measurements and its ML-KEM key,
+  but never the weights. With no `model_binding` line in the verdict, a reader
+  saw a route where the question appears not to arise. It arises. The check is
+  now present and advisory, and says what the route model actually rests on: the
+  gateway's echo, which is AnonRouter attesting to itself and is weaker than a
+  provider enclave naming its own weights. Advisory failures are now pinned in
+  `shared/vectors/attestation.json` and asserted by both suites, so a named gap
+  cannot quietly stop being reported.
+- **A fresh clone could not typecheck, lint or build an sdist.** `npm ci && npm
+  run typecheck` failed on an example importing `@anonrouter/client` before
+  anything had been built; two import blocks were out of sort order; and the
+  Python sdist selected its contents by "everything git does not ignore", so a
+  local virtualenv was packaged into the distribution. All three are gated now.
 - **The route cross-binding was three dead checks.** `verifyRoute` /
   `verify_route` fed the client's OWN derived values back into the cross-binder
   as if they were the gateway's, so `provider` and `privacy_modality` were
@@ -63,6 +89,23 @@ Initial public release.
   these that sends content. The privacy claim still fails safe either way.
 
 ### Added
+- **A release workflow that produces artifacts anyone can re-derive.** A tag
+  re-runs the whole gate set against the tagged commit — a tag can name a commit
+  no CI run ever covered — then builds every artifact through one script that
+  behaves identically locally and in CI, and writes a single `SHA256SUMS` over
+  all of them. Tarballs use a `SOURCE_DATE_EPOCH` taken from the commit rather
+  than the clock, so a digest does not depend on when it was built. Actions are
+  pinned by commit SHA, not by tag, because a tag can be repointed after review.
+  Only the job that creates the release holds `contents: write`, and it uses the
+  run's own short-lived token; no registry credential exists anywhere in the
+  workflow. The npm and PyPI jobs are written, use OIDC trusted publishing rather
+  than stored tokens, and are switched off behind repository variables until the
+  accounts and their trusted publishers exist.
+- **The live harnesses read the catalog instead of a written-down list.**
+  `examples/route-matrix.ts` already did; `examples/negative-controls.ts` claimed
+  to and did not, so when its hard-coded sample route left the catalog every
+  client control skipped and the run still printed a mostly-green tally. A
+  harness that quietly stops measuring is worse than one that fails.
 - **Ticketed media: `client.images.generate(...)` and
   `client.audio.speech.create(...)`, in both languages.** Image generation and
   text-to-speech over AnonRouter's two-origin split, with OpenAI's parameter
@@ -132,11 +175,19 @@ Initial public release.
   needs (it performs no network access, on purpose). Verified live against a real
   TDX CVM in both languages: Intel `tcb`, `qe` and `platform` statuses all
   `UpToDate`, no advisories, in about 0.8 s including the collateral fetch.
-  - No engine is bundled, and the reason is written down rather than implied.
-    Publishing prebuilt binaries would mean asserting that a binary we did not
-    build reproducibly is the reviewed one, and a hand-rolled JavaScript or Python
-    reimplementation would be an unreviewed version of the single component whose
-    failure mode is printing `hardware_verified` for a forged quote.
+  - No engine is bundled in either package, and the reason is written down rather
+    than implied: a binary inside a package is one you have to accept on faith,
+    and a hand-rolled JavaScript or Python reimplementation would be an unreviewed
+    version of the single component whose failure mode is printing
+    `hardware_verified` for a forged quote. What the repository carries instead is
+    the engine's SOURCE, in `native/dcap-verifier` under AGPL-3.0-only, with a
+    pinned toolchain and `scripts/build-dcap-verifier.sh --reproduce`, which
+    builds it twice from clean inside a registry image pinned by digest and fails
+    unless the two outputs are byte-identical. The release attaches a
+    `linux/amd64` build of that source next to its own source tarball, so the
+    published binary is something to check rather than something to trust.
+    `linux/amd64` is the only target with a reproducible artifact and the only one
+    claimed.
   - The engine's SHA-256 can be pinned, so a swapped binary is a refusal rather
     than a different answer. The engine's own view of the TD is compared against
     the SDK's independent parse of the same bytes, so a "verified" verdict

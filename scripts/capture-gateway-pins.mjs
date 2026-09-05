@@ -10,9 +10,10 @@
 // The review that has to happen before any of these values become a pin:
 //
 //   app_id, compose_hash, os_image_hash
-//       must appear in an independently produced identity record for THIS ORIGIN
-//       (in the product repo, .evidence/content-plane/pinned-identity.json), and
-//       that record must not be a preproduction one.
+//       must appear in a release manifest produced and retained OUTSIDE the
+//       deployment, naming THIS ORIGIN, and it must not be a preproduction one.
+//       The `source` field of the shipped policy names the manifest each pin
+//       came from, by digest, so this is checkable after the fact.
 //   release_id
 //       is an operator-supplied string injected at deploy time. It proves only
 //       that whoever deployed set it. Confirm it names a build you reviewed.

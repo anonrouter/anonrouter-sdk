@@ -25,7 +25,7 @@ verdict). This is attestation only, so it does not spend anything.
 Env: `ANONROUTER_BASE_URL` (default `https://api.anonrouter.ai`),
 `ANONROUTER_CONTROL_URL` (default `https://control.anonrouter.ai`), `TEE_MODEL`
 (default `openai/gpt-oss-120b`), `TEE_PROVIDER` (default `tinfoil`; also try
-`near-ai`, `venice`, `chutes`).
+`venice` or `chutes` with one of their own models).
 
 ## 3. Verify both hops and read the verdict (real gateway, your key, NOT billable)
 ```bash
@@ -61,8 +61,9 @@ decrypts the reply. It wraps `fetch` to PROVE the relay never received your prom
 in plaintext, then prints the decrypted answer. This makes a real, tiny billable
 inference call.
 
-Env: `E2EE_MODEL` (default `openai/gpt-oss-120b`), `E2EE_PROVIDER`
-(default `near-ai`; E2EE only: `near-ai`, `venice`, `chutes`), `MAX_TOKENS`
+Env: `E2EE_MODEL` (default `z-ai/glm-5.2`), `E2EE_PROVIDER`
+(default `venice`; E2EE only: `venice`, `chutes`, and `near-ai` when the catalog
+carries it), `MAX_TOKENS`
 (default 32), `PROMPT`, `ANONROUTER_BASE_URL`.
 
 ## 6. Image and speech over the two-origin split (real gateway, your key, BILLABLE)

@@ -12,7 +12,7 @@ import { createAnonRouterDcapVerifier } from "../src/gateway/dcap/index.js";
 
 const BASE_URL = process.env.ANONROUTER_BASE_URL ?? "https://api.anonrouter.ai";
 const CONTROL_URL = process.env.ANONROUTER_CONTROL_URL ?? "https://control.anonrouter.ai";
-const MODEL = process.env.ANONROUTER_MODEL ?? "venice-uncensored";
+const MODEL = process.env.ANONROUTER_MODEL ?? "z-ai/glm-5.2";
 const PROVIDER = process.env.ANONROUTER_PROVIDER ?? "venice";
 
 // The bar this program insists on. `policy_matched` would accept a verdict that

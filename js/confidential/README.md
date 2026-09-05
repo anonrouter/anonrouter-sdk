@@ -16,7 +16,8 @@ For the plaintext API surface, see `@anonrouter/client`.
 # npm install @anonrouter/confidential
 
 # Until then, from a clone of the monorepo:
-cd js && npm ci && npm run build
+git clone https://github.com/anonrouter/anonrouter-sdk
+cd anonrouter-sdk/js && npm ci && npm run build
 ```
 
 Not on npm yet. The tarball is built and installed into an empty environment on
@@ -52,8 +53,8 @@ const client = createClient({
 
 // Verify BOTH hops, cross-bound to the route you asked for, and gate on it.
 const verdict = await client.verifyRoute({
-  model: "openai/gpt-oss-120b",
-  provider: "near-ai",
+  model: "z-ai/glm-5.2",
+  provider: "venice",
   gateway: { chainVerifier: createAnonRouterDcapVerifier() }
 });
 if (!atLeast(verdict.overallState, "cryptographically_checked")) {
@@ -65,8 +66,8 @@ if (!atLeast(verdict.overallState, "cryptographically_checked")) {
 // with a NEW nonce before a ticket is spent or a model is named, because a verdict
 // from a minute ago is a fact about a minute ago.
 const reply = await client.chat({
-  model: "openai/gpt-oss-120b",
-  provider: "near-ai",
+  model: "z-ai/glm-5.2",
+  provider: "venice",
   messages: [{ role: "user", content: "Draft a private message." }],
   maxOutputTokens: 512,
   requireGateway: { chainVerifier: createAnonRouterDcapVerifier() }
@@ -157,7 +158,10 @@ forged quote.
 
 What ships instead is a strict adapter to the reviewed engine, plus the
 Intel-signed collateral it needs (the engine performs no network access, on
-purpose). Install `anonrouter-dcap-verifier`, put it on PATH or name it in
+purpose). Get `anonrouter-dcap-verifier` either as the checksummed `linux/amd64`
+[release asset](https://github.com/anonrouter/anonrouter-sdk/releases) or, better,
+by building the same source yourself with `scripts/build-dcap-verifier.sh
+--reproduce` and comparing digests. Put it on PATH or name it in
 `ANONROUTER_DCAP_VERIFIER_BIN`, and hop 1 can reach `hardware_verified`:
 
 ```ts
@@ -197,8 +201,8 @@ them to the route you asked for, and reports them separately:
 
 ```ts
 const verdict = await client.verifyRoute({
-  model: "openai/gpt-oss-120b",
-  provider: "near-ai",
+  model: "z-ai/glm-5.2",
+  provider: "venice",
   gateway: true            // omit to skip hop 1 entirely
 });
 

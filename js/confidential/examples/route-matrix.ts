@@ -71,8 +71,8 @@ const value = (name: string, fallback?: string) => {
  * the report from a plane that genuinely did not verify. `--no-dcap` makes that
  * distinction observable on purpose.
  *
- * Build it with `scripts/dcap-verify-build.sh` in the AnonRouter repo and put it
- * on PATH, or name it in ANONROUTER_DCAP_VERIFIER_BIN.
+ * Build it with `scripts/build-dcap-verifier.sh --reproduce` from the repository
+ * root and put it on PATH, or name it in ANONROUTER_DCAP_VERIFIER_BIN.
  */
 const CONTROL = value("control", "https://control.anonrouter.ai")!;
 const INFERENCE = value("inference", "https://api.anonrouter.ai")!;

@@ -5,7 +5,7 @@
 Optional env:
     ANONROUTER_BASE_URL   default https://api.anonrouter.ai
     ANONROUTER_CONTROL_URL default https://control.anonrouter.ai
-    ANONROUTER_MODEL      default venice-uncensored
+    ANONROUTER_MODEL      default z-ai/glm-5.2
     ANONROUTER_PROVIDER   default venice
 
 Prints what was established, what was not, and why, then exits non-zero if the
@@ -22,7 +22,7 @@ from anonrouter_confidential.gateway.dcap import create_anonrouter_dcap_verifier
 
 BASE_URL = os.environ.get("ANONROUTER_BASE_URL", "https://api.anonrouter.ai")
 CONTROL_URL = os.environ.get("ANONROUTER_CONTROL_URL", "https://control.anonrouter.ai")
-MODEL = os.environ.get("ANONROUTER_MODEL", "venice-uncensored")
+MODEL = os.environ.get("ANONROUTER_MODEL", "z-ai/glm-5.2")
 PROVIDER = os.environ.get("ANONROUTER_PROVIDER", "venice")
 
 # The bar this program insists on. `policy_matched` would accept a verdict resting

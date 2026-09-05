@@ -50,6 +50,26 @@ runtime. They are supply-chain limitations; the SDK does not relabel them as
 verified. A third link, the in-CVM TLS terminator, was closed by rebuilding it
 from source.
 
+## Confidential routes on the day this was recorded
+
+Read from the authenticated catalog, not written down: **11 callable `tee` /
+`e2ee` routes across three providers.**
+
+| Provider | Class | Routes |
+| --- | --- | --- |
+| `tinfoil` | `tee` | 6 (5 text, 1 embedding) |
+| `venice` | `e2ee` | 3 |
+| `chutes` | `e2ee` | 2 |
+
+This number moves. Rows are enabled and disabled, and providers come and go —
+`near-ai` has E2EE support in this SDK and no route in the catalog today. Treat
+the table as a dated observation and get the current answer from the catalog:
+
+```bash
+cd js/confidential
+npm run example:route-matrix -- --env-file ~/path/to/.env
+```
+
 ## Reproduce the verification
 
 ```bash

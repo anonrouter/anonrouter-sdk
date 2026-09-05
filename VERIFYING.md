@@ -29,8 +29,8 @@ const client = createClient({
 });
 
 const verdict = await client.verifyRoute({
-  model: "openai/gpt-oss-120b",
-  provider: "near-ai",
+  model: "z-ai/glm-5.2",
+  provider: "venice",
   gateway: true            // omit to skip hop 1 entirely
 });
 
@@ -48,7 +48,7 @@ with create_client(
     control_base_url="https://control.anonrouter.ai",
 ) as client:
     verdict = client.verify_route(
-        model="openai/gpt-oss-120b", provider="near-ai", gateway=True
+        model="z-ai/glm-5.2", provider="venice", gateway=True
     )
     if not at_least(verdict.overall_state, "cryptographically_checked"):
         raise SystemExit(f"route not established: {verdict.reason}")
@@ -178,15 +178,30 @@ usually a stale pin after a release, not an attack.
 ## Reaching `hardware_verified`
 
 The packages bundle **no DCAP engine**, and the reason is worth stating because it
-is the same reason the rest of this SDK exists. Publishing prebuilt binaries would
-mean asserting that a binary we did not build reproducibly is the reviewed one. A
-hand-rolled JavaScript or Python reimplementation would be worse: an unreviewed,
-un-cross-checked version of the single component whose failure mode is printing
-`hardware_verified` for a forged quote.
+is the same reason the rest of this SDK exists. A binary inside a package is one
+you have to accept on faith. A hand-rolled JavaScript or Python reimplementation
+would be worse: an unreviewed, un-cross-checked version of the single component
+whose failure mode is printing `hardware_verified` for a forged quote.
 
-What ships instead is a strict adapter to AnonRouter's reviewed offline engine.
-Install `anonrouter-dcap-verifier`, put it on PATH or name it in
-`ANONROUTER_DCAP_VERIFIER_BIN`, and hop 1 can reach `hardware_verified`:
+What the packages ship is a strict adapter to AnonRouter's reviewed offline
+engine. The engine itself has two forms and you should prefer the second:
+
+```bash
+# 1. The release asset. linux/amd64, static, SHA-256 in the release's SHA256SUMS.
+curl -LO https://github.com/anonrouter/anonrouter-sdk/releases/download/v0.1.0/anonrouter-dcap-verifier-linux-amd64
+chmod +x anonrouter-dcap-verifier-linux-amd64
+
+# 2. Your own build of the same source, which is the one that means something.
+#    Builds twice from clean in a digest-pinned image and fails unless the two
+#    outputs are byte-identical. Compare the digest it prints with ours.
+scripts/build-dcap-verifier.sh --reproduce
+```
+
+The source is in [`native/dcap-verifier`](native/dcap-verifier) under
+AGPL-3.0-only (the rest of this repository is Apache-2.0; the boundary is that
+directory and neither published package contains it). Put the binary on PATH or
+name it in `ANONROUTER_DCAP_VERIFIER_BIN`, and hop 1 can reach
+`hardware_verified`:
 
 ```ts
 import { createAnonRouterDcapVerifier } from "@anonrouter/confidential/dcap";
