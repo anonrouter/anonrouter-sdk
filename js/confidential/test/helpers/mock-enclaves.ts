@@ -88,7 +88,18 @@ export interface VeniceMockEnclave {
   handleInference(init: RequestInit, replyDeltas?: string[]): { decrypted: string[]; reply: string; response: Response };
 }
 
-export function createVeniceMockEnclave(upstreamModel: string): VeniceMockEnclave {
+/**
+ * @param upstreamModel the provider-native model the enclave loaded.
+ * @param catalogModel  the AnonRouter catalog id the ticket was minted for.
+ *   These are DIFFERENT identifiers and the relay echoes both. Defaulting the
+ *   second to the first is only correct where a test does not care which one it
+ *   is looking at; any test about the `requested_model` binding must pass both,
+ *   or it compares a value against itself and can never fail.
+ */
+export function createVeniceMockEnclave(
+  upstreamModel: string,
+  catalogModel: string = upstreamModel
+): VeniceMockEnclave {
   const enclaveSec = secp256k1.utils.randomSecretKey();
   const enclavePub = secp256k1.getPublicKey(enclaveSec, false);
   const enclavePubHex = bytesToHex(enclavePub);
@@ -132,7 +143,11 @@ export function createVeniceMockEnclave(upstreamModel: string): VeniceMockEnclav
         // catalog model, upstream model and privacy class, all bound at mint
         // time. The fixture says so too, because a client's route cross-binding
         // can only be exercised against a response that carries the fields.
-        model: upstreamModel,
+        //
+        // `model` is the CATALOG id and `upstream_model` is the provider-native
+        // one. This used to put the upstream id in both, which made the mock
+        // gateway reject every call naming a catalog id — the self-test included.
+        model: catalogModel,
         upstream_model: upstreamModel,
         privacy_class: "e2ee",
         protocol: "venice-legacy",
@@ -168,7 +183,15 @@ export interface ChutesMockEnclave {
   handleInference(bodyBytes: Uint8Array, reply?: Record<string, unknown>): { decrypted: Record<string, unknown>; response: Response };
 }
 
-export function createChutesMockEnclave(upstreamModel: string): ChutesMockEnclave {
+/**
+ * @param upstreamModel the provider-native model the enclave loaded.
+ * @param catalogModel  the AnonRouter catalog id the ticket was minted for.
+ *   See `createVeniceMockEnclave` for why these must be separable.
+ */
+export function createChutesMockEnclave(
+  upstreamModel: string,
+  catalogModel: string = upstreamModel
+): ChutesMockEnclave {
   const instanceKeys = ml_kem768.keygen(randomBytes(ml_kem768.lengths.seed ?? 64));
   const instancePubB64 = bytesToBase64(instanceKeys.publicKey);
   const instanceId = "12345678-1234-1234-1234-123456789abc";
@@ -201,7 +224,8 @@ export function createChutesMockEnclave(upstreamModel: string): ChutesMockEnclav
       return {
         evidence: evidence(callerNonceHex),
         provider: "chutes",
-        model: upstreamModel,
+        // Catalog id, then provider-native id. Not the same string.
+        model: catalogModel,
         upstream_model: upstreamModel,
         privacy_class: "e2ee",
         protocol: "chutes-mlkem-v1",

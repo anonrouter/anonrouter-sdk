@@ -84,7 +84,10 @@ async function run(): Promise<void> {
 
   // Venice: streaming E2EE over /v1/chat/completions. Exercises verify + chat.
   {
-    const enclave = createVeniceMockEnclave("e2ee-gpt-oss-20b-p");
+    // Two identifiers, deliberately different: the catalog id the caller names
+    // and the provider-native model the enclave loaded. A mock that used one
+    // string for both could not exercise the route cross-binding at all.
+    const enclave = createVeniceMockEnclave("e2ee-gpt-oss-20b-p", "venice/e2ee-gpt-oss-20b-p");
     const gw = makeMockGateway(enclave, "/v1/chat/completions");
     const client = createClient({ baseUrl: BASE, apiKey: "mock", fetch: gw.fetch });
 
@@ -108,7 +111,7 @@ async function run(): Promise<void> {
   // requires the X.509 cert-possession evidence a real enclave returns, which this
   // minimal mock does not synthesize, so we prove the chat round-trip here.
   {
-    const enclave = createChutesMockEnclave("Qwen/Qwen3-32B-TEE");
+    const enclave = createChutesMockEnclave("Qwen/Qwen3-32B-TEE", "qwen/qwen3-32b");
     const gw = makeMockGateway(enclave, "/v1/e2ee/chat/completions");
     const client = createClient({ baseUrl: BASE, apiKey: "mock", fetch: gw.fetch });
 
