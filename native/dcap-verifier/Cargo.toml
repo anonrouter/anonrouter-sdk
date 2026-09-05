@@ -1,0 +1,40 @@
+[package]
+name = "anonrouter-dcap-verifier"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "AGPL-3.0-only"
+description = "Offline Intel TDX DCAP quote verifier. Reads JSON on stdin, writes JSON on stdout, performs no network access."
+publish = false
+
+[dependencies]
+# EXACT version, never a range. CVE-2026-22696 (CVSS 9.3, missing QE Identity
+# verification) is why: a caret range could silently move the engine onto a
+# version with a different security posture.
+#
+# default-features = false drops `report`, which is what pulls in reqwest. This
+# binary must have no network stack: a verifier that fetches its own trust
+# inputs is only as trustworthy as whatever it happened to reach, and on a
+# user's machine it would leak which platform is verified and when.
+#
+# `rustcrypto` rather than `ring`: pure Rust, so it cross-compiles without a C
+# toolchain and has no assembly or build script to vary between hosts, which
+# matters for the reproducible-build matrix. See docs/DCAP_VERIFIER_PHASE_ONE.md.
+#
+# `danger-allow-tcb-override` must never appear here. scripts/dcap-verify-build.sh
+# asserts both that and the absence of `report` against the RESOLVED graph,
+# because a Cargo.toml comment is not an enforcement mechanism.
+dcap-qvl = { version = "=0.6.1", default-features = false, features = ["std", "rustcrypto", "default-x509"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+hex = "0.4"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[dev-dependencies]
+sha2 = "0.10"

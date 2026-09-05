@@ -1,0 +1,21 @@
+# The exact toolchain this verifier is built with.
+#
+# WHY PIN, AND WHY HERE. A third party is supposed to be able to build this
+# verifier and get the same bytes we did, so that they do not have to trust a
+# binary we hand them. `rust-version = "1.82"` in Cargo.toml is a MINIMUM, not a
+# selection: it says the crate compiles on 1.82 or newer, and every newer
+# compiler produces different output. Two people following the same instructions
+# on different rustc releases get different digests and no way to tell whether
+# the difference is the compiler or the source.
+#
+# `channel` is an exact release, never `stable`. `stable` is a moving target that
+# names a different compiler every six weeks, which is the same defect as a caret
+# version range on a dependency and is why dcap-qvl is pinned to "=0.6.1".
+#
+# CHANGING THIS CHANGES EVERY PUBLISHED DIGEST. It is not a routine upgrade: any
+# bump invalidates BUILD-MANIFEST.txt and every recorded reproduction, so it has
+# to be made deliberately and the manifest regenerated in the same change.
+[toolchain]
+channel = "1.94.1"
+components = ["rustc", "cargo", "rust-std"]
+profile = "minimal"

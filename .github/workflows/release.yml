@@ -1,0 +1,214 @@
+name: Release
+
+# Fires on an annotated tag. The tag is the input: there is no "release from a
+# branch" path, because an artifact whose provenance is "whatever main happened
+# to be" cannot be re-derived later.
+on:
+  push:
+    tags: ["v*"]
+
+# Read-only by default. Exactly one job below raises this, and only to the one
+# scope it needs. A workflow-wide `contents: write` would hand every step in
+# every job the ability to rewrite the repository.
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+# Every action below is pinned by full commit SHA, never by tag: a tag is
+# mutable and can be repointed at different code after it was reviewed. That
+# holds for the first-party `actions/*` ones too, because the property we want is
+# "the bytes that ran are the bytes that were reviewed", and that does not depend
+# on who owns the repository.
+
+jobs:
+  # The tag must pass the same gates a pull request does. Re-running them here
+  # rather than trusting the branch run is the point: a tag can name a commit no
+  # CI run ever covered.
+  gates:
+    name: Release gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: js/package-lock.json
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      - name: Install JS workspace
+        working-directory: js
+        run: npm ci
+      - name: JS typecheck, test, build
+        working-directory: js
+        run: |
+          npm run typecheck
+          npm test
+          npm run build
+
+      - name: Install Python package
+        working-directory: python
+        run: pip install -e ".[dev,mlkem]"
+      - name: Python test, lint, types
+        working-directory: python
+        run: |
+          pytest -q
+          ruff check .
+          mypy
+
+      - name: Cross-language pin parity
+        run: node scripts/check-parity.mjs
+      - name: anonrouter-verify CLI parity
+        run: node scripts/check-cli-parity.mjs
+      - name: Artifacts install into empty environments
+        run: node scripts/smoke-artifacts.mjs
+
+      # The version in the packages and the tag being released must be the same
+      # value. They drift silently otherwise, and the first person to notice is
+      # someone who installed the wrong thing.
+      - name: Tag matches the package version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          js_confidential=$(node -p "require('./js/confidential/package.json').version")
+          js_client=$(node -p "require('./js/client/package.json').version")
+          py=$(grep -m1 '^version = ' python/pyproject.toml | cut -d'"' -f2)
+          echo "tag=$tag confidential=$js_confidential client=$js_client python=$py"
+          for v in "$js_confidential" "$js_client" "$py"; do
+            [ "$v" = "$tag" ] || { echo "::error::$v does not match tag $tag"; exit 1; }
+          done
+
+  artifacts:
+    name: Build release artifacts
+    runs-on: ubuntu-latest
+    needs: gates
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          # git archive of the tagged tree needs the tag's history, and the
+          # commit date is what makes the tarballs deterministic.
+          fetch-depth: 0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: js/package-lock.json
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      - name: Install build tooling
+        run: |
+          cd js && npm ci && cd ..
+          python -m pip install --upgrade build twine
+
+      # Builds twice from clean inside a digest-pinned image and fails unless the
+      # outputs are byte-identical. Docker is present on ubuntu-latest.
+      - name: Build every artifact and checksum them
+        run: node scripts/build-release-artifacts.mjs
+
+      - name: Twine metadata check
+        run: twine check dist/artifacts/anonrouter_confidential-*
+
+      - name: Show checksums
+        run: cat dist/artifacts/SHA256SUMS
+
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: release-artifacts
+          path: dist/artifacts/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish the GitHub release
+    runs-on: ubuntu-latest
+    needs: artifacts
+    # The only elevated scope in the workflow, and only for the job that needs
+    # it. No registry credential is involved: GITHUB_TOKEN is short-lived and
+    # scoped to this run.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          name: release-artifacts
+          path: dist/artifacts
+
+      - name: Attach artifacts to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          # Create it if the tag has no release yet, otherwise only upload. A
+          # release is never recreated: an immutable published artifact set is
+          # the whole point, and `--clobber` is deliberately absent.
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" --verify-tag --title "$tag" \
+              --notes-file .github/release-notes/"$tag".md
+          fi
+          gh release upload "$tag" dist/artifacts/*
+
+  # ---- Registry publication ---------------------------------------------------
+  #
+  # Both jobs below are complete and both are OFF. They run only when the
+  # repository variable named in `if:` is set to "true", which is an owner action
+  # taken once, after the corresponding registry account and trusted publisher
+  # exist. Until then a tag push produces a GitHub release and touches no
+  # registry.
+  #
+  # Neither job holds a token. npm and PyPI both accept a short-lived OIDC
+  # identity minted for this workflow run, so there is no long-lived secret to
+  # leak, rotate, or forget. Configure the trusted publisher on the registry side
+  # as: repository anonrouter/anonrouter-sdk, workflow .github/workflows/release.yml.
+
+  publish-npm:
+    name: Publish to npm (trusted publishing)
+    runs-on: ubuntu-latest
+    needs: artifacts
+    if: vars.PUBLISH_NPM == 'true'
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: "22"
+          registry-url: https://registry.npmjs.org
+      - name: Publish both packages with provenance
+        run: |
+          set -euo pipefail
+          # OIDC trusted publishing needs a recent npm; the runner's may lag.
+          npm install -g npm@latest
+          cd js && npm ci && npm run build
+          npm publish --workspace @anonrouter/client --provenance --access public
+          npm publish --workspace @anonrouter/confidential --provenance --access public
+
+  publish-pypi:
+    name: Publish to PyPI (trusted publishing)
+    runs-on: ubuntu-latest
+    needs: artifacts
+    if: vars.PUBLISH_PYPI == 'true'
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          name: release-artifacts
+          path: dist/artifacts
+      - name: Keep only the Python distributions
+        run: |
+          mkdir -p dist/pypi
+          cp dist/artifacts/anonrouter_confidential-* dist/pypi/
+          ls -l dist/pypi
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        with:
+          packages-dir: dist/pypi
