@@ -63,6 +63,13 @@ on any of them, because the words matter.
   being a matter of faith is that a build changed to exfiltrate it would change
   the measurements, so hop 1 stops verifying. Cheating is *detectable* — provided
   you actually verify, which is what this SDK is for.
+  - "Reviewed build" is meant literally. The compose measured by the CVM names the
+    content plane by image digest, and that image is built in public CI from
+    [`anonrouter/confidential-content-plane`](https://github.com/anonrouter/confidential-content-plane)
+    at tag `content-plane-v1.0.17`, with a signed SLSA provenance attestation
+    naming the same digest. Two of its base images still have no source-to-digest
+    binding; the release manifest names them rather than rounding them up, and so
+    does [`docs/release-readiness.md`](docs/release-readiness.md).
 - **E2EE removes us from the trust set entirely.** On an E2EE route the SDK
   encrypts your request to a key bound to the *provider's* attested enclave, so
   AnonRouter's relay holds ciphertext whatever code it happens to be running. Use
