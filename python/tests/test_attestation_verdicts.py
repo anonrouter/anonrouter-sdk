@@ -47,6 +47,11 @@ def test_every_case_matches_the_recorded_verdict(attestation_vectors: dict[str, 
         assert verdict.supports_client_opaque_e2ee == expected["supportsClientOpaqueE2ee"], name
         failed = [c.name for c in verdict.checks if c.required and not c.passed]
         assert failed == expected["failedRequiredChecks"], name
+        # Advisory failures are pinned too. They do not change the status, which
+        # is why they need a gate of their own: a named gap that quietly stopped
+        # being reported looks exactly like a route that never had one.
+        advisory = [c.name for c in verdict.checks if not c.required and not c.passed]
+        assert advisory == expected["failedAdvisoryChecks"], name
 
 
 def test_no_case_claims_hardware_verified(attestation_vectors: dict[str, Any]) -> None:

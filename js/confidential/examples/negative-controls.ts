@@ -27,8 +27,10 @@
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { createClient } from "../src/client.js";
-import { verifyRawEvidence } from "../src/verify/index.js";
+import { verifyRawEvidence, verifierFor } from "../src/verify/index.js";
+import { isE2eeProvider } from "../src/transport/index.js";
 import { ConfidentialError } from "../src/errors.js";
+import { createClient as createPlainClient } from "@anonrouter/client";
 
 const args = process.argv.slice(2);
 const flag = (name: string) => args.includes(`--${name}`);
@@ -61,6 +63,7 @@ if (!API_KEY.startsWith("ar_")) {
 }
 
 const client = createClient({ inferenceBaseUrl: INFERENCE, controlBaseUrl: CONTROL, apiKey: API_KEY });
+const plain = createPlainClient({ inferenceBaseUrl: INFERENCE, controlBaseUrl: CONTROL, apiKey: API_KEY });
 const auth = { authorization: `Bearer ${API_KEY}`, "content-type": "application/json" };
 const freshNonce = () => Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("hex");
 
@@ -369,17 +372,37 @@ async function clientRefusals(model: string, provider: string) {
     observed: { status: wrongNonce.status, reason: wrongNonce.reason }
   });
 
-  // A DIFFERENT UPSTREAM MODEL. The enclave names the weights it loaded.
+  // A DIFFERENT UPSTREAM MODEL.
+  //
+  // Two outcomes are correct here and they are not the same outcome. A provider
+  // whose enclave NAMES the weights it loaded must refuse a substituted name.
+  // A provider whose evidence names no model cannot refuse anything — there is
+  // nothing to contradict — and the right behaviour is to say so, in the
+  // verdict, as a failed `model_binding` advisory. What must never happen is a
+  // clean verdict with no mention of the question, because that reads as "this
+  // route binds the model" to everyone who does not know the evidence format.
+  //
+  // Requiring only "refuse" made this control fail on Chutes for the wrong
+  // reason. Requiring nothing would let a real regression through. So: refuse,
+  // or name the gap.
   const wrongModel = verifyRawEvidence(provider, body.evidence, {
     upstreamModel: "e2ee-not-the-model-you-asked-for", canonicalModel: model, nonce, privacyModality: "e2ee"
   });
+  const modelBinding = wrongModel.checks.find((c) => c.name === "model_binding");
+  const namedTheGap = modelBinding !== undefined && !modelBinding.passed;
   record({
     id: "client/wrong-upstream-model",
     kind: "CLIENT",
     expectation: "refuse",
-    what: "evidence attesting weights other than the ones requested",
-    held: wrongModel.status !== "ok",
-    observed: { status: wrongModel.status, reason: wrongModel.reason }
+    what: "evidence attesting weights other than the ones requested, refused or reported as unbound",
+    held: wrongModel.status !== "ok" || namedTheGap,
+    observed: {
+      status: wrongModel.status,
+      reason: wrongModel.reason,
+      model_binding: modelBinding === undefined
+        ? "absent"
+        : modelBinding.passed ? "passed" : modelBinding.required ? "failed-required" : "failed-advisory"
+    }
   });
 
   // THE WRONG MODALITY CONTRACT. A `tee` expectation on an E2EE provider must not
@@ -489,13 +512,42 @@ async function credentialIsolation(model: string, provider: string) {
   });
 }
 
-async function main() {
-  // A route with real evidence, chosen from the live catalog rather than named
-  // here: the sample has to be one that actually works today, or the client
-  // controls all skip and the run reports nothing while looking green.
-  const sample = { model: "openai/gpt-oss-20b", provider: "venice" };
+/**
+ * A route with real evidence, read from the live catalog.
+ *
+ * This used to be a written-down `openai/gpt-oss-20b` on `venice`, under a
+ * comment claiming it was chosen live. When that row left the catalog the mint
+ * answered `route_not_found`, every client control skipped, and the run printed
+ * "controls holding: 8/10" — which reads like two controls failing rather than
+ * two controls never running. A hard-coded route in a harness like this does not
+ * fail loudly; it quietly stops measuring.
+ *
+ * It must be `e2ee`: the client controls verify raw provider evidence with
+ * `privacyModality: "e2ee"`, and a `tee` route does not carry the client-opaque
+ * binding they tamper with.
+ */
+async function pickSample(): Promise<{ model: string; provider: string }> {
+  const catalog = await plain.models();
+  for (const model of catalog.data) {
+    for (const route of model.provider_routes ?? []) {
+      if (route.privacy_class !== "e2ee") continue;
+      if (route.callable !== true) continue;
+      if (verifierFor(route.provider) === null) continue;
+      if (!isE2eeProvider(route.provider)) continue;
+      return { model: model.id, provider: route.provider };
+    }
+  }
+  throw new Error(
+    "no callable e2ee route with a shipped verifier is in the live catalog; "
+    + "the client controls cannot be exercised against nothing"
+  );
+}
 
-  console.log(`negative controls against ${CONTROL} and ${INFERENCE}\n`);
+async function main() {
+  const sample = await pickSample();
+
+  console.log(`negative controls against ${CONTROL} and ${INFERENCE}`);
+  console.log(`sample route from the live catalog: ${sample.provider} ${sample.model}\n`);
   await mintRefusals();
   await redemptionRefusals(sample.model, sample.provider);
   await clientRefusals(sample.model, sample.provider);

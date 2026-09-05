@@ -171,6 +171,30 @@ def verify_chutes(evidence: Any, expectations: AttestationExpectations) -> Norma
         checks.append(check(f"{label}_gpu_evidence_present", gpu_shape_ok, True,
                             None if gpu_shape_ok else "no complete NVIDIA GPU evidence"))
 
+    # MODEL BINDING: STATED NOWHERE, so it is reported rather than omitted.
+    #
+    # Chutes' evidence names the instance, its measurements and its ML-KEM key,
+    # but never the weights that were loaded. Venice's ``model_binding`` is a
+    # REQUIRED check because Venice states a model and can therefore contradict
+    # itself; there is nothing here to contradict.
+    #
+    # Leaving the check out entirely was the wrong answer, and it was the answer
+    # this file gave. A verdict with no ``model_binding`` line reads as a route
+    # where the question does not arise, when in fact it arises and the provider
+    # does not answer it. It is advisory rather than required because the route
+    # genuinely works and refusing it would be a policy decision about live
+    # traffic, not a verification result — but a reader now sees the gap in
+    # ``advisory_gaps`` instead of having to know the format to infer it.
+    #
+    # What still binds the model on this route is AnonRouter's own attested relay
+    # echoing the route back, which the two-hop verdict cross-checks. That is a
+    # weaker statement than the provider's enclave naming its own weights, and
+    # the two must not be read as the same thing.
+    checks.append(check(
+        "model_binding", False, False,
+        "provider evidence names no model; the route model rests on the gateway echo",
+    ))
+
     checks.append(freshness_check(envelope.fetched_at_ms, expectations))
 
     attested_encryption_key = None

@@ -416,7 +416,12 @@ const cases = inputs.map((input) => {
       verificationLevel: verdict.verification_level,
       reason: verdict.reason,
       supportsClientOpaqueE2ee: verdict.supports_client_opaque_e2ee,
-      failedRequiredChecks: verdict.checks.filter((c) => c.required && !c.passed).map((c) => c.name)
+      failedRequiredChecks: verdict.checks.filter((c) => c.required && !c.passed).map((c) => c.name),
+      // Advisory failures are pinned too. They do not change the status, which
+      // is exactly why they need a gate: a named gap that silently stopped being
+      // reported would look identical to a route that never had one, and the
+      // only reader who notices is the one who trusted the verdict.
+      failedAdvisoryChecks: verdict.checks.filter((c) => !c.required && !c.passed).map((c) => c.name)
     }
   };
 });

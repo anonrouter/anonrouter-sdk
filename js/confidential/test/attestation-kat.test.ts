@@ -25,6 +25,7 @@ interface AttestationCase {
     reason: string | null;
     supportsClientOpaqueE2ee: boolean;
     failedRequiredChecks: string[];
+    failedAdvisoryChecks: string[];
   };
 }
 
@@ -57,6 +58,11 @@ describe("verifier verdict KAT parity (shared/vectors/attestation.json)", () => 
       expect(verdict.supports_client_opaque_e2ee).toBe(testCase.expected.supportsClientOpaqueE2ee);
       expect(verdict.checks.filter((c) => c.required && !c.passed).map((c) => c.name))
         .toEqual(testCase.expected.failedRequiredChecks);
+      // Advisory failures are pinned too. They do not change the status, which is
+      // why they need a gate of their own: a named gap that quietly stopped being
+      // reported looks exactly like a route that never had one.
+      expect(verdict.checks.filter((c) => !c.required && !c.passed).map((c) => c.name))
+        .toEqual(testCase.expected.failedAdvisoryChecks);
     });
   }
 
