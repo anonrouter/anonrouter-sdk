@@ -50,6 +50,23 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/anonrouter_confidential"]
 
+# An explicit list, not "everything git does not ignore".
+#
+# The default selection packages whatever happens to be sitting in this
+# directory, so a local virtualenv or a stray build tree lands in the published
+# sdist — and it does so silently, because nothing about a successful build
+# looks different. Naming the contents makes the artifact a function of the
+# repository rather than of whoever built it.
+[tool.hatch.build.targets.sdist]
+include = [
+  "src",
+  "tests",
+  "examples",
+  "README.md",
+  "LICENSE",
+  "pyproject.toml",
+]
+
 [tool.ruff.lint]
 ignore = [
   # This SDK fails closed with DOMAIN errors (ConfidentialError / ValueError) on

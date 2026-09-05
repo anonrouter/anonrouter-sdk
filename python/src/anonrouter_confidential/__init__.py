@@ -25,14 +25,6 @@ from .gateway import (
     pinned_gateway_policy_for,
     verify_gateway_attestation,
 )
-from .route_policy import (
-    confidential_route_policy_version,
-    is_route_withheld_by_service,
-    offered_confidential_routes,
-    withheld_confidential_routes,
-    withheld_route_classification,
-    withheld_route_message,
-)
 from .measurements import (
     load_measurements,
     pinned_endpoint_identity_for,
@@ -63,6 +55,14 @@ from .media import (
     canonical_image_size,
     redact_headers,
     utf16_length,
+)
+from .route_policy import (
+    confidential_route_policy_version,
+    is_route_withheld_by_service,
+    offered_confidential_routes,
+    withheld_confidential_routes,
+    withheld_route_classification,
+    withheld_route_message,
 )
 from .tdx import (
     TDX_TEE_TYPE,

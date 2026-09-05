@@ -8,7 +8,9 @@ build/
 # Python
 __pycache__/
 *.py[cod]
-.venv/
+# Any venv name, not just the two conventional ones: an unignored virtualenv
+# inside python/ used to end up inside the published sdist.
+.venv*/
 venv/
 .pytest_cache/
 .mypy_cache/

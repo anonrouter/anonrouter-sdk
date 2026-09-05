@@ -38,7 +38,6 @@ from .crypto import chutes as chutes_crypto
 from .crypto import near as near_crypto
 from .crypto import venice as venice_crypto
 from .errors import ConfidentialError
-from .route_policy import is_route_withheld_by_service, withheld_route_message
 from .gateway.binding import GATEWAY_NONCE_HEX_LENGTH
 from .gateway.policy import GatewayMeasurementPolicy, pinned_gateway_policy_for
 from .gateway.verify import TdxChainVerifier, verify_gateway_attestation
@@ -51,6 +50,7 @@ from .media import (
     MediaOwner,
     _MediaTransport,
 )
+from .route_policy import is_route_withheld_by_service, withheld_route_message
 from .tdx import TDX_TEE_TYPE, match_measurement_allowlist, parse_tdx_quote
 from .verify import verify_raw_evidence
 from .verify.checks import hex_equal

@@ -22,10 +22,12 @@
   "sideEffects": false,
   "engines": { "node": ">=20" },
   "publishConfig": { "access": "public" },
+  "//prepare": "The confidential package's route-matrix example imports this one, and npm resolves that import through `types` -> dist. Building on install means a fresh clone can typecheck before anything has been built by hand; without it `npm ci && npm run typecheck` fails on a file nobody edited.",
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
+    "prepare": "npm run build",
     "prepublishOnly": "npm run build"
   },
   "keywords": ["anonrouter", "api", "client", "openai-compatible", "inference", "ticket"],
