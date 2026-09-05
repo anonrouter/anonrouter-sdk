@@ -226,6 +226,25 @@ describe("subprocess chain verifier fails closed", () => {
     expect(verifier.verifyChain(quote, undefined)).toEqual({ verified: true, tcbStatus: "UpToDate" });
   });
 
+  it("accepts an engine that answers without draining stdin", async () => {
+    // THE RACE THIS PINS. An engine that prints its verdict and exits without
+    // reading stdin closes the pipe while the quote is still being written, and
+    // the parent gets EPIPE. Treating that as the answer failed a correct engine
+    // depending on machine speed — safe, since it failed closed, but it made
+    // `hardware_verified` a matter of timing. What decides the outcome is the
+    // verdict on stdout.
+    //
+    // Deterministic rather than lucky: the child closes fd 0 explicitly, and the
+    // quote is larger than a pipe buffer, so the write cannot quietly succeed.
+    const bigQuote = "ab".repeat(100_000);
+    const adapter = createSubprocessChainVerifier({
+      binaryPath: "/bin/sh",
+      args: ["-c", `exec 0<&-; printf '%s' '{"verified":true,"tcbStatus":"UpToDate"}'`]
+    });
+    const verifier = await adapter.prepare(bigQuote);
+    expect(verifier.verifyChain(bigQuote, undefined)).toEqual({ verified: true, tcbStatus: "UpToDate" });
+  });
+
   it("still refuses when the engine passes but the policy rejects the TCB", async () => {
     // End to end: engine says verified/OutOfDate, policy accepts only UpToDate.
     const adapter = createSubprocessChainVerifier({

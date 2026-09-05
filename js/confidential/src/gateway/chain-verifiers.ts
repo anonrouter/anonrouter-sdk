@@ -122,6 +122,18 @@ export function createSubprocessChainVerifier(options: SubprocessChainVerifierOp
           resolve(verdict);
         }
       };
+      // A FAILED STDIN WRITE IS NOT A VERDICT, so it is remembered rather than
+      // resolved on.
+      //
+      // An engine that prints its answer and exits without draining stdin closes
+      // the pipe while the multi-kilobyte quote is still being written, and the
+      // parent gets EPIPE. Resolving there raced the exec callback and won often
+      // enough to fail a correct engine at random — safe, because it fails
+      // closed, but it makes `hardware_verified` unreachable by luck rather than
+      // by evidence. What decides the outcome is whether a usable verdict came
+      // back on stdout; the write failure only supplies the reason when none did.
+      // `runDcapEngine` in ./dcap/engine.ts has always done it this way.
+      let stdinFailed = false;
       let child;
       try {
         child = execFile(
@@ -130,27 +142,38 @@ export function createSubprocessChainVerifier(options: SubprocessChainVerifierOp
           { timeout: timeoutMs, maxBuffer: MAX_OUTPUT_BYTES, encoding: "utf8" },
           (error, stdout) => {
             if (error) {
-              // Missing binary, non-zero exit, timeout, oversized output: all refusals.
+              // Missing binary, non-zero exit, timeout, oversized output: all
+              // refusals, and still refusals even if something parseable reached
+              // stdout. This adapter's contract is a wrapper you control; an
+              // engine that answers and then fails is not an engine that answered.
               done({ verified: false, tcbStatus: null, error: `engine failed: ${error.code ?? "error"}` });
               return;
             }
-            const verdict = parseEngineVerdict(String(stdout).trim());
-            done(verdict ?? { verified: false, tcbStatus: null, error: "engine produced no usable verdict" });
+            const verdict = parseEngineVerdict(String(stdout ?? "").trim());
+            if (verdict) {
+              done(verdict);
+              return;
+            }
+            done({
+              verified: false,
+              tcbStatus: null,
+              error: stdinFailed
+                ? "engine stdin could not be written"
+                : "engine produced no usable verdict"
+            });
           }
         );
-      } catch (error) {
+      } catch {
         done({ verified: false, tcbStatus: null, error: "engine could not be spawned" });
         return;
       }
       // The quote goes on stdin, never argv: a multi-kilobyte hex blob in a
       // command line is a process-listing leak and an ARG_MAX hazard.
-      child.stdin?.on("error", () => {
-        done({ verified: false, tcbStatus: null, error: "engine stdin could not be written" });
-      });
+      child.stdin?.on("error", () => { stdinFailed = true; });
       try {
         child.stdin?.end(quote);
       } catch {
-        done({ verified: false, tcbStatus: null, error: "engine stdin could not be written" });
+        stdinFailed = true;
       }
       child.on("error", () => done({ verified: false, tcbStatus: null, error: "engine could not be spawned" }));
     });

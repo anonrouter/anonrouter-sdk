@@ -272,6 +272,22 @@ def test_well_formed_positive_verdict_is_accepted() -> None:
     assert adapter.prepare("aabbccdd").verify_chain("aabbccdd") == (True, "UpToDate")
 
 
+def test_engine_that_answers_without_draining_stdin_is_accepted() -> None:
+    """Mirrors the JavaScript case of the same name.
+
+    An engine that prints its verdict and exits without reading stdin closes the
+    pipe while the quote is still being written. What decides the outcome is the
+    verdict on stdout, not the write. The child closes fd 0 explicitly and the
+    quote is larger than a pipe buffer, so the write cannot quietly succeed.
+    """
+    big_quote = "ab" * 100_000
+    adapter = SubprocessChainVerifier(
+        "/bin/sh",
+        args=["-c", """exec 0<&-; printf '%s' '{"verified":true,"tcbStatus":"UpToDate"}'"""],
+    )
+    assert adapter.prepare(big_quote).verify_chain(big_quote) == (True, "UpToDate")
+
+
 def test_engine_pass_still_refused_when_policy_rejects_the_tcb() -> None:
     # End to end: engine says verified/OutOfDate, policy accepts only UpToDate.
     adapter = SubprocessChainVerifier(
