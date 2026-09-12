@@ -26,7 +26,19 @@ export interface TdxMeasurementEntry {
   composeRepositoryPath?: string;
 }
 
-/** The one Tinfoil release authority accepted by the AnonRouter packages. */
+/** The one Tinfoil release authority accepted by the AnonRouter packages.
+ *
+ *  Only `configRepo` is re-derived from evidence: the Tinfoil verifier compares
+ *  it against the repository the verification document names, so a different
+ *  repository fails closed. `authority`, `releaseSelection` and
+ *  `requireTaggedRelease` are LABELS recording which Tinfoil workflow this
+ *  package was reviewed against, and they pin this file against a silent edit.
+ *  Nothing here re-checks them: the document carries no Fulcio identity or
+ *  workflow ref to check them against, and those guarantees belong to the
+ *  official verifier's own `verifyCode` / `fetchDigest` steps.
+ *
+ *  Replaces the `TinfoilAcceptedRelease` entry type used through 0.1.1, which
+ *  described a per-release fingerprint allowlist that no longer exists. */
 export interface TinfoilProviderAuthority {
   authority: "github-actions-sigstore";
   configRepo: "tinfoilsh/confidential-model-router";

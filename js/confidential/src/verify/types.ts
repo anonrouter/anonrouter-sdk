@@ -35,12 +35,17 @@ export type VerificationLevel =
   /** The provider/route does not expose this capability at all. */
   | "unsupported";
 
+/** The hardware a verdict reports evidence for. Combined variants mean BOTH
+ *  parts were evidenced; do not use one as shorthand for "runs on a GPU".
+ *  `amd-sev-snp+nvidia-cc` was removed in 0.1.2: the only route that emitted it
+ *  was Tinfoil, whose official verifier establishes no NVIDIA
+ *  confidential-compute evidence at all, so the value named a chain nothing had
+ *  walked. Tinfoil now reports `amd-sev-snp`. */
 export type HardwareType =
   | "intel-tdx"
   | "amd-sev-snp"
   | "nvidia-cc"
   | "intel-tdx+nvidia-cc"
-  | "amd-sev-snp+nvidia-cc"
   | "unknown";
 
 /** The two verified-execution privacy modalities. `tee`: enclave-verified but the

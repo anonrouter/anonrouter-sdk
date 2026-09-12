@@ -154,10 +154,10 @@
         "evidence": [
           {
             "instance_id": "2f8c1d90-4b63-4a71-9e05-7c1a8f2b63d4",
-            "quote": "BAAAAIEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAN3G783SMJ4Qg3+Kf2S3EnK37wA7EpRgQQ/nFb3//sOMfAwWht3bKiPU/WI9FF6EVQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAChksRh46BKQldYqXdfD46rheNOgd2BqglYXMkdo8YmtBa7Qg3aUffktbHWGXZFcv/hY7Srsuk7NKQhDUsa1xuQDwL7Im4yFL5D6WozueW/6CVUYxc2LksJcGFbpMqlYd3cZ9P3lGJlKXdZ2eouLh6OBaMwPNIDnSY1Kzpnkkxm+an/tJsIa1DMQ0tSI/GirHL+si76XFI0AwLxd6ic8zZJuJBVRHwj13tqpbTwZ6CTSvwH66G6Jh/9Qn9OtMTdKYPEWRnqxCq/M5EHibg2hFRH9v7zKYUXhYv0U6vaTddpwDLrLzenocK2ZQu6mFa2kNC+eBL+kuK44m3/WDQFNcjc=",
-            "certificate": "MIIDLTCCAhWgAwIBAgIUANxBx9WaMuYnmBQ9Q32ZIXOQSdMwDQYJKoZIhvcNAQELBQAwJTEjMCEGA1UEAwwaYW5vbnJvdXRlci1zZGstdGVzdC12ZWN0b3IwIBcNMjAwMTAxMDAwMDAwWhgPMjEwMDAxMDEwMDAwMDBaMCUxIzAhBgNVBAMMGmFub25yb3V0ZXItc2RrLXRlc3QtdmVjdG9yMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxxNQ43WEtOGc5zyt3fWgelFCfNwKFlyUcn5mYd/FVhEWYs2V5xVjYx6pwsfi50kAnx7FV89HPOQsVbf6km880o4LkgFgPI9gdWbSxC4wMH9gLAeLre5PEG51qbScGOxlh5mMzjRU4loR8geEsZNZ5Bng9op7rIPeyew3ShbeCgA3IpCS51RWmMy7U8239XygYKH6FfR9UqrA6glKc8IAkvw+XgkzgfOvVt1AAN2JiAn+j0hrKkwU+KRwTRdgg4OoSGhFtsZ8xPU5yegBByf5Ecad2IkjRXqXSvg88D6ySUHdtWB8yRU+EZa6S0z8QNdZLbRKWsryqCNfhrzdCiaiQQIDAQABo1MwUTAdBgNVHQ4EFgQU0/H6G4dJJ4nia2PY37yfW2MHsUMwHwYDVR0jBBgwFoAU0/H6G4dJJ4nia2PY37yfW2MHsUMwDwYDVR0TAQH/BAUwAwEB/zANBgkqhkiG9w0BAQsFAAOCAQEAwBPs8V1MNAr7YISsyu2cdGsILXrgK66qn4IdY11CNx9xAWhd/otee/2ZE91q/JbINaxa1fxX2SsJPM18ewmUqzQgniVJzoaTy7HKHp4ZwKGYhbzctrFLLDStOE+cd+RoIbSaqRYYYfG9UeaIh9yNJE7zpSvUlzac9dGusQTMhbDBtj6bA9gWMoK35XCS5GZatZ10zL+iHWEYxHeXSeGijxsxBgfQevVwJx76Xq8AmkcU8YC7wgvKIMmvoPnO88xqi78iGQvjIQAvPuGA2+eTvmpc79PRHzbftV4fYrO1DDf12zs0Q/D3LXofcaLbH0v02SlAqQtEkUHSgSBO+5jzAw==",
-            "attested_body": "eyJub25jZSI6IjNmMWM4ZTViOWEyZDQ3ZjBjNmIzZTgxYTVkOTRmMjdjMGU2YTgzYjE1ZDJmNDljN2EwOGUzNjViMWQ0YzdmOTIiLCJldmlkZW5jZSI6eyJ0ZHhfcXVvdGUiOiJCQUFBQUlFQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU4zRzc4M1NNSjRRZzMrS2YyUzNFbkszN3dBN0VwUmdRUS9uRmIzLy9zT01mQXdXaHQzYktpUFUvV0k5RkY2RVZRQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFDaGtzUmg0NkJLUWxkWXFYZGZENDZyaGVOT2dkMkJxZ2xZWE1rZG84WW10QmE3UWczYVVmZmt0YkhXR1haRmN2L2hZN1Nyc3VrN05LUWhEVXNhMXh1UUR3TDdJbTR5Rkw1RDZXb3p1ZVcvNkNWVVl4YzJMa3NKY0dGYnBNcWxZZDNjWjlQM2xHSmxLWGRaMmVvdUxoNk9CYU13UE5JRG5TWTFLenBua2t4bSthbi90SnNJYTFETVEwdFNJL0dpckhMK3NpNzZYRkkwQXdMeGQ2aWM4elpKdUpCVlJId2oxM3RxcGJUd1o2Q1RTdndINjZHNkpoLzlRbjlPdE1UZEtZUEVXUm5xeENxL001RUhpYmcyaEZSSDl2N3pLWVVYaFl2MFU2dmFUZGRwd0RMckx6ZW5vY0syWlF1Nm1GYTJrTkMrZUJMK2t1SzQ0bTMvV0RRRk5jamM9IiwibnZ0cnVzdF9ldmlkZW5jZSI6Ilt7XCJjZXJ0aWZpY2F0ZVwiOlwibnZpZGlhLWNlcnQtY2hhaW4tcGVtXCIsXCJldmlkZW5jZVwiOlwibnZpZGlhLWF0dGVzdGF0aW9uLWJsb2JcIn1dIn19",
-            "signature": "gkhMptDSS7zWU3WsKmpiyUDAyDn2eBaF7M+8GGjImUZ7YxTYBAdlYZGgHMVgvUHg16rJYyCWfaC8oLyXp/nx78YNy8WaxTcgPjFcO5RiiZt7uWlqO9jYdatqFavdDieQDGKe7/vvd2I06sOMlqiTv4+byQ2fltrAO2F+CDy8ei+3FJMeBZB4ZR+JJi7K69DW8gtDGS/iqPC7kJsSzdW62yr/n7rdb7zjBwFFO+P+djzqiBHXSfBP128PnRZ2IQehtMZng1YMPMqQo3afDAxcrwovDm3XziBfqdoUbQAXclSK39cWB3PXlVekuaxqWMRdEApEMAefHskAx7XyQAJH+w==",
+            "quote": "BAAAAIEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAN3G783SMJ4Qg3+Kf2S3EnK37wA7EpRgQQ/nFb3//sOMfAwWht3bKiPU/WI9FF6EVQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAChksRh46BKQldYqXdfD46rheNOgd2BqglYXMkdo8YmtBa7Qg3aUffktbHWGXZFcv/hY7Srsuk7NKQhDUsa1xuQDwL7Im4yFL5D6WozueW/6CVUYxc2LksJcGFbpMqlYd3cZ9P3lGJlKXdZ2eouLh6OBaMwPNIDnSY1Kzpnkkxm+an/tJsIa1DMQ0tSI/GirHL+si76XFI0AwLxd6ic8zZJuJBVRHwj13tqpbTwZ6CTSvwH66G6Jh/9Qn9OtMTdKYPEWRnqxCq/M5EHibg2hFRH9v7zKYUXhYv0U6vaTddpwJIESecc5amsxlLm83yeOmENVaJEtejPT7+KRo2eIRT0=",
+            "certificate": "MIIDLTCCAhWgAwIBAgIUetK5waGsBrwmUmC6b0ZRasLl0BgwDQYJKoZIhvcNAQELBQAwJTEjMCEGA1UEAwwaYW5vbnJvdXRlci1zZGstdGVzdC12ZWN0b3IwIBcNMjAwMTAxMDAwMDAwWhgPMjEwMDAxMDEwMDAwMDBaMCUxIzAhBgNVBAMMGmFub25yb3V0ZXItc2RrLXRlc3QtdmVjdG9yMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1XD35DJY7lwzhS9sdFcR2hiB79PLhJMGQwBTaZfHrHMPqyp3qcZY6oAtnl2/dmLpZR2+7M3ybfhUAUjuQlzQIBve5IChkEEHi612HwGSZRJCdZvQfovU/8D8V/trYasszyc4mMHYuLnq3oH9tj/2hdoqel0iUGQ3Mqo9TkF464BdBB4C9z6VTO/lBV194Km7jH+euSUPfmN3pMCnd/JO/RSdbRoAw3QrOUeTy14d6i620MmJDiaQQD2fHYtqEtZGJFzDEO59GMBaqSqdM083V3nqsyeuwXUqQL/UaqSgWKrgaum3E036UbN7hkASsrgUluF5iJ/+CXjfS7P3QxZmSQIDAQABo1MwUTAdBgNVHQ4EFgQUd8IdYdlY7dzTSiGIR1qpNo1nEyIwHwYDVR0jBBgwFoAUd8IdYdlY7dzTSiGIR1qpNo1nEyIwDwYDVR0TAQH/BAUwAwEB/zANBgkqhkiG9w0BAQsFAAOCAQEAmwPLDKap5nwWEtZDnUsI78lbItuhJ4nPVcmsiTANVwNROKAD3LKoVdHI4Dbfq2ORNxe1JiuvRX8Aa+dut93QWpERs+QTUf0vRrz8TRt6XoqcBjmx/Kz6VFSMRKazJdezNNE8od8MhHXpfPq3sHS2pgXLzGQiPeh495XkEO9iNKBljReapRMPkO+BkGlwfYGssfZqOpjwrxF2lVKm48RIo13XAlawcgvPZc4yQlRa8iuBrSczvmJg2SvWS5vxfnmTqauOsJLPvysJFxEUu52V3zW0nCcsEzOe0O8wgicm6szGuzO6eN06IRUGgP0h59hnFOqMnCEZpl3DhcRTFKRgPw==",
+            "attested_body": "eyJub25jZSI6IjNmMWM4ZTViOWEyZDQ3ZjBjNmIzZTgxYTVkOTRmMjdjMGU2YTgzYjE1ZDJmNDljN2EwOGUzNjViMWQ0YzdmOTIiLCJldmlkZW5jZSI6eyJ0ZHhfcXVvdGUiOiJCQUFBQUlFQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU4zRzc4M1NNSjRRZzMrS2YyUzNFbkszN3dBN0VwUmdRUS9uRmIzLy9zT01mQXdXaHQzYktpUFUvV0k5RkY2RVZRQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFDaGtzUmg0NkJLUWxkWXFYZGZENDZyaGVOT2dkMkJxZ2xZWE1rZG84WW10QmE3UWczYVVmZmt0YkhXR1haRmN2L2hZN1Nyc3VrN05LUWhEVXNhMXh1UUR3TDdJbTR5Rkw1RDZXb3p1ZVcvNkNWVVl4YzJMa3NKY0dGYnBNcWxZZDNjWjlQM2xHSmxLWGRaMmVvdUxoNk9CYU13UE5JRG5TWTFLenBua2t4bSthbi90SnNJYTFETVEwdFNJL0dpckhMK3NpNzZYRkkwQXdMeGQ2aWM4elpKdUpCVlJId2oxM3RxcGJUd1o2Q1RTdndINjZHNkpoLzlRbjlPdE1UZEtZUEVXUm5xeENxL001RUhpYmcyaEZSSDl2N3pLWVVYaFl2MFU2dmFUZGRwd0pJRVNlY2M1YW1zeGxMbTgzeWVPbUVOVmFKRXRlalBUNytLUm8yZUlSVDA9IiwibnZ0cnVzdF9ldmlkZW5jZSI6Ilt7XCJjZXJ0aWZpY2F0ZVwiOlwibnZpZGlhLWNlcnQtY2hhaW4tcGVtXCIsXCJldmlkZW5jZVwiOlwibnZpZGlhLWF0dGVzdGF0aW9uLWJsb2JcIn1dIn19",
+            "signature": "G/n3GWRcZpT7byqbTyc+37FVIf4XILQwPn9ml9BitpGPhxi9PLx0zcwHLbz097VvhRygcJqIqB7xtO4rFX4FIeXzxqgOweH7VzTbat4clmE6YUYfOBx60cko+XdZ9qfUMriCkeqZGRibNAUQd9HtWLbLK3T2TIuGZoqdk08WtFRqq0NghY58qYCFn1YmmzcJh0G1TTwoJE86ZzFPknYrsbFKzzsscgP8I6a3Eq5+K1YOp9en0AhcJeqMDgqYJ5gAzhVA3wHv6XYl7UZ6yveo6y+PgZnAHlGKUliWtuBMa2n2M0PHN9WSKwVp1DuzzhfB6kCZMtsEJqj0pZdXTEeFVg==",
             "gpu_evidence": [
               {
                 "certificate": "nvidia-cert-chain-pem",
@@ -204,10 +204,10 @@
         "evidence": [
           {
             "instance_id": "2f8c1d90-4b63-4a71-9e05-7c1a8f2b63d4",
-            "quote": "BAAAAIEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAN3G783SMJ4Qg3+Kf2S3EnK37wA7EpRgQQ/nFb3//sOMfAwWht3bKiPU/WI9FF6EVQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAChksRh46BKQldYqXdfD46rheNOgd2BqglYXMkdo8YmtBa7Qg3aUffktbHWGXZFcv/hY7Srsuk7NKQhDUsa1xuQDwL7Im4yFL5D6WozueW/6CVUYxc2LksJcGFbpMqlYd3cZ9P3lGJlKXdZ2eouLh6OBaMwPNIDnSY1Kzpnkkxm+an/tJsIa1DMQ0tSI/GirHL+si76XFI0AwLxd6ic8zZJuJBVRHwj13tqpbTwZ6CTSvwH66G6Jh/9Qn9OtMTdKYHnTLJYDJZ4gBnV0tqEBOgs2bZOYQVAMDd2SsZNQthbYaWWPElS2l1NVkWdtiylHpcS//fQdkFc85wkXTsqY79Y=",
-            "certificate": "MIIDLTCCAhWgAwIBAgIUf6q8o5RUlAKXummm6+yb1irRfEUwDQYJKoZIhvcNAQELBQAwJTEjMCEGA1UEAwwaYW5vbnJvdXRlci1zZGstdGVzdC12ZWN0b3IwIBcNMjAwMTAxMDAwMDAwWhgPMjEwMDAxMDEwMDAwMDBaMCUxIzAhBgNVBAMMGmFub25yb3V0ZXItc2RrLXRlc3QtdmVjdG9yMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAs4hUMzwaKly2x8ZEoyAsCB+AFBKxQ1LCKIgAYYCf6J+sAuGjhpF+W6fMT2abf7fzmoSwTx4Q7Nm549JSBHukp61mhrZX81UXUOlc42LbaJotATaSAcPpB1j/hI0wviYokn0Qs30Pp1xJv7IuWP3Ol2r9hcZULs/pk8ftD9YwfBX0c/1h/Afys/fhvSCUpjlJTjrkJBs+5ehUigQt/eL14BMrBebPf8fepVEQZr8+Wq+vUfFQdYufRn4WbA2ftXPto9tU8VuyZ/9YZQ1Q4HOjHp2nwUM8B3h24m22e+iV+08tXKJETlojVoCh8nBjNxklNzmL1C5/2zk3+QmLtnNCbQIDAQABo1MwUTAdBgNVHQ4EFgQUQ/DzXnK7KCCAKMF8InlIA6FgGwswHwYDVR0jBBgwFoAUQ/DzXnK7KCCAKMF8InlIA6FgGwswDwYDVR0TAQH/BAUwAwEB/zANBgkqhkiG9w0BAQsFAAOCAQEAkcJpX4BII3jyDxIxdlJShUfkaQi5g858JsfT1RFzijVO5mOzDoSKOu+ZUuqVm+vfoV9umqN/yv/Nz+Qur0LuvKrkpZKyFM5uxGf0Z0pw6/boJBXKUt5OBGBkzBwhVFb8MGxGX4/43V37X+25WJkUbyR+nsnOMo/bfrbuua3WSezmbfeL4sVG+4QyklAaZ3ZbyIJIPOmAyc0Vz/elJ5TlfuVVr+gtR2Oi+WMIJH1E4JjablNs89maLXb/G3K1UudpXmBRN9auPdE6BUfIwlFgwJ0UwIZDQyrwTh1USShlwdcXPriDcxHqdkYHmRtcu27BoxwUx400mBbrX55KLwUbuA==",
-            "attested_body": "eyJub25jZSI6IjNmMWM4ZTViOWEyZDQ3ZjBjNmIzZTgxYTVkOTRmMjdjMGU2YTgzYjE1ZDJmNDljN2EwOGUzNjViMWQ0YzdmOTIiLCJldmlkZW5jZSI6eyJ0ZHhfcXVvdGUiOiJCQUFBQUlFQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU4zRzc4M1NNSjRRZzMrS2YyUzNFbkszN3dBN0VwUmdRUS9uRmIzLy9zT01mQXdXaHQzYktpUFUvV0k5RkY2RVZRQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFDaGtzUmg0NkJLUWxkWXFYZGZENDZyaGVOT2dkMkJxZ2xZWE1rZG84WW10QmE3UWczYVVmZmt0YkhXR1haRmN2L2hZN1Nyc3VrN05LUWhEVXNhMXh1UUR3TDdJbTR5Rkw1RDZXb3p1ZVcvNkNWVVl4YzJMa3NKY0dGYnBNcWxZZDNjWjlQM2xHSmxLWGRaMmVvdUxoNk9CYU13UE5JRG5TWTFLenBua2t4bSthbi90SnNJYTFETVEwdFNJL0dpckhMK3NpNzZYRkkwQXdMeGQ2aWM4elpKdUpCVlJId2oxM3RxcGJUd1o2Q1RTdndINjZHNkpoLzlRbjlPdE1UZEtZSG5UTEpZREpaNGdCblYwdHFFQk9nczJiWk9ZUVZBTURkMlNzWk5RdGhiWWFXV1BFbFMybDFOVmtXZHRpeWxIcGNTLy9mUWRrRmM4NXdrWFRzcVk3OVk9IiwibnZ0cnVzdF9ldmlkZW5jZSI6Ilt7XCJjZXJ0aWZpY2F0ZVwiOlwibnZpZGlhLWNlcnQtY2hhaW4tcGVtXCIsXCJldmlkZW5jZVwiOlwibnZpZGlhLWF0dGVzdGF0aW9uLWJsb2JcIn1dIn19",
-            "signature": "N9WD7MGZen7wtQVIcw0ZLcCJNf+0QZo4DPd/sBiB5tkLjZaEa5hDtZ3wbvoXd92y04yba2oDVGbhhL9C20ffNXjxFG2JEmTzoZA2eEh24eTU/P1KHe6dYXzP5f81HWxLQ3Ho5RulGiVRPcA9EhUxrL3AEKWIUhVDZG/i7CQ8C2IMCUrmVhzTwI3OETOmcCXXRWrKCvDDak2xccl+sxD8FS4901nMzPuuOnMqo5bvhbker2FpE1wvLCy7DDM9iPTuI4MPi+DC9jKpPBGE042cLI7qHCr0qdRFKdWQODupCrFZ4zTH45YQdyZVfQZNQ2zsvyIKcd78JuxME4UfvRvcdA==",
+            "quote": "BAAAAIEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAN3G783SMJ4Qg3+Kf2S3EnK37wA7EpRgQQ/nFb3//sOMfAwWht3bKiPU/WI9FF6EVQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAChksRh46BKQldYqXdfD46rheNOgd2BqglYXMkdo8YmtBa7Qg3aUffktbHWGXZFcv/hY7Srsuk7NKQhDUsa1xuQDwL7Im4yFL5D6WozueW/6CVUYxc2LksJcGFbpMqlYd3cZ9P3lGJlKXdZ2eouLh6OBaMwPNIDnSY1Kzpnkkxm+an/tJsIa1DMQ0tSI/GirHL+si76XFI0AwLxd6ic8zZJuJBVRHwj13tqpbTwZ6CTSvwH66G6Jh/9Qn9OtMTdKYHnTLJYDJZ4gBnV0tqEBOgs2bZOYQVAMDd2SsZNQthbYoRXTWR+yQJ+dQYDcoXUI0GnNRfg8vUrVwwQK/6NXh0o=",
+            "certificate": "MIIDLTCCAhWgAwIBAgIUbSZBRZohFP2Q9wLIAuip1eyeIm4wDQYJKoZIhvcNAQELBQAwJTEjMCEGA1UEAwwaYW5vbnJvdXRlci1zZGstdGVzdC12ZWN0b3IwIBcNMjAwMTAxMDAwMDAwWhgPMjEwMDAxMDEwMDAwMDBaMCUxIzAhBgNVBAMMGmFub25yb3V0ZXItc2RrLXRlc3QtdmVjdG9yMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtKMQJUX1LkcBH+oWTGnBJ+8ZKh98dQJ+ZktJQJ6Ye4GVsL8gRacxiHkYz5oKI6q4Pr1nFgux1d1bNJVoKPScke7UgM+C4LwcHkmh8+bB2n2L5UGqIsgHplqNQM93nQY7inecdmiLLU0NPFJdrc3EMbOiyPwUugydcHn5jAA/hzKGTJX5cLxiBCIwARnQYPR8NUUqXy+rxAbANrT2w5N9Ws9CpQgskMYPo7s1NDahkESQ1QkoROSaDX4NOhZ4YQJ+xuGTEdYn68vH1t6sB1jh3z6K+WZruYuJkuhqoKBKu44qq3CVkAzC9ycoLzVIC0YrH9mb65CvM8hx0bWBue2mMQIDAQABo1MwUTAdBgNVHQ4EFgQUIfPRAOWLZgQWnWtrJZL1N4XsTj4wHwYDVR0jBBgwFoAUIfPRAOWLZgQWnWtrJZL1N4XsTj4wDwYDVR0TAQH/BAUwAwEB/zANBgkqhkiG9w0BAQsFAAOCAQEAK5xBNNZB2lijHYqixttAclsn3bXvprqmE/Rl2ysqUAPhEN3Q4Kdrna8vInc/dkX/rBSXJtn5N34BkpRcRTbstFWbLNH8cszev/5bB5Fmw0sfGkL5+QnNw5sVvpOUiSSAAYbU0u68h15u///SlIJI2TmLJEBzi6zUbZxZxhTRzMdmwTGrc6PMfPiQYsuJWdDn4/tGzC0VV/mhs3gTPSDe2kKbZ9E5+R98/yvUIPBCJIK1E1aU5FJKM+dERmTGI6PuVj7lmj6DN94XUqCo9pKqLLyw3V/ydLPyvCQOcXoNFKdcXK1B3Dyy487ia087OsxqVS93lLUyNLhCSU1IY1FehA==",
+            "attested_body": "eyJub25jZSI6IjNmMWM4ZTViOWEyZDQ3ZjBjNmIzZTgxYTVkOTRmMjdjMGU2YTgzYjE1ZDJmNDljN2EwOGUzNjViMWQ0YzdmOTIiLCJldmlkZW5jZSI6eyJ0ZHhfcXVvdGUiOiJCQUFBQUlFQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU4zRzc4M1NNSjRRZzMrS2YyUzNFbkszN3dBN0VwUmdRUS9uRmIzLy9zT01mQXdXaHQzYktpUFUvV0k5RkY2RVZRQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFDaGtzUmg0NkJLUWxkWXFYZGZENDZyaGVOT2dkMkJxZ2xZWE1rZG84WW10QmE3UWczYVVmZmt0YkhXR1haRmN2L2hZN1Nyc3VrN05LUWhEVXNhMXh1UUR3TDdJbTR5Rkw1RDZXb3p1ZVcvNkNWVVl4YzJMa3NKY0dGYnBNcWxZZDNjWjlQM2xHSmxLWGRaMmVvdUxoNk9CYU13UE5JRG5TWTFLenBua2t4bSthbi90SnNJYTFETVEwdFNJL0dpckhMK3NpNzZYRkkwQXdMeGQ2aWM4elpKdUpCVlJId2oxM3RxcGJUd1o2Q1RTdndINjZHNkpoLzlRbjlPdE1UZEtZSG5UTEpZREpaNGdCblYwdHFFQk9nczJiWk9ZUVZBTURkMlNzWk5RdGhiWW9SWFRXUit5UUorZFFZRGNvWFVJMEduTlJmZzh2VXJWd3dRSy82TlhoMG89IiwibnZ0cnVzdF9ldmlkZW5jZSI6Ilt7XCJjZXJ0aWZpY2F0ZVwiOlwibnZpZGlhLWNlcnQtY2hhaW4tcGVtXCIsXCJldmlkZW5jZVwiOlwibnZpZGlhLWF0dGVzdGF0aW9uLWJsb2JcIn1dIn19",
+            "signature": "Saj6mQFn7hTp/vPKZpIXGUA3mC/bs8C3+4FPmFj8C7VBfqXFHwD4/oS8oSVpVyMKtwO1P9T3voNo24VpQhiGAYfnhl0FX/ZI9zuwiyv9KER4H1Ra9hgnHhM2w3Hn9Lu+75kjEI2dcy7K8Y30qBMBfkah6IlHDpWHxIDuInTBnyI3DhI1hepFBJ3kn6rebviEdhHvmJbr+Doyi4zamrjcVvHHyRScVTrnzQSvn9qMGqggoCpPvKRHwaJCq/rJv0wXNel1rbct4vU2H4exzQvopVUejMr58w1Ng1qL/bNPArn6QDHKVj+Wnf3v5OWRLzA4Ou3pQ/Em7GiB69ArsAZbyw==",
             "gpu_evidence": [
               {
                 "certificate": "nvidia-cert-chain-pem",
@@ -286,7 +286,7 @@
     },
     {
       "name": "tinfoil valid verification document",
-      "why": "A Tinfoil document reporting a successful SDK verification, on a pinned release, reaches sdk-verified and no higher.",
+      "why": "A document reporting a successful official-verifier run for the supported repository, with the serving key observed on a pinned connection, reaches sdk-verified and no higher. No release fingerprint is pinned here; the release is authenticated by the provider's verifier.",
       "provider": "tinfoil",
       "upstreamModel": "llama3-3-70b",
       "endpointIdentity": "inference.tinfoil.sh",
@@ -305,6 +305,12 @@
         "tlsPublicKey": "3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d",
         "enclaveMeasurement": {
           "tlsPublicKeyFingerprint": "3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d"
+        },
+        "transportBinding": {
+          "mode": "tls-pinned",
+          "endpointIdentity": "inference.tinfoil.sh",
+          "observedTlsSpki": "3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d",
+          "verified": true
         },
         "securityVerified": true,
         "verifier": {
@@ -362,6 +368,12 @@
         "enclaveMeasurement": {
           "tlsPublicKeyFingerprint": "3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d"
         },
+        "transportBinding": {
+          "mode": "tls-pinned",
+          "endpointIdentity": "inference.tinfoil.sh",
+          "observedTlsSpki": "3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d",
+          "verified": true
+        },
         "securityVerified": true,
         "verifier": {
           "name": "@tinfoilsh/verifier",
@@ -392,6 +404,512 @@
         "supportsClientOpaqueE2ee": false,
         "failedRequiredChecks": [
           "sdk_verification_steps"
+        ],
+        "failedAdvisoryChecks": [
+          "nonce_binding"
+        ]
+      }
+    },
+    {
+      "name": "tinfoil document whose TLS key was never observed on a connection",
+      "why": "THE REGRESSION THIS SET EXISTS FOR. Both attested TLS fields are copies of one AMD-report field, so a document that merely agrees with itself proves nothing about the serving connection. With no independently observed transport binding it must fail, however well formed the rest is.",
+      "provider": "tinfoil",
+      "upstreamModel": "llama3-3-70b",
+      "endpointIdentity": "inference.tinfoil.sh",
+      "privacyModality": "tee",
+      "nonce": "3f1c8e5b9a2d47f0c6b3e81a5d94f27c0e6a83b15d2f49c7a08e365b1d4c7f92",
+      "nowMs": 1760000000000,
+      "rawEvidence": {
+        "schemaVersion": 1,
+        "configRepo": "tinfoilsh/confidential-model-router",
+        "enclaveHost": "inference.tinfoil.sh",
+        "selectedRouterEndpoint": "https://inference.tinfoil.sh",
+        "releaseTag": "v9.9.9",
+        "releaseDigest": "d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8",
+        "codeFingerprint": "5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c",
+        "enclaveFingerprint": "5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c",
+        "tlsPublicKey": "3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d",
+        "enclaveMeasurement": {
+          "tlsPublicKeyFingerprint": "3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d"
+        },
+        "securityVerified": true,
+        "verifier": {
+          "name": "@tinfoilsh/verifier",
+          "version": "1.2.1"
+        },
+        "steps": {
+          "fetchDigest": {
+            "status": "success"
+          },
+          "verifyCode": {
+            "status": "success"
+          },
+          "verifyEnclave": {
+            "status": "success"
+          },
+          "compareMeasurements": {
+            "status": "success"
+          },
+          "verifyCertificate": {
+            "status": "success"
+          }
+        }
+      },
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "attested_key_binding",
+        "supportsClientOpaqueE2ee": false,
+        "failedRequiredChecks": [
+          "attested_key_binding"
+        ],
+        "failedAdvisoryChecks": [
+          "nonce_binding"
+        ]
+      }
+    },
+    {
+      "name": "tinfoil transport binding observing a different key",
+      "why": "A TLS-key substitution: the report attests one key, the connection served another. The two must be equal or the attested key binds nothing.",
+      "provider": "tinfoil",
+      "upstreamModel": "llama3-3-70b",
+      "endpointIdentity": "inference.tinfoil.sh",
+      "privacyModality": "tee",
+      "nonce": "3f1c8e5b9a2d47f0c6b3e81a5d94f27c0e6a83b15d2f49c7a08e365b1d4c7f92",
+      "nowMs": 1760000000000,
+      "rawEvidence": {
+        "schemaVersion": 1,
+        "configRepo": "tinfoilsh/confidential-model-router",
+        "enclaveHost": "inference.tinfoil.sh",
+        "selectedRouterEndpoint": "https://inference.tinfoil.sh",
+        "releaseTag": "v9.9.9",
+        "releaseDigest": "d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8",
+        "codeFingerprint": "5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c",
+        "enclaveFingerprint": "5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c",
+        "tlsPublicKey": "3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d",
+        "enclaveMeasurement": {
+          "tlsPublicKeyFingerprint": "3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d"
+        },
+        "transportBinding": {
+          "mode": "tls-pinned",
+          "endpointIdentity": "inference.tinfoil.sh",
+          "observedTlsSpki": "7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e",
+          "verified": true
+        },
+        "securityVerified": true,
+        "verifier": {
+          "name": "@tinfoilsh/verifier",
+          "version": "1.2.1"
+        },
+        "steps": {
+          "fetchDigest": {
+            "status": "success"
+          },
+          "verifyCode": {
+            "status": "success"
+          },
+          "verifyEnclave": {
+            "status": "success"
+          },
+          "compareMeasurements": {
+            "status": "success"
+          },
+          "verifyCertificate": {
+            "status": "success"
+          }
+        }
+      },
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "attested_key_binding",
+        "supportsClientOpaqueE2ee": false,
+        "failedRequiredChecks": [
+          "attested_key_binding"
+        ],
+        "failedAdvisoryChecks": [
+          "nonce_binding"
+        ]
+      }
+    },
+    {
+      "name": "tinfoil transport binding that was not verified",
+      "why": "`verified: false` is an observation that failed its pin. Recording the key it saw must not be mistaken for accepting it.",
+      "provider": "tinfoil",
+      "upstreamModel": "llama3-3-70b",
+      "endpointIdentity": "inference.tinfoil.sh",
+      "privacyModality": "tee",
+      "nonce": "3f1c8e5b9a2d47f0c6b3e81a5d94f27c0e6a83b15d2f49c7a08e365b1d4c7f92",
+      "nowMs": 1760000000000,
+      "rawEvidence": {
+        "schemaVersion": 1,
+        "configRepo": "tinfoilsh/confidential-model-router",
+        "enclaveHost": "inference.tinfoil.sh",
+        "selectedRouterEndpoint": "https://inference.tinfoil.sh",
+        "releaseTag": "v9.9.9",
+        "releaseDigest": "d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8",
+        "codeFingerprint": "5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c",
+        "enclaveFingerprint": "5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c",
+        "tlsPublicKey": "3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d",
+        "enclaveMeasurement": {
+          "tlsPublicKeyFingerprint": "3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d"
+        },
+        "transportBinding": {
+          "mode": "tls-pinned",
+          "endpointIdentity": "inference.tinfoil.sh",
+          "observedTlsSpki": "3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d",
+          "verified": false
+        },
+        "securityVerified": true,
+        "verifier": {
+          "name": "@tinfoilsh/verifier",
+          "version": "1.2.1"
+        },
+        "steps": {
+          "fetchDigest": {
+            "status": "success"
+          },
+          "verifyCode": {
+            "status": "success"
+          },
+          "verifyEnclave": {
+            "status": "success"
+          },
+          "compareMeasurements": {
+            "status": "success"
+          },
+          "verifyCertificate": {
+            "status": "success"
+          }
+        }
+      },
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "attested_key_binding",
+        "supportsClientOpaqueE2ee": false,
+        "failedRequiredChecks": [
+          "attested_key_binding"
+        ],
+        "failedAdvisoryChecks": [
+          "nonce_binding"
+        ]
+      }
+    },
+    {
+      "name": "tinfoil transport binding recorded against another endpoint",
+      "why": "A pinned connection to somewhere else is not evidence about this enclave, even when the key matches.",
+      "provider": "tinfoil",
+      "upstreamModel": "llama3-3-70b",
+      "endpointIdentity": "inference.tinfoil.sh",
+      "privacyModality": "tee",
+      "nonce": "3f1c8e5b9a2d47f0c6b3e81a5d94f27c0e6a83b15d2f49c7a08e365b1d4c7f92",
+      "nowMs": 1760000000000,
+      "rawEvidence": {
+        "schemaVersion": 1,
+        "configRepo": "tinfoilsh/confidential-model-router",
+        "enclaveHost": "inference.tinfoil.sh",
+        "selectedRouterEndpoint": "https://inference.tinfoil.sh",
+        "releaseTag": "v9.9.9",
+        "releaseDigest": "d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8",
+        "codeFingerprint": "5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c",
+        "enclaveFingerprint": "5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c",
+        "tlsPublicKey": "3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d",
+        "enclaveMeasurement": {
+          "tlsPublicKeyFingerprint": "3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d"
+        },
+        "transportBinding": {
+          "mode": "tls-pinned",
+          "endpointIdentity": "inference.attacker.example",
+          "observedTlsSpki": "3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d",
+          "verified": true
+        },
+        "securityVerified": true,
+        "verifier": {
+          "name": "@tinfoilsh/verifier",
+          "version": "1.2.1"
+        },
+        "steps": {
+          "fetchDigest": {
+            "status": "success"
+          },
+          "verifyCode": {
+            "status": "success"
+          },
+          "verifyEnclave": {
+            "status": "success"
+          },
+          "compareMeasurements": {
+            "status": "success"
+          },
+          "verifyCertificate": {
+            "status": "success"
+          }
+        }
+      },
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "attested_key_binding",
+        "supportsClientOpaqueE2ee": false,
+        "failedRequiredChecks": [
+          "attested_key_binding"
+        ],
+        "failedAdvisoryChecks": [
+          "nonce_binding"
+        ]
+      }
+    },
+    {
+      "name": "tinfoil document naming another enclave host",
+      "why": "Endpoint substitution. The document carries TWO endpoint identities; checking only the selected router left the other free to name anywhere.",
+      "provider": "tinfoil",
+      "upstreamModel": "llama3-3-70b",
+      "endpointIdentity": "inference.tinfoil.sh",
+      "privacyModality": "tee",
+      "nonce": "3f1c8e5b9a2d47f0c6b3e81a5d94f27c0e6a83b15d2f49c7a08e365b1d4c7f92",
+      "nowMs": 1760000000000,
+      "rawEvidence": {
+        "schemaVersion": 1,
+        "configRepo": "tinfoilsh/confidential-model-router",
+        "enclaveHost": "inference.attacker.example",
+        "selectedRouterEndpoint": "https://inference.tinfoil.sh",
+        "releaseTag": "v9.9.9",
+        "releaseDigest": "d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8",
+        "codeFingerprint": "5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c",
+        "enclaveFingerprint": "5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c",
+        "tlsPublicKey": "3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d",
+        "enclaveMeasurement": {
+          "tlsPublicKeyFingerprint": "3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d"
+        },
+        "transportBinding": {
+          "mode": "tls-pinned",
+          "endpointIdentity": "inference.tinfoil.sh",
+          "observedTlsSpki": "3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d",
+          "verified": true
+        },
+        "securityVerified": true,
+        "verifier": {
+          "name": "@tinfoilsh/verifier",
+          "version": "1.2.1"
+        },
+        "steps": {
+          "fetchDigest": {
+            "status": "success"
+          },
+          "verifyCode": {
+            "status": "success"
+          },
+          "verifyEnclave": {
+            "status": "success"
+          },
+          "compareMeasurements": {
+            "status": "success"
+          },
+          "verifyCertificate": {
+            "status": "success"
+          }
+        }
+      },
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "enclave_host_binding",
+        "supportsClientOpaqueE2ee": false,
+        "failedRequiredChecks": [
+          "enclave_host_binding"
+        ],
+        "failedAdvisoryChecks": [
+          "nonce_binding"
+        ]
+      }
+    },
+    {
+      "name": "tinfoil document bound to another GitHub repository",
+      "why": "The repository is the one authority field this SDK re-derives from the evidence. A different repository is a different codebase and fails closed.",
+      "provider": "tinfoil",
+      "upstreamModel": "llama3-3-70b",
+      "endpointIdentity": "inference.tinfoil.sh",
+      "privacyModality": "tee",
+      "nonce": "3f1c8e5b9a2d47f0c6b3e81a5d94f27c0e6a83b15d2f49c7a08e365b1d4c7f92",
+      "nowMs": 1760000000000,
+      "rawEvidence": {
+        "schemaVersion": 1,
+        "configRepo": "attacker/confidential-model-router",
+        "enclaveHost": "inference.tinfoil.sh",
+        "selectedRouterEndpoint": "https://inference.tinfoil.sh",
+        "releaseTag": "v9.9.9",
+        "releaseDigest": "d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8",
+        "codeFingerprint": "5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c",
+        "enclaveFingerprint": "5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c",
+        "tlsPublicKey": "3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d",
+        "enclaveMeasurement": {
+          "tlsPublicKeyFingerprint": "3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d"
+        },
+        "transportBinding": {
+          "mode": "tls-pinned",
+          "endpointIdentity": "inference.tinfoil.sh",
+          "observedTlsSpki": "3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d",
+          "verified": true
+        },
+        "securityVerified": true,
+        "verifier": {
+          "name": "@tinfoilsh/verifier",
+          "version": "1.2.1"
+        },
+        "steps": {
+          "fetchDigest": {
+            "status": "success"
+          },
+          "verifyCode": {
+            "status": "success"
+          },
+          "verifyEnclave": {
+            "status": "success"
+          },
+          "compareMeasurements": {
+            "status": "success"
+          },
+          "verifyCertificate": {
+            "status": "success"
+          }
+        }
+      },
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "provider_release_authority",
+        "supportsClientOpaqueE2ee": false,
+        "failedRequiredChecks": [
+          "provider_release_authority"
+        ],
+        "failedAdvisoryChecks": [
+          "nonce_binding"
+        ]
+      }
+    },
+    {
+      "name": "tinfoil live enclave not running the signed release",
+      "why": "The signed code measurement and the live enclave measurement must be equal, or the signature covers something other than what is serving.",
+      "provider": "tinfoil",
+      "upstreamModel": "llama3-3-70b",
+      "endpointIdentity": "inference.tinfoil.sh",
+      "privacyModality": "tee",
+      "nonce": "3f1c8e5b9a2d47f0c6b3e81a5d94f27c0e6a83b15d2f49c7a08e365b1d4c7f92",
+      "nowMs": 1760000000000,
+      "rawEvidence": {
+        "schemaVersion": 1,
+        "configRepo": "tinfoilsh/confidential-model-router",
+        "enclaveHost": "inference.tinfoil.sh",
+        "selectedRouterEndpoint": "https://inference.tinfoil.sh",
+        "releaseTag": "v9.9.9",
+        "releaseDigest": "d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8",
+        "codeFingerprint": "5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c",
+        "enclaveFingerprint": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+        "tlsPublicKey": "3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d",
+        "enclaveMeasurement": {
+          "tlsPublicKeyFingerprint": "3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d"
+        },
+        "transportBinding": {
+          "mode": "tls-pinned",
+          "endpointIdentity": "inference.tinfoil.sh",
+          "observedTlsSpki": "3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d",
+          "verified": true
+        },
+        "securityVerified": true,
+        "verifier": {
+          "name": "@tinfoilsh/verifier",
+          "version": "1.2.1"
+        },
+        "steps": {
+          "fetchDigest": {
+            "status": "success"
+          },
+          "verifyCode": {
+            "status": "success"
+          },
+          "verifyEnclave": {
+            "status": "success"
+          },
+          "compareMeasurements": {
+            "status": "success"
+          },
+          "verifyCertificate": {
+            "status": "success"
+          }
+        }
+      },
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "code_matches_live_enclave",
+        "supportsClientOpaqueE2ee": false,
+        "failedRequiredChecks": [
+          "code_matches_live_enclave"
+        ],
+        "failedAdvisoryChecks": [
+          "nonce_binding"
+        ]
+      }
+    },
+    {
+      "name": "tinfoil document from an unofficial verifier",
+      "why": "Anything can emit `securityVerified: true`. The document must name the official verifier, or the aggregate boolean is just an assertion.",
+      "provider": "tinfoil",
+      "upstreamModel": "llama3-3-70b",
+      "endpointIdentity": "inference.tinfoil.sh",
+      "privacyModality": "tee",
+      "nonce": "3f1c8e5b9a2d47f0c6b3e81a5d94f27c0e6a83b15d2f49c7a08e365b1d4c7f92",
+      "nowMs": 1760000000000,
+      "rawEvidence": {
+        "schemaVersion": 1,
+        "configRepo": "tinfoilsh/confidential-model-router",
+        "enclaveHost": "inference.tinfoil.sh",
+        "selectedRouterEndpoint": "https://inference.tinfoil.sh",
+        "releaseTag": "v9.9.9",
+        "releaseDigest": "d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8",
+        "codeFingerprint": "5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c",
+        "enclaveFingerprint": "5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c",
+        "tlsPublicKey": "3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d",
+        "enclaveMeasurement": {
+          "tlsPublicKeyFingerprint": "3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d"
+        },
+        "transportBinding": {
+          "mode": "tls-pinned",
+          "endpointIdentity": "inference.tinfoil.sh",
+          "observedTlsSpki": "3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d",
+          "verified": true
+        },
+        "securityVerified": true,
+        "verifier": {
+          "name": "lookalike-verifier",
+          "version": "1.2.1"
+        },
+        "steps": {
+          "fetchDigest": {
+            "status": "success"
+          },
+          "verifyCode": {
+            "status": "success"
+          },
+          "verifyEnclave": {
+            "status": "success"
+          },
+          "compareMeasurements": {
+            "status": "success"
+          },
+          "verifyCertificate": {
+            "status": "success"
+          }
+        }
+      },
+      "expected": {
+        "status": "failed",
+        "verificationLevel": "unverified",
+        "reason": "official_verifier_identity",
+        "supportsClientOpaqueE2ee": false,
+        "failedRequiredChecks": [
+          "official_verifier_identity"
         ],
         "failedAdvisoryChecks": [
           "nonce_binding"

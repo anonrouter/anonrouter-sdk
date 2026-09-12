@@ -16,17 +16,55 @@ environment on each CI run, so every published format is exercised.
 
 ### Fixed
 
+- **The Tinfoil TLS check compared a field to a copy of itself.** Tinfoil's
+  verification document reports the attested serving key twice, as
+  `enclaveMeasurement.tlsPublicKeyFingerprint` and as `tlsPublicKey`, and both
+  are copies of one field of one AMD SEV-SNP report. Requiring them to be equal
+  passed for every document ever produced, including one fabricated whole, so a
+  verdict that read "TLS key binding checked" had checked nothing about the
+  connection actually serving the route. Both verifiers now require a
+  `transportBinding` recorded on a real pinned connection, whose observed
+  certificate SPKI must equal the key in the verified report. A document with no
+  such observation fails `attested_key_binding`, however well formed it is.
+- **The Tinfoil route claimed NVIDIA confidential-compute evidence it never
+  checked.** The verdict reported hardware type `amd-sev-snp+nvidia-cc`, and the
+  documentation described GPU attestation, on a route whose official verifier
+  establishes no NVIDIA evidence at all. Tinfoil verdicts now report
+  `amd-sev-snp`, and every Tinfoil-facing claim about GPU evidence or model
+  weights is withdrawn from the packages, tests, vectors and docs.
+- **Only one of the document's two endpoint identities was checked.** A document
+  could name the supported router in `selectedRouterEndpoint` and somewhere else
+  entirely in `enclaveHost`. Both are now required to be `inference.tinfoil.sh`,
+  and the route being verified must be that host too: grading the document
+  against a caller-supplied endpoint was a tautology in the other direction.
 - Replaced the second, AnonRouter-maintained Tinfoil release-fingerprint
   allowlist with Tinfoil's signed release authority. The SDK now accepts a new
   Tinfoil release without waiting for an AnonRouter package update only when the
   official verifier validates the exact `tinfoilsh/confidential-model-router`
-  repository, tagged GitHub/Sigstore release, live enclave measurement, hardware
-  evidence, and TLS key binding. Wrong repositories, unsigned or malformed
-  identities, code-to-enclave mismatches, and TLS-key substitutions fail closed.
+  repository, tagged GitHub/Sigstore release, live enclave measurement, and AMD
+  SEV-SNP evidence, and the serving connection's key is pinned to that report.
+  Wrong repositories, unsigned or malformed identities, code-to-enclave
+  mismatches, endpoint substitution, and TLS-key substitution fail closed.
 - Updated the JavaScript wrapper for the current `tinfoil` verifier constructor.
   The old positional call could not verify a live enclave with `tinfoil` 1.2.1;
   the wrapper now passes the documented `serverURL` and `configRepo` options and
   rejects any repository other than the supported Tinfoil authority.
+
+### Added
+
+- `verifyTinfoilEnclave()` now completes the binding itself instead of returning
+  a second reading of the same document. After the official verifier succeeds it
+  opens one content-free `HEAD` request over a private HTTPS agent, applies
+  ordinary PKI and hostname validation plus an exact SPKI pin, and attaches the
+  key it observed before normalizing the verdict. It sends no credential, no
+  body and no account identity, and bills nothing. The underlying probe is
+  exported as `observeTinfoilTlsSpki()` with `TinfoilTlsPinError` /
+  `TinfoilTlsUnavailableError`.
+- Nine more Tinfoil cases in `shared/vectors/attestation.json`, both languages
+  asserting the same verdicts: the missing observation, a mismatched observed
+  key, an unverified observation, an observation of another endpoint, an
+  `enclaveHost` substitution, a wrong repository, a code-to-enclave mismatch, and
+  an unofficial verifier identity. Two cases previously covered this provider.
 
 ### Changed
 
@@ -34,10 +72,32 @@ environment on each CI run, so every published format is exercised.
   Tinfoil hop-2 verification policy only; AnonRouter's hop-1 TDX gateway pins,
   other providers' measurement policies, and inference protocols are unchanged.
 - Removed the unused Python `tinfoil` optional extra. The Python SDK validates
-  the official-verifier document supplied by the gateway; callers that want to
-  run Tinfoil's verifier independently can use Tinfoil's client directly. The
-  JavaScript SDK continues to expose that independent check through
-  `verifyTinfoilEnclave()`.
+  the official-verifier document and transport observation supplied by the
+  gateway; callers that want to run Tinfoil's verifier independently can use
+  Tinfoil's client directly. The JavaScript SDK continues to expose that
+  independent check through `verifyTinfoilEnclave()`.
+- Documented what the pinned Tinfoil policy does and does not enforce. Of its
+  four fields only `configRepo` is re-derived from evidence; `authority`,
+  `releaseSelection` and `requireTaggedRelease` record the reviewed trust
+  decision and pin the policy file against a silent edit. The tagged-release and
+  release-selection guarantees are the official verifier's. Earlier wording
+  implied all four were independent SDK checks.
+
+### Removed
+
+**JavaScript API, breaking for type-level consumers only.** No runtime export
+changed name or behaviour; both entries below are TypeScript types that named
+things the SDK no longer produces.
+
+- `TinfoilAcceptedRelease` (exported from `@anonrouter/confidential` through
+  `0.1.1`) described one entry in the per-release Tinfoil fingerprint allowlist,
+  which no longer exists. Replaced by `TinfoilProviderAuthority`, the shape of
+  the fixed authority object now held in `accepted`. Code that only read
+  `pinnedMeasurementPolicyFor()` is unaffected; code that annotated a variable
+  with the old name should switch to the new one.
+- `"amd-sev-snp+nvidia-cc"` is gone from the `HardwareType` union. Tinfoil was
+  its only producer and the value was wrong, so nothing emits it; the Python
+  package types `hardware_type` as `str` and is unaffected.
 
 ## [0.1.1] - 2026-09-11
 

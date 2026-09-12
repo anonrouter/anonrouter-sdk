@@ -241,13 +241,21 @@ function nearEvidenceUnreviewedCompose(nonce: string): Record<string, unknown> {
 // ---- Tinfoil evidence --------------------------------------------------------
 
 /** A Tinfoil verification document, shaped like the one Tinfoil's own verifier
- *  emits. `steps` must all read "success": that is the SDK reporting it completed
- *  the hard cryptography (SEV-SNP + NVIDIA CC attestation, the transparency-log
- *  measurement, TLS key binding). */
-function tinfoilDocument(opts: { failStep?: boolean } = {}): Record<string, unknown> {
+ *  emits, plus the transport binding whoever opened the serving connection
+ *  recorded. `steps` must all read "success": that is the official verifier
+ *  reporting it completed the hard cryptography (AMD SEV-SNP attestation, the
+ *  transparency-log measurement, the enclave key binding). No NVIDIA GPU
+ *  evidence is involved on this route and none is implied here.
+ *
+ *  `transportBinding` is the half the document cannot supply about itself. The
+ *  two attested TLS fields below are copies of ONE AMD-report field, so a
+ *  verifier comparing them to each other passes every document ever written.
+ *  The cases built from `over` exercise that distinction directly. */
+const TINFOIL_TLS_FP = "3d".repeat(32);
+
+function tinfoilDocument(opts: { failStep?: boolean; over?: Record<string, unknown> } = {}): Record<string, unknown> {
   const steps = ["fetchDigest", "verifyCode", "verifyEnclave", "compareMeasurements", "verifyCertificate"];
   const fingerprint = "5c".repeat(48);
-  const tlsFingerprint = "3d".repeat(32);
   return {
     schemaVersion: 1,
     configRepo: "tinfoilsh/confidential-model-router",
@@ -257,8 +265,14 @@ function tinfoilDocument(opts: { failStep?: boolean } = {}): Record<string, unkn
     releaseDigest: "d8".repeat(32),
     codeFingerprint: fingerprint,
     enclaveFingerprint: fingerprint,
-    tlsPublicKey: tlsFingerprint,
-    enclaveMeasurement: { tlsPublicKeyFingerprint: tlsFingerprint },
+    tlsPublicKey: TINFOIL_TLS_FP,
+    enclaveMeasurement: { tlsPublicKeyFingerprint: TINFOIL_TLS_FP },
+    transportBinding: {
+      mode: "tls-pinned",
+      endpointIdentity: "inference.tinfoil.sh",
+      observedTlsSpki: TINFOIL_TLS_FP,
+      verified: true
+    },
     securityVerified: true,
     verifier: { name: "@tinfoilsh/verifier", version: "1.2.1" },
     steps: Object.fromEntries(
@@ -266,7 +280,8 @@ function tinfoilDocument(opts: { failStep?: boolean } = {}): Record<string, unkn
         name,
         { status: opts.failStep && i === 2 ? "failed" : "success" }
       ])
-    )
+    ),
+    ...opts.over
   };
 }
 
@@ -356,7 +371,7 @@ const inputs: CaseInput[] = [
   },
   {
     name: "tinfoil valid verification document",
-    why: "A Tinfoil document reporting a successful SDK verification, on a pinned release, reaches sdk-verified and no higher.",
+    why: "A document reporting a successful official-verifier run for the supported repository, with the serving key observed on a pinned connection, reaches sdk-verified and no higher. No release fingerprint is pinned here; the release is authenticated by the provider's verifier.",
     provider: "tinfoil",
     upstreamModel: "llama3-3-70b",
     endpointIdentity: "inference.tinfoil.sh",
@@ -373,6 +388,113 @@ const inputs: CaseInput[] = [
     privacyModality: "tee",
     nonce: NONCE_A,
     rawEvidence: tinfoilDocument({ failStep: true })
+  },
+  {
+    name: "tinfoil document whose TLS key was never observed on a connection",
+    why: "THE REGRESSION THIS SET EXISTS FOR. Both attested TLS fields are copies of one AMD-report field, so a document that merely agrees with itself proves nothing about the serving connection. With no independently observed transport binding it must fail, however well formed the rest is.",
+    provider: "tinfoil",
+    upstreamModel: "llama3-3-70b",
+    endpointIdentity: "inference.tinfoil.sh",
+    privacyModality: "tee",
+    nonce: NONCE_A,
+    rawEvidence: tinfoilDocument({ over: { transportBinding: undefined } })
+  },
+  {
+    name: "tinfoil transport binding observing a different key",
+    why: "A TLS-key substitution: the report attests one key, the connection served another. The two must be equal or the attested key binds nothing.",
+    provider: "tinfoil",
+    upstreamModel: "llama3-3-70b",
+    endpointIdentity: "inference.tinfoil.sh",
+    privacyModality: "tee",
+    nonce: NONCE_A,
+    rawEvidence: tinfoilDocument({
+      over: {
+        transportBinding: {
+          mode: "tls-pinned",
+          endpointIdentity: "inference.tinfoil.sh",
+          observedTlsSpki: "7e".repeat(32),
+          verified: true
+        }
+      }
+    })
+  },
+  {
+    name: "tinfoil transport binding that was not verified",
+    why: "`verified: false` is an observation that failed its pin. Recording the key it saw must not be mistaken for accepting it.",
+    provider: "tinfoil",
+    upstreamModel: "llama3-3-70b",
+    endpointIdentity: "inference.tinfoil.sh",
+    privacyModality: "tee",
+    nonce: NONCE_A,
+    rawEvidence: tinfoilDocument({
+      over: {
+        transportBinding: {
+          mode: "tls-pinned",
+          endpointIdentity: "inference.tinfoil.sh",
+          observedTlsSpki: TINFOIL_TLS_FP,
+          verified: false
+        }
+      }
+    })
+  },
+  {
+    name: "tinfoil transport binding recorded against another endpoint",
+    why: "A pinned connection to somewhere else is not evidence about this enclave, even when the key matches.",
+    provider: "tinfoil",
+    upstreamModel: "llama3-3-70b",
+    endpointIdentity: "inference.tinfoil.sh",
+    privacyModality: "tee",
+    nonce: NONCE_A,
+    rawEvidence: tinfoilDocument({
+      over: {
+        transportBinding: {
+          mode: "tls-pinned",
+          endpointIdentity: "inference.attacker.example",
+          observedTlsSpki: TINFOIL_TLS_FP,
+          verified: true
+        }
+      }
+    })
+  },
+  {
+    name: "tinfoil document naming another enclave host",
+    why: "Endpoint substitution. The document carries TWO endpoint identities; checking only the selected router left the other free to name anywhere.",
+    provider: "tinfoil",
+    upstreamModel: "llama3-3-70b",
+    endpointIdentity: "inference.tinfoil.sh",
+    privacyModality: "tee",
+    nonce: NONCE_A,
+    rawEvidence: tinfoilDocument({ over: { enclaveHost: "inference.attacker.example" } })
+  },
+  {
+    name: "tinfoil document bound to another GitHub repository",
+    why: "The repository is the one authority field this SDK re-derives from the evidence. A different repository is a different codebase and fails closed.",
+    provider: "tinfoil",
+    upstreamModel: "llama3-3-70b",
+    endpointIdentity: "inference.tinfoil.sh",
+    privacyModality: "tee",
+    nonce: NONCE_A,
+    rawEvidence: tinfoilDocument({ over: { configRepo: "attacker/confidential-model-router" } })
+  },
+  {
+    name: "tinfoil live enclave not running the signed release",
+    why: "The signed code measurement and the live enclave measurement must be equal, or the signature covers something other than what is serving.",
+    provider: "tinfoil",
+    upstreamModel: "llama3-3-70b",
+    endpointIdentity: "inference.tinfoil.sh",
+    privacyModality: "tee",
+    nonce: NONCE_A,
+    rawEvidence: tinfoilDocument({ over: { enclaveFingerprint: "a1".repeat(48) } })
+  },
+  {
+    name: "tinfoil document from an unofficial verifier",
+    why: "Anything can emit `securityVerified: true`. The document must name the official verifier, or the aggregate boolean is just an assertion.",
+    provider: "tinfoil",
+    upstreamModel: "llama3-3-70b",
+    endpointIdentity: "inference.tinfoil.sh",
+    privacyModality: "tee",
+    nonce: NONCE_A,
+    rawEvidence: tinfoilDocument({ over: { verifier: { name: "lookalike-verifier", version: "1.2.1" } } })
   },
   {
     name: "unknown provider",

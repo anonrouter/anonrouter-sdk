@@ -49,6 +49,18 @@ change and the pins must be rotated. The process is deliberate:
 Retire an old pin only after the corresponding provider deployment is fully gone,
 and note the retirement in the version string.
 
+**Tinfoil does not rotate this way, and has not since `0.1.2`.** Its `accepted`
+value is not a measurement list at all: it is a single fixed object naming the
+signed-release authority and repository, so there is no per-release entry to
+append and no fingerprint that goes stale between AnonRouter releases. The
+release itself is authenticated by Tinfoil's official verifier on every
+verification, and the live enclave must equal the code that verifier found
+signed. Editing that object is a change of trust anchor rather than a rotation,
+and belongs in a reviewed change with its own version bump. See the Tinfoil
+entries under "Known limitations" for exactly which of its four fields this SDK
+re-derives from evidence, under "Trust model: what verification does and does not
+prove".
+
 ### Rotating the hop-1 gateway pin
 
 `shared/gateway-policies.json` describes AnonRouter's own confidential plane, and
@@ -156,19 +168,60 @@ route.
   self-consistent. Adding an explicit derive-and-check (as the Venice verifier
   already does for its secp256k1 address) is a tracked hardening item.
 
-- **Tinfoil `sdk-verified` reflects a verification document.** The `tinfoil`
-  verdict returned by `verifyAttestation` / `verify_attestation` validates the
-  fields of a Tinfoil verification document (security-verified flag, step
-  outcomes, official verifier identity, exact GitHub repository, signed release
-  identity, live code equality, and TLS key binding) against the fixed provider
-  authority policy. In the client flow
-  that document is supplied by the gateway. To verify Tinfoil independently of the
-  gateway, JavaScript callers can run Tinfoil's own verifier through
-  `verifyTinfoilEnclave()`; it loads the optional `tinfoil` npm dependency.
-  Python callers should use Tinfoil's Python client directly for that independent
-  check. The AnonRouter Python package validates the gateway-supplied document but
-  does not bundle or run Tinfoil's verifier. Tinfoil is also a TEE route, so it is
-  attested but not content-private from AnonRouter.
+- **Tinfoil `sdk-verified` reflects a verification document plus an observed
+  connection.** The `tinfoil` verdict returned by `verifyAttestation` /
+  `verify_attestation` validates the fields of a Tinfoil verification document
+  (security-verified flag, step outcomes, official verifier identity, exact
+  GitHub repository, signed release identity, live code equality, and both
+  endpoint identities) against the fixed provider authority policy, and requires
+  a transport binding recorded on a real pinned connection whose observed
+  certificate key equals the key in the verified AMD report.
+
+  That last requirement is there because the document cannot establish it alone.
+  The official document reports the attested TLS key twice, as
+  `enclaveMeasurement.tlsPublicKeyFingerprint` and as `tlsPublicKey`, and both
+  are copies of one field of one AMD SEV-SNP report. Comparing them to each
+  other passes for every document in existence, forged ones included. A document
+  arriving without an independently observed `transportBinding` therefore fails
+  closed, however well formed it is.
+
+  In the client flow both the document and that observation are supplied by the
+  gateway, so this path does not establish them independently of AnonRouter. To
+  verify Tinfoil without trusting AnonRouter for any of it, Node callers can use
+  `verifyTinfoilEnclave()`, which loads the optional `tinfoil` npm dependency,
+  runs Tinfoil's own verifier, and then opens its own content-free pinned
+  connection to read the serving key off the wire. That function is Node-only:
+  browsers cannot inspect a peer certificate, so it fails closed there rather
+  than skipping the pin. Python callers should use Tinfoil's Python client
+  directly for the equivalent independent check; the AnonRouter Python package
+  validates the gateway-supplied document but does not bundle or run Tinfoil's
+  verifier. Tinfoil is also a TEE route, so it is attested but not
+  content-private from AnonRouter.
+
+- **The Tinfoil route claims AMD SEV-SNP, and nothing about a GPU or the
+  weights.** Earlier copy described this route as covering NVIDIA
+  confidential-compute evidence. The installed official verifier establishes no
+  such evidence, so the claim is withdrawn: the hardware type a Tinfoil verdict
+  reports is `amd-sev-snp` alone. The document also exposes no model-weight
+  digest, so `model_weight_identity` is always null on this route rather than
+  being filled in from the model id the caller asked for.
+
+- **Three of the four Tinfoil policy fields are labels, not checks.** The pinned
+  policy in `shared/measurements.json` records `authority`,
+  `configRepo`, `releaseSelection` and `requireTaggedRelease`. Only `configRepo`
+  is re-derived from the evidence: it is compared against the repository the
+  document names, and a different repository fails closed. The other three
+  record which Tinfoil workflow this package was reviewed against and pin the
+  policy file against a silent edit. The tagged-release and release-selection
+  guarantees themselves belong to Tinfoil's official verifier, which checks the
+  Fulcio identity and workflow ref this SDK never receives. Treat them as
+  documentation of a trust decision, not as independent enforcement.
+
+- **Release rollback is the provider's responsibility.** The official verifier
+  selects the release Tinfoil calls latest. This SDK adds no monotonic version
+  floor of its own, so it will accept an older signed release that Tinfoil
+  serves. Adding a floor would reintroduce exactly the per-release state
+  `0.1.2` removed, so it is named here rather than quietly assumed.
 
 - **A collateral fetch tells Intel which platform you are verifying.** The DCAP
   engine performs no network access on purpose, so the SDK acquires the

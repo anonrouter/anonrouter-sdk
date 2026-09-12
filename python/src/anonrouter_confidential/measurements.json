@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "generatedFrom": "AnonRouter operator-reviewed measurement policy",
-  "note": "Public, operator-reviewed TEE/E2EE verification policy. Static measurement entries are code-reviewed pins. Tinfoil instead pins its official signed-release authority and repository, whose current output is cryptographically verified. This is the single source of truth shared by the JS and Python SDKs; a CI parity gate keeps every copy byte-identical.",
+  "note": "Public, operator-reviewed TEE/E2EE verification policy. Static measurement entries are code-reviewed pins. Tinfoil instead pins its official signed-release authority and repository, whose current output is cryptographically verified by the provider's own verifier. Of Tinfoil's four accepted fields only configRepo is re-derived from evidence; authority, releaseSelection and requireTaggedRelease record the reviewed trust decision and are not independently enforced by these SDKs. This is the single source of truth shared by the JS and Python SDKs; a CI parity gate keeps every copy byte-identical.",
   "tdxTeeType": 129,
   "providers": {
     "chutes": {

@@ -876,9 +876,21 @@ class ConfidentialClient(MediaOwner):
            carrying an account key is refused there, by design, because that relay
            never accepts account credentials alongside a route it serves. This path
            also reports ``upstream_model``, which the model binding needs.
-        2. Key-authenticated GET, for a deployment that serves this route directly.
-           Attestation tickets are only issued for E2EE-capable models, so this is
-           also the only path that can verify a TEE-only route such as Tinfoil.
+        2. Key-authenticated GET, for a deployment that serves this route
+           directly: a single-origin monolith whose control process also holds a
+           provider worker. The split production control plane deliberately holds
+           neither, and answers 501 here.
+
+        A NOTE THAT USED TO BE WRONG, and still said so here after the JavaScript
+        twin was corrected. This claimed attestation tickets are issued only for
+        E2EE-capable models, so a TEE-only route such as Tinfoil could be verified
+        through path 2 alone. That described a defect, not a rule: the mint
+        refused every non-E2EE route with ``model_not_e2ee``, which shut the
+        ticket path for exactly the routes whose whole point is the enclave. It
+        now issues for any callable ``tee`` or ``e2ee`` route with a registered
+        verifier, so path 1 is the normal path for a TEE route too, and
+        ``tests/test_route_binding_negatives.py`` verifies a ticketed Tinfoil
+        route end to end.
 
         Neither path ever carries content, and attestation is not a billable
         inference call.

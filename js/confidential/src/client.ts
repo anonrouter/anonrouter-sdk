@@ -505,7 +505,7 @@ const ACCEPTED_LEVELS = new Set<VerificationLevel>(["provider-attested", "sdk-ve
  * from a PROVIDER NAME to a privacy property. It happened to match the catalog
  * on the day it was written and is wrong the moment any provider serves two
  * classes, which the catalog already permits and which Venice (private + e2ee)
- * and Tinfoil (tee on seven routes) are one column away from.
+ * and Tinfoil (tee on every row it publishes today) are one column away from.
  */
 const UNESTABLISHED_MODALITY: PrivacyModality = "tee";
 

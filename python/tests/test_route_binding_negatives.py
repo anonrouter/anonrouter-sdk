@@ -83,7 +83,12 @@ def venice_evidence(nonce: str, upstream_model: str) -> dict[str, Any]:
 
 
 def tinfoil_document() -> dict[str, Any]:
-    """The document Tinfoil's official verifier produces for a signed release."""
+    """The document Tinfoil's official verifier produces for a signed release.
+
+    Plus the transport binding AnonRouter's worker records after pinning the
+    serving connection to the key in that verified report. The relay supplies
+    both; the document alone cannot establish what key is actually being served.
+    """
     tls_fingerprint = "19" * 32
     return {
         "schemaVersion": 1,
@@ -97,6 +102,12 @@ def tinfoil_document() -> dict[str, Any]:
         "enclaveFingerprint": TINFOIL_FP,
         "enclaveMeasurement": {"tlsPublicKeyFingerprint": tls_fingerprint},
         "tlsPublicKey": tls_fingerprint,
+        "transportBinding": {
+            "mode": "tls-pinned",
+            "endpointIdentity": "inference.tinfoil.sh",
+            "observedTlsSpki": tls_fingerprint,
+            "verified": True,
+        },
         "verifier": {"name": "@tinfoilsh/verifier", "version": "1.2.1"},
         "steps": {
             "fetchDigest": {"status": "success"},
@@ -224,7 +235,8 @@ def test_refuses_a_gateway_that_served_a_different_provider() -> None:
 def test_modality_is_read_from_the_route_not_guessed_from_the_provider_name() -> None:
     # The modality is a per-row catalog fact. Venice publishes `private` and
     # `e2ee` rows today and could publish a `tee` row tomorrow with no code change
-    # anywhere; Tinfoil is `tee` on seven routes and could add an E2EE one.
+    # anywhere; Tinfoil is `tee` on every row it publishes today and could add an
+    # E2EE one.
     client, _ = make_client(tee=True, provider="venice", privacy_class="tee")
     verdict = client.verify_route(CATALOG_MODEL, "venice")
 

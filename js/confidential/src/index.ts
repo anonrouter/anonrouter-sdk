@@ -181,7 +181,13 @@ export {
 export { NearTeeVerifier, type NearVerifierOptions } from "./verify/near.js";
 export { VeniceTeeVerifier, type VeniceVerifierOptions } from "./verify/venice.js";
 export { ChutesTeeVerifier, type ChutesVerifierOptions } from "./verify/chutes.js";
-export { TinfoilTeeVerifier, type TinfoilVerifierOptions, type TinfoilVerificationDocument } from "./verify/tinfoil.js";
+export {
+  TinfoilTeeVerifier,
+  TINFOIL_ENDPOINT_IDENTITY,
+  type TinfoilVerifierOptions,
+  type TinfoilVerificationDocument,
+  type TinfoilTransportBinding
+} from "./verify/tinfoil.js";
 
 // ---- TDX quote parsing ------------------------------------------------------
 export { parseTdxQuote, matchMeasurementAllowlist, type ParsedTdxQuote } from "./verify/tdx.js";
@@ -223,8 +229,22 @@ export {
   type OfferedRouteKey
 } from "./routePolicy.js";
 
-// ---- Tinfoil (optional dependency) ------------------------------------------
-export { verifyTinfoilEnclave, type TinfoilVerifyOptions } from "./tinfoil.js";
+// ---- Tinfoil direct verification (optional dependency, Node only) ------------
+// Importing this module is browser-safe; CALLING `verifyTinfoilEnclave()` is not,
+// because pinning the enclave's serving key means reading a peer certificate,
+// which no browser exposes. Off Node it fails closed rather than skipping the pin.
+export {
+  verifyTinfoilEnclave,
+  type TinfoilVerifyOptions,
+  type TinfoilVerifyDependencies,
+  type TinfoilSdkVerifier
+} from "./tinfoil.js";
+export {
+  observeTinfoilTlsSpki,
+  TinfoilTlsPinError,
+  TinfoilTlsUnavailableError,
+  type TinfoilTlsProbeOptions
+} from "./tinfoil-tls.js";
 
 // ---- E2EE transports + low-level provider crypto ----------------------------
 export { transportFor, isE2eeProvider } from "./transport/index.js";

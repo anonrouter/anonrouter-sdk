@@ -276,9 +276,15 @@ the vendor roots is deliberately not wired there, because several of those route
 run GPU enclaves whose NVIDIA attestation is not available to verify, and chaining
 only the CPU quote would claim more than was checked. For Tinfoil, Python
 validates the official verifier document returned by AnonRouter against the
-fixed Tinfoil provider-authority policy. To verify the Tinfoil enclave directly
-and independently, use Tinfoil's own Python client; the JavaScript package also
-exposes this as `verifyTinfoilEnclave()`.
+fixed Tinfoil provider-authority policy, and requires the pinned-TLS observation
+AnonRouter recorded on the serving connection: the document reports its attested
+TLS key twice from one AMD report field, so on its own it proves nothing about
+what is actually being served. The Tinfoil hardware claim is AMD SEV-SNP alone.
+No NVIDIA GPU evidence is verified on this route, and nothing binds the model
+weights. Both the document and the observation come from AnonRouter here. To
+verify the Tinfoil enclave directly and independently, use Tinfoil's own Python
+client; the JavaScript package exposes an equivalent as `verifyTinfoilEnclave()`,
+which runs the official verifier and then pins its own connection.
 
 Hop 1 can reach `hardware_verified`, and only with a real engine that actually
 chained the quote to Intel's roots with an accepted TCB status. Nothing here emits

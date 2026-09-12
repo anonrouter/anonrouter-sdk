@@ -4,7 +4,8 @@ confidential inference from Python.
 Mirrors the JS ``@anonrouter/confidential`` surface and passes the SAME shared KAT
 vectors, so Python and JS agree bit-for-bit. Verification fails closed and NEVER
 emits ``hardware-verified``: the ceiling is ``provider-attested`` for NEAR/Venice/
-Chutes and ``sdk-verified`` for Tinfoil via its official SDK.
+Chutes and ``sdk-verified`` for Tinfoil, from its official verifier's document
+plus the pinned-TLS observation recorded on the serving connection.
 """
 
 from __future__ import annotations

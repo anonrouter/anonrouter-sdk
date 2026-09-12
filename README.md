@@ -232,13 +232,20 @@ The SDK reports a `verification_level` and never inflates it:
   certificate possession and the Venice secp256k1 signing address) against the
   reviewed pins. The DCAP / NRAS chain all the way to the silicon vendor roots is
   deliberately not wired here, because faking that chain would be dishonest.
-- `sdk-verified` for `tinfoil`, based on Tinfoil's official verifier document.
-  JavaScript can run that verifier directly through the optional `tinfoil` npm
-  dependency and `verifyTinfoilEnclave()`; Python validates the gateway-supplied
-  document or can use Tinfoil's own Python client for a fully independent check.
-  Tinfoil is a TEE route, so our attested relay handles the plaintext in-enclave
-  rather than ciphertext: the route asks you to trust our reviewed build, where
-  an E2EE route does not.
+- `sdk-verified` for `tinfoil`, based on Tinfoil's official verifier document
+  plus an independently observed TLS binding. What that proves is the signed
+  tagged release for the exact `tinfoilsh/confidential-model-router` repository,
+  AMD SEV-SNP evidence, equality between the signed code and the live enclave,
+  and a serving connection whose certificate key was read off the wire and found
+  equal to the key in that verified report. What it does not prove: nothing here
+  verifies NVIDIA GPU confidential-compute evidence, and nothing binds the model
+  weights. In Node, `verifyTinfoilEnclave()` performs both halves itself through
+  the optional `tinfoil` npm dependency, so it needs nothing from AnonRouter;
+  Python validates the gateway-supplied document, including the transport
+  observation the gateway recorded, or you can use Tinfoil's own Python client
+  for a fully independent check. Tinfoil is a TEE route, so our attested relay
+  handles the plaintext in-enclave rather than ciphertext: the route asks you to
+  trust our reviewed build, where an E2EE route does not.
 - `hardware-verified` is reachable **on hop 1**, and only with a real engine. The
   Intel chain is wired: install `anonrouter-dcap-verifier` and hop 1's verdict can
   reach it, having actually chained the quote's ECDSA signature to Intel's roots

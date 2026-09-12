@@ -1,6 +1,6 @@
 # Release readiness for 0.1.2
 
-Recorded 2026-09-11 against the `v0.1.2` release candidate. Results below are
+Recorded 2026-09-12 against the `v0.1.2` release candidate. Results below are
 from this candidate unless a row is explicitly labeled as the last authenticated
 production observation.
 
@@ -14,8 +14,41 @@ to report unverified until AnonRouter manually copied each new fingerprint.
 `v0.1.2` replaces only that redundant list with a fixed provider-authority
 policy: the official verifier, exact Tinfoil GitHub repository and tagged
 Sigstore workflow, signed code/live-enclave equality, production endpoint, and
-TLS key binding remain required. It does not loosen AnonRouter's hop-1 pins,
-other providers' policies, or the inference protocol.
+serving TLS key binding remain required. It does not loosen AnonRouter's hop-1
+pins, other providers' policies, or the inference protocol.
+
+## Two corrections from independent review
+
+An independent review of the first candidate found two Tinfoil checks that read
+stronger than they were. Neither was waived.
+
+1. **The TLS binding was a tautology.** The verifier required
+   `enclaveMeasurement.tlsPublicKeyFingerprint` to equal `tlsPublicKey`. Both
+   are copies of one field of one AMD SEV-SNP report, so the comparison passed
+   for every document, forged ones included, and established nothing about the
+   connection actually serving the route. Both languages now require a
+   `transportBinding` observed on a real pinned connection, whose recorded
+   certificate SPKI must equal the key in the verified report. A document
+   without one fails `attested_key_binding`. Nine new shared vector cases and
+   matched JavaScript/Python mutation tests cover it, including a real local TLS
+   server that must accept a matching peer and refuse a wrong one.
+2. **The route claimed NVIDIA evidence it never checked.** Verdicts reported
+   hardware type `amd-sev-snp+nvidia-cc` and the copy described GPU attestation,
+   on a route whose official verifier establishes no NVIDIA
+   confidential-compute evidence. Tinfoil now reports `amd-sev-snp`, the union
+   member is removed, and every Tinfoil-facing GPU or model-weight claim is
+   withdrawn from packages, tests, vectors and documentation.
+
+A third finding is addressed as wording rather than code: of the four fields in
+the pinned Tinfoil policy, only `configRepo` is re-derived from evidence.
+`authority`, `releaseSelection` and `requireTaggedRelease` record the reviewed
+trust decision and pin the policy file against a silent edit; the guarantees
+they name belong to the official verifier. That is now stated in
+`SECURITY.md`, in `shared/measurements.json`, and beside both implementations.
+
+While correcting the above, `enclaveHost` was also brought under the endpoint
+check. Previously only `selectedRouterEndpoint` was compared, so a document
+could name the supported router in one field and anywhere at all in the other.
 
 ## Production binding
 
@@ -58,21 +91,32 @@ They are supply-chain limitations, not attestation bypasses.
 
 | Gate | Result |
 | --- | --- |
-| JavaScript offline suites | 453 confidential + 14 client passed; 39 live cases skipped |
-| Python offline suite | 377 passed; 40 live cases skipped |
+| JavaScript offline suites | 490 confidential + 14 client passed; 39 live cases skipped |
+| Python offline suite | 387 passed; 40 live cases skipped |
 | JavaScript types and builds | clean |
 | Python mypy and ruff | clean |
+| JavaScript end-to-end self-test | verify plus E2EE chat round trip passed against the in-process mock gateway |
 | Production dependency audit | 0 vulnerabilities (`npm audit --omit=dev`); 2 moderate advisories exist only in development tooling |
 | Shared pin parity | all six package copies byte-identical to `shared/` |
+| Verifier vector parity | 18 shared cases, 11 of them Tinfoil, produce identical verdicts in both languages |
 | CLI parity | 4/4 cases produced matching JavaScript/Python documents and exit codes |
-| Live gateway verification | both languages, both production origins: `hardware_verified`, `UpToDate`, no failed or advisory checks |
+| Live gateway verification | both languages, both production origins: `hardware_verified`, `UpToDate`, no failed or advisory checks (last authenticated observation, 2026-09-11) |
 | Artifact smoke installs | both npm tarballs, the wheel, and the sdist installed and ran from empty environments; Twine metadata passed |
-| Live Tinfoil provider check | official verifier accepted the current signed release; normalized result `sdk-verified`, zero required failures |
+| Live Tinfoil provider check | official verifier accepted the current signed release; the pinned connection's observed peer SPKI matched the key in the AMD report; normalized result `sdk-verified`, zero required failures (last authenticated observation, 2026-09-11) |
 
 The live gateway checks were credential-free and content-free. They exercised
 fresh nonce binding, TLS-key binding, the current independently shipped policy,
 and the DCAP chain verifier. They did not send a model request or mutate
 production.
+
+**The live rows above predate this candidate's corrections and were not rerun
+for it.** They are carried forward as dated observations of the deployment, not
+as results this tree established. The TLS-binding change is exercised offline
+instead, against a real local TLS server: a matching peer is accepted and its
+key returned, a wrong pin is refused with no observation recorded, and a peer
+that fails ordinary PKI validation is refused even when its key would have
+matched. `verifyTinfoilEnclave()` should be rerun against the live provider
+before the release is signed.
 
 ## Route coverage boundary
 
@@ -102,11 +146,38 @@ advisory. That is a provider-evidence limitation and is not hidden by the
 | the unchanged `v0.1.1` AnonRouter gateway pin | `hardware_verified`, TCB `UpToDate`, no failed or advisory checks |
 | the released `v0.1.0` pin | `untrusted` — `compose_hash_pinned`, `release_pinned`, `platform_measurements_pinned` |
 | the `v0.1.2` Tinfoil provider authority | current signed release accepted as `sdk-verified`; no static release fingerprint involved |
+| a Tinfoil document with no observed transport binding | `untrusted`, failing `attested_key_binding`, in both languages |
 | no DCAP engine supplied | cannot satisfy `--require hardware_verified` |
 
 The old hop-1 pin still fails closed as designed. The Tinfoil row is different:
 release rotation is accepted only after the provider's signed release authority
-and live enclave checks pass.
+and live enclave checks pass, and only when the serving connection's key was
+observed and matched.
+
+## What the Tinfoil route still does not establish
+
+Stated here rather than left to be inferred from a passing verdict.
+
+- **No NVIDIA GPU evidence and no model-weight binding.** The hardware claim is
+  AMD SEV-SNP. Nothing on this route attests a GPU or ties the running weights to
+  the model id the caller asked for, so `model_weight_identity` is null.
+- **Three of the four policy fields are labels.** Only `configRepo` is
+  re-derived from evidence. `authority`, `releaseSelection` and
+  `requireTaggedRelease` record which Tinfoil workflow this package was reviewed
+  against; the guarantees they name are enforced inside the official verifier,
+  which checks a Fulcio identity and workflow ref this SDK never receives.
+- **No rollback floor.** The official verifier selects the release Tinfoil calls
+  latest. This SDK adds no monotonic version floor, so an older release Tinfoil
+  still signs and serves is accepted. Adding a floor would reintroduce the
+  per-release state this patch removed.
+- **On the client path, the observation is AnonRouter's.** The gateway supplies
+  both the document and the transport binding, so that path proves the route
+  against AnonRouter's measured worker rather than independently of it. In Node,
+  `verifyTinfoilEnclave()` makes the observation itself and needs nothing from
+  AnonRouter; in a browser it fails closed, because no browser can read a peer
+  certificate.
+- **Connection-bound, not nonce-bound.** Tinfoil evidence exposes no caller
+  nonce, so hop-2 `nonce_binding` stays advisory.
 
 ## DCAP artifact
 

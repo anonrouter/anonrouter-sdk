@@ -26,15 +26,22 @@ bytes npm carries are exercised rather than only the working tree.
 Node 22 or newer. Four runtime dependencies, all `@noble` audited crypto
 (`ciphers`, `curves`, `hashes`, `post-quantum`) and nothing else.
 
-Optional dependency: install `tinfoil` to verify Tinfoil TEE routes via its
-official verifier.
+Optional dependency: install `tinfoil` to check a Tinfoil TEE route yourself with
+`verifyTinfoilEnclave()`, which runs the provider's official verifier and then
+pins its own connection to the enclave. That function is Node-only, for the same
+reason the DCAP path is; see "Browser support" below.
 
 **Browser support.** The default `@anonrouter/confidential` package works in
-browsers and supports E2EE routes. Full Intel TDX hardware verification is
-currently available in Node.js through `@anonrouter/confidential/dcap`. Browsers
-cannot run the native verifier or inspect the server's TLS certificate, so the
-SDK does not claim full gateway hardware verification in a browser. Use the
-Node.js SDK or `anonrouter-verify` CLI when you need that proof.
+browsers and supports E2EE routes. Importing it never pulls in a Node builtin.
+Full Intel TDX hardware verification is currently available in Node.js through
+`@anonrouter/confidential/dcap`. Browsers cannot run the native verifier or
+inspect the server's TLS certificate, so the SDK does not claim full gateway
+hardware verification in a browser. The same limit applies to
+`verifyTinfoilEnclave()`: pinning the enclave's serving key means reading a peer
+certificate, which no browser exposes, so in a browser it fails closed with
+`tinfoil_tls_observation_unsupported` rather than returning a verdict that
+skipped the pin. Use the Node.js SDK or `anonrouter-verify` CLI when you need
+that proof.
 
 ## Quickstart
 
@@ -269,11 +276,15 @@ authorization and billing metadata and does not receive request content.
 On a TEE route, the measured relay processes plaintext inside the enclave. The
 SDK verifies AnonRouter's relay against its published measurements. For Tinfoil's
 upstream enclave, the official Tinfoil verifier validates the current release's
-GitHub/Sigstore authority, hardware evidence, live code measurement and TLS key;
-it does not wait for AnonRouter to republish that release's fingerprint. In Node.js,
-the DCAP verifier can also verify the Intel hardware chain. If the deployed code
-or configuration of AnonRouter changes, its measurements change and gateway
-verification fails until the new release is reviewed and pinned.
+GitHub/Sigstore authority, AMD SEV-SNP evidence and live code measurement, and it
+does not wait for AnonRouter to republish that release's fingerprint. The
+attested TLS key is then bound to a real pinned connection, because the document
+states that key twice from one report field and so cannot establish it alone. No
+NVIDIA GPU evidence is verified on this route and nothing binds the model
+weights. In Node.js, the DCAP verifier can also verify the Intel hardware chain.
+If the deployed code or configuration of AnonRouter changes, its measurements
+change and gateway verification fails until the new release is reviewed and
+pinned.
 
 On an E2EE route, the SDK encrypts content to a key bound to the destination
 enclave's attestation. The AnonRouter relay receives only ciphertext and never

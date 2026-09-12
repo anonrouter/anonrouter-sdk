@@ -29,7 +29,10 @@ const UPSTREAM_MODEL = "e2ee-gpt-oss-20b-p";
 
 const TINFOIL_FP = "6d".repeat(48);
 
-/** The document Tinfoil's official verifier produces for a signed release. */
+/** The document Tinfoil's official verifier produces for a signed release, plus
+ *  the transport binding AnonRouter's worker records after pinning the serving
+ *  connection to the key in that verified report. The relay supplies both; the
+ *  document alone cannot establish what key is actually being served. */
 function tinfoilDocument() {
   const tlsFingerprint = "19".repeat(32);
   return {
@@ -44,6 +47,12 @@ function tinfoilDocument() {
     enclaveFingerprint: TINFOIL_FP,
     enclaveMeasurement: { tlsPublicKeyFingerprint: tlsFingerprint },
     tlsPublicKey: tlsFingerprint,
+    transportBinding: {
+      mode: "tls-pinned",
+      endpointIdentity: "inference.tinfoil.sh",
+      observedTlsSpki: tlsFingerprint,
+      verified: true
+    },
     verifier: { name: "@tinfoilsh/verifier", version: "1.2.1" },
     steps: {
       fetchDigest: { status: "success" },
@@ -190,8 +199,8 @@ describe("the privacy-modality binding", () => {
   it("is read from the ROUTE, not guessed from the provider name", async () => {
     // The modality is a per-row catalog fact. Venice publishes `private` and
     // `e2ee` rows today and could publish a `tee` row tomorrow with no code
-    // change anywhere; Tinfoil is `tee` on seven routes and could add an E2EE
-    // one. A client that derives the modality from the provider NAME reports a
+    // change anywhere; Tinfoil is `tee` on every row it publishes today and
+    // could add an E2EE one. A client that derives the modality from the provider NAME reports a
     // privacy property it never established, and gets it wrong the first time a
     // provider serves two classes.
     const { client } = stub({ tee: true, provider: "venice", privacy_class: "tee", upstream_model: UPSTREAM_MODEL });
