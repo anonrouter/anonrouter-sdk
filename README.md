@@ -294,12 +294,11 @@ console.log(reply.content);
 
 ## Quickstart: `anonrouter-confidential` (Python)
 
-> **Not published yet.** None of the three packages is on a registry at the time of
-> writing. Install from this repository. The artifacts are built and exercised on
-> every CI run by `scripts/smoke-artifacts.mjs`, which installs them into empty
-> environments and uses them there, so what a registry would carry is the thing
-> that is already being tested; publishing is an account decision, not a technical
-> gap.
+> **Not on PyPI yet.** Install the Python package from this repository or from the
+> checksummed wheel/sdist attached to the GitHub release while PyPI organization
+> approval is pending. JavaScript registry publication is independent. Every
+> artifact is installed into an empty environment by
+> `scripts/smoke-artifacts.mjs` before release.
 
 ```bash
 # From a clone of this repo:

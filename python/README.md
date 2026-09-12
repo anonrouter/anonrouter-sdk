@@ -9,11 +9,11 @@ bit-for-bit.
 
 ## Install
 
-**Not on PyPI yet**, and neither are the JavaScript packages. Install from a clone
-of the [monorepo](https://github.com/anonrouter/anonrouter-sdk). The wheel and the
-sdist are built and installed into clean virtualenvs on every CI run, so what PyPI
-would carry is the thing already being tested; publishing is an owner decision
-rather than a technical gap.
+**Not on PyPI yet.** Install from a clone of the
+[monorepo](https://github.com/anonrouter/anonrouter-sdk), or use the checksummed
+wheel/sdist attached to the GitHub release while PyPI organization approval is
+pending. JavaScript registry publication is independent. The wheel and sdist are
+built and installed into clean virtualenvs on every CI run.
 
 ```bash
 git clone https://github.com/anonrouter/anonrouter-sdk

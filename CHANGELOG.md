@@ -7,11 +7,10 @@ packages follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The three packages (`@anonrouter/confidential`, `@anonrouter/client`,
 `anonrouter-confidential`) are versioned together, and share one set of
 measurement pins and known-answer vectors, so a given version means the same
-verification in both languages. None of the three is on a registry yet; install
-from this repository, or from the checksummed artifacts attached to the release.
+verification in both languages. Registry publication is independently gated by
+ecosystem; checksummed artifacts are also attached to each GitHub release.
 `scripts/smoke-artifacts.mjs` builds every artifact and installs it into an empty
-environment on each CI run, so the thing a registry would carry is already
-exercised.
+environment on each CI run, so every published format is exercised.
 
 ## [0.1.1] - 2026-09-11
 
