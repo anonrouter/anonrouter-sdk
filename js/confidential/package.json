@@ -52,10 +52,10 @@
   },
   "keywords": ["anonrouter", "tee", "e2ee", "attestation", "confidential", "tdx", "ml-kem", "verify"],
   "dependencies": {
-    "@noble/ciphers": "^2.3.0",
-    "@noble/curves": "^1.9.7",
-    "@noble/hashes": "^1.8.0",
-    "@noble/post-quantum": "^0.7.0"
+    "@noble/ciphers": "^2.4.0",
+    "@noble/curves": "^2.4.0",
+    "@noble/hashes": "^2.4.0",
+    "@noble/post-quantum": "^0.7.1"
   },
   "optionalDependencies": {
     "tinfoil": "^1.2.1"
