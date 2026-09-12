@@ -5,17 +5,13 @@
  * plaintext, TEE, and private routes and speaks the OpenAI-style chat surface
  * over AnonRouter's two-request ticketed flow.
  *
- * This is NOT the confidential client. It sends your prompt as PLAINTEXT, so
- * AnonRouter's relay software handles it in order to route and meter it. On the
- * production confidential origin that relay runs inside an attested Intel TDX
- * CVM, so the plaintext does not reach ordinary AnonRouter infrastructure — but
- * this package neither verifies that nor encrypts anything, so nothing here
- * proves it to you.
- *
- * If you need to check that claim rather than take it, or to keep content opaque
- * to AnonRouter's build entirely, use @anonrouter/confidential: it verifies the
- * plane you are talking to, and its E2EE routes encrypt to the provider's
- * attested key so the relay only ever holds ciphertext.
+ * @anonrouter/client sends requests over standard HTTPS. AnonRouter cannot read
+ * or log your prompts or responses: TLS terminates inside an attested Intel TDX
+ * enclave, and plaintext exists only inside the measured relay while the request
+ * is processed. This package uses that protected route but does not verify its
+ * attestation itself. Use @anonrouter/confidential to verify the enclave before
+ * sending, or to use a supported E2EE route where the AnonRouter relay never
+ * receives plaintext at all.
  *
  * The one thing this client does enforce for you: the stable API key is sent
  * only on the control-plane ticket request, never on the request that carries
