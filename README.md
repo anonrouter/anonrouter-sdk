@@ -67,7 +67,7 @@ on any of them, because the words matter.
   - "Reviewed build" is meant literally. The compose measured by the CVM names the
     content plane by image digest, and that image is built in public CI from
     [`anonrouter/confidential-content-plane`](https://github.com/anonrouter/confidential-content-plane)
-    at tag `content-plane-v1.0.19`, with a signed SLSA provenance attestation
+    at tag `content-plane-v1.0.20`, with a signed SLSA provenance attestation
     naming the same digest. Two of its base images still have no source-to-digest
     binding; the release manifest names them rather than rounding them up, and so
     does [`docs/release-readiness.md`](docs/release-readiness.md).

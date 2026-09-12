@@ -32,14 +32,14 @@ def test_ships_the_manifest_bound_production_pin_and_resolves_it_by_default() ->
     assert len(published) == 1
     assert published[0].policy.source == (
         "anonrouter-release-manifest-sha256:"
-        "d992b00b085d9d500d88ff926dea5c9916d29c103fe127e61273d6bde084e2a5"
+        "303e61fb7c89a6b7079c489a58955aa9cc76b1e09e03b777f133cdf525f34c8d"
     )
     # The pin must name the live content plane, not a superseded one. These are
     # the two values a stale refresh gets wrong first.
     assert published[0].policy.compose_hashes == [
-        "9329f5078f9ca6fe658ec999d92a3d5d7661b7d81f60d6410ac3377ce6090f02"
+        "9e369fb632fb3b98c604b0c8457448ce88a29077c1766948b87fb6673db494fb"
     ]
-    assert published[0].policy.release_ids == ["anonrouter-tee@xl-7a84989"]
+    assert published[0].policy.release_ids == ["anonrouter-tee@xl-4c9b984"]
     for entry in published:
         for origin in entry.policy.origins:
             resolved = pinned_gateway_policy_for(origin)

@@ -12,7 +12,7 @@ ecosystem; checksummed artifacts are also attached to each GitHub release.
 `scripts/smoke-artifacts.mjs` builds every artifact and installs it into an empty
 environment on each CI run, so every published format is exercised.
 
-## [0.1.2] - 2026-09-11
+## [0.1.2] - 2026-09-12
 
 ### Fixed
 
@@ -69,8 +69,9 @@ environment on each CI run, so every published format is exercised.
 ### Changed
 
 - Bumped the JavaScript and Python packages together to `0.1.2`. This changes
-  Tinfoil hop-2 verification policy only; AnonRouter's hop-1 TDX gateway pins,
-  other providers' measurement policies, and inference protocols are unchanged.
+  Tinfoil hop-2 verification policy and refreshes AnonRouter's independently
+  shipped hop-1 pin to the deployed `content-plane-v1.0.20` workload. Other
+  providers' measurement policies and inference protocols are unchanged.
 - Removed the unused Python `tinfoil` optional extra. The Python SDK validates
   the official-verifier document and transport observation supplied by the
   gateway; callers that want to run Tinfoil's verifier independently can use

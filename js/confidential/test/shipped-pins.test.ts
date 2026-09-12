@@ -30,14 +30,14 @@ describe("shipped gateway pins", () => {
     const published = registry.filter((e) => e.status === "published");
     expect(published).toHaveLength(1);
     expect(published[0]?.policy.source).toBe(
-      "anonrouter-release-manifest-sha256:d992b00b085d9d500d88ff926dea5c9916d29c103fe127e61273d6bde084e2a5"
+      "anonrouter-release-manifest-sha256:303e61fb7c89a6b7079c489a58955aa9cc76b1e09e03b777f133cdf525f34c8d"
     );
     // The pin must name the live content plane, not a superseded one. These are
     // the two values a stale refresh gets wrong first.
     expect(published[0]?.policy.composeHashes).toEqual([
-      "9329f5078f9ca6fe658ec999d92a3d5d7661b7d81f60d6410ac3377ce6090f02"
+      "9e369fb632fb3b98c604b0c8457448ce88a29077c1766948b87fb6673db494fb"
     ]);
-    expect(published[0]?.policy.releaseIds).toEqual(["anonrouter-tee@xl-7a84989"]);
+    expect(published[0]?.policy.releaseIds).toEqual(["anonrouter-tee@xl-4c9b984"]);
     for (const entry of published) {
       for (const origin of entry.policy.origins) {
         expect(pinnedGatewayPolicyFor(origin)?.status, `${origin} must resolve by default`).toBe("published");

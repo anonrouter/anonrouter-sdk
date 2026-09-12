@@ -59,20 +59,20 @@ could name the supported router in one field and anywhere at all in the other.
 - `https://api.private.anonrouter.ai` remains an attested alias, not a customer
   configuration requirement;
 - the published gateway policy is derived from retained release manifest
-  SHA-256 `d992b00b085d9d500d88ff926dea5c9916d29c103fe127e61273d6bde084e2a5`,
+  SHA-256 `303e61fb7c89a6b7079c489a58955aa9cc76b1e09e03b777f133cdf525f34c8d`,
   which binds reviewed monorepo source commit
-  `3e4e9c818759b123a0cfd9a6f089c3a11769b1e1` and public content-plane commit
-  `997bf0c181e672f0111f4a78ecb27b336c387fbf`;
-- the policy pins content-plane tag `content-plane-v1.0.19`, image
-  `sha256:0e7e5625538b16303c7b759e8c924f043b4da1ebfc23416f5bebaea6bb717c0f`,
+  `4c9b984b981a823c016efbbb7d019817e22beca4` and public content-plane commit
+  `644f50d48f920f1f7720bd5edde4fb93bb1267bf`;
+- the policy pins content-plane tag `content-plane-v1.0.20`, image
+  `sha256:d10f4f129efa395bb724798058e93c51f9eb150a25744abee0cbbbc7622de885`,
   measured compose
-  `9329f5078f9ca6fe658ec999d92a3d5d7661b7d81f60d6410ac3377ce6090f02`,
-  and release id `anonrouter-tee@xl-7a84989`;
+  `9e369fb632fb3b98c604b0c8457448ce88a29077c1766948b87fb6673db494fb`,
+  and release id `anonrouter-tee@xl-4c9b984`;
 - app id, key provider, OS image, MRCONFIGID, MRTD, RTMR0..2, private logs,
   digest-pinned images, in-TD TLS, evidence expiry, `UpToDate` TCB, and hardware
   verification remain required.
 
-Every pinned identity and platform field was re-observed on 2026-09-11 in two
+Every pinned identity and platform field was re-observed on 2026-09-12 in two
 independent fresh nonce-bound quotes, one per production hostname. The leaf key
 named in each quote was separately observed on the wire for that hostname. Both
 origins reached `hardware_verified` with Intel TCB `UpToDate` and zero failed or
@@ -92,7 +92,7 @@ They are supply-chain limitations, not attestation bypasses.
 | Gate | Result |
 | --- | --- |
 | JavaScript offline suites | 490 confidential + 14 client passed; 39 live cases skipped |
-| Python offline suite | 387 passed; 40 live cases skipped |
+| Python offline suite | 386 passed; 41 live cases skipped |
 | JavaScript types and builds | clean |
 | Python mypy and ruff | clean |
 | JavaScript end-to-end self-test | verify plus E2EE chat round trip passed against the in-process mock gateway |
@@ -100,7 +100,7 @@ They are supply-chain limitations, not attestation bypasses.
 | Shared pin parity | all six package copies byte-identical to `shared/` |
 | Verifier vector parity | 18 shared cases, 11 of them Tinfoil, produce identical verdicts in both languages |
 | CLI parity | 4/4 cases produced matching JavaScript/Python documents and exit codes |
-| Live gateway verification | both languages, both production origins: `hardware_verified`, `UpToDate`, no failed or advisory checks (last authenticated observation, 2026-09-11) |
+| Live gateway verification | both languages, both production origins: `hardware_verified`, `UpToDate`, no failed or advisory checks (fresh observation from this candidate, 2026-09-12) |
 | Artifact smoke installs | both npm tarballs, the wheel, and the sdist installed and ran from empty environments; Twine metadata passed |
 | Live Tinfoil provider check | official verifier accepted the current signed release; the pinned connection's observed peer SPKI matched the key in the AMD report; normalized result `sdk-verified`, zero required failures (fresh credential-free observation from this candidate, 2026-09-12) |
 
@@ -109,10 +109,10 @@ fresh nonce binding, TLS-key binding, the current independently shipped policy,
 and the DCAP chain verifier. They did not send a model request or mutate
 production.
 
-The live gateway row predates this candidate's corrections and is carried
-forward as a dated observation of the deployment, not as a result this tree
-established. The TLS-binding change is exercised both offline against a real
-local TLS server and live against Tinfoil from this exact candidate. Offline, a
+The live gateway row was re-established from this exact candidate in both
+languages against both production origins. The TLS-binding change is exercised
+both offline against a real local TLS server and live against Tinfoil from this
+exact candidate. Offline, a
 matching peer is accepted and its key returned, a wrong pin is refused with no
 observation recorded, and a peer that fails ordinary PKI validation is refused
 even when its key would have matched. Live on 2026-09-12,
@@ -123,20 +123,26 @@ occurred.
 
 ## Route coverage boundary
 
-The last authenticated catalog review was 2026-09-09. It found **9 callable
-`tee`/`e2ee` routes**:
+The authenticated catalog and route matrix were rerun from this exact candidate
+on 2026-09-12. The catalog advertised **9 callable `tee`/`e2ee` routes**:
 
 | Provider | Class | Callable routes | Hop 2 result |
 | --- | --- | ---: | --- |
-| `tinfoil` | tee | 6 | `policy_matched` |
-| `venice` | e2ee | 3 | `cryptographically_checked` |
+| `tinfoil` | tee | 6 | 6/6 `policy_matched`; six paid provider-pinned canaries passed |
+| `venice` | e2ee | 3 | 2/3 `cryptographically_checked`; two paid E2EE canaries passed |
 
 Chutes remains listed but emergency-disabled and contributes zero callable
-routes. This patch does not re-enable it. No authenticated catalog matrix or
-paid provider canary was rerun for `v0.1.2`. The Tinfoil check was
-credential-free and content-free: it verified the provider release and enclave
-but sent no model request. The 9-route count is therefore a dated production
-observation, not a claim freshly established by this release candidate.
+routes. This patch does not re-enable it.
+
+One production route failed closed: Venice `z-ai/glm-5.2` omitted the required
+NVIDIA evidence on six consecutive fresh samples, so `gpu_evidence_present`
+failed and the SDK refused to send its paid request with
+`attestation_untrusted`. The other eight routes established both hops and their
+minimal paid provider-pinned calls passed. This is a production
+catalog/provider-evidence inconsistency, not a Tinfoil-policy regression or an
+SDK fail-open: the unsafe call never left the client. The route should be
+withheld until Venice supplies the evidence it advertises or AnonRouter stops
+classifying it as a callable E2EE route.
 
 Tinfoil evidence exposes no caller nonce, so its hop-2 `nonce_binding` remains
 advisory. That is a provider-evidence limitation and is not hidden by the
@@ -192,7 +198,7 @@ own engine version remains `0.1.0`.
 
 Live verification on macOS used a native `aarch64-apple-darwin` build of that
 same source, SHA-256
-`53b8c8029e9456ed6dbd9276302a54637578f9a136b8bf3163abe27aaeef0786`.
+`c728a123657cbc309bfb9cfa907c059a1ae7c726ac900ab153f137cc93d1a00c`.
 The downloadable reproducible binary remains Linux/amd64; the macOS binary is a
 local verification tool and is not a release asset.
 
