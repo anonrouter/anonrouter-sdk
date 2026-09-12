@@ -29,14 +29,12 @@ Node 22 or newer. Four runtime dependencies, all `@noble` audited crypto
 Optional dependency: install `tinfoil` to verify Tinfoil TEE routes via its
 official verifier.
 
-**Browser support, stated honestly.** The verification core and the E2EE
-transports use only Web Crypto, `fetch`, `TextEncoder` and `Uint8Array`, so the
-main entry point runs unchanged in a browser, an Electron renderer, or a service
-worker. Two subpaths do not and are not meant to: `@anonrouter/confidential/dcap`
-and `@anonrouter/confidential/chain-verifiers` spawn a process, and a browser that
-cannot run the engine has to fail closed rather than silently verify less. In a
-browser the TLS certificate binding is also unobservable, so it is recorded as an
-advisory gap rather than assumed away.
+**Browser support.** The default `@anonrouter/confidential` package works in
+browsers and supports E2EE routes. Full Intel TDX hardware verification is
+currently available in Node.js through `@anonrouter/confidential/dcap`. Browsers
+cannot run the native verifier or inspect the server's TLS certificate, so the
+SDK does not claim full gateway hardware verification in a browser. Use the
+Node.js SDK or `anonrouter-verify` CLI when you need that proof.
 
 ## Quickstart
 

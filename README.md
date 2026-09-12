@@ -252,11 +252,14 @@ git clone https://github.com/anonrouter/anonrouter-sdk
 cd anonrouter-sdk/js && npm ci && npm run build
 ```
 
-Node 22 or newer. The verification core and the E2EE transports are browser-safe
-(Web Crypto and `fetch` only, no `Buffer`, no `node:*`), so `@anonrouter/confidential`
-itself runs unchanged in a browser. The `./dcap` and `./chain-verifiers` subpaths
-are Node-only by design: they spawn a process, and a browser that could not run
-the engine must fail closed rather than silently verify less.
+Node 22 or newer.
+
+**Browser support.** The default `@anonrouter/confidential` package works in
+browsers and supports E2EE routes. Full Intel TDX hardware verification is
+currently available in Node.js through `@anonrouter/confidential/dcap`. Browsers
+cannot run the native verifier or inspect the server's TLS certificate, so the
+SDK does not claim full gateway hardware verification in a browser. Use the
+Node.js SDK or `anonrouter-verify` CLI when you need that proof.
 
 ```ts
 import { createClient, atLeast } from "@anonrouter/confidential";
