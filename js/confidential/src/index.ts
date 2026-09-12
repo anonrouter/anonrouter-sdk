@@ -198,7 +198,7 @@ export {
   setNodeCryptoProvider
 } from "./verify/crypto.js";
 
-// ---- Measurement policy (pins) ----------------------------------------------
+// ---- Measurement and provider-authority policy ------------------------------
 export {
   pinnedMeasurementPolicyFor,
   pinnedEndpointIdentityFor,
@@ -206,7 +206,7 @@ export {
   TDX_TEE_TYPE,
   type MeasurementPolicy,
   type TdxMeasurementEntry,
-  type TinfoilAcceptedRelease
+  type TinfoilProviderAuthority
 } from "./measurements.js";
 
 // ---- Which routes the service currently offers -------------------------------

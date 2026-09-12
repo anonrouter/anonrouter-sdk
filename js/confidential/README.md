@@ -267,10 +267,13 @@ is routed and metered. The separate service at `control.anonrouter.ai` handles
 authorization and billing metadata and does not receive request content.
 
 On a TEE route, the measured relay processes plaintext inside the enclave. The
-SDK verifies the relay against AnonRouter's published measurements. In Node.js,
+SDK verifies AnonRouter's relay against its published measurements. For Tinfoil's
+upstream enclave, the official Tinfoil verifier validates the current release's
+GitHub/Sigstore authority, hardware evidence, live code measurement and TLS key;
+it does not wait for AnonRouter to republish that release's fingerprint. In Node.js,
 the DCAP verifier can also verify the Intel hardware chain. If the deployed code
-or configuration changes, its measurements change and verification fails until
-the new release is reviewed and pinned.
+or configuration of AnonRouter changes, its measurements change and gateway
+verification fails until the new release is reviewed and pinned.
 
 On an E2EE route, the SDK encrypts content to a key bound to the destination
 enclave's attestation. The AnonRouter relay receives only ciphertext and never

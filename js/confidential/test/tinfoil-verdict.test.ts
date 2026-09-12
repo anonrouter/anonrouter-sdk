@@ -1,22 +1,25 @@
 import { describe, expect, it } from "vitest";
 import { verifyRawEvidence } from "../src/index.js";
 
-// v0.0.141 (matches the shipped pin) at the reviewed endpoint inference.tinfoil.sh.
-const FP = "6d657b353726893ee7202d33efc7c849a62693049c646f9394a8c6e2a165ed9936c024c4200878927767317ba3cbca7a";
+// A signed Tinfoil release at the supported endpoint and GitHub authority.
+const FP = "6d".repeat(48);
+const TLS_FP = "19".repeat(32);
 const NONCE = "ab".repeat(32);
 
 function tinfoilDoc(over: Record<string, unknown> = {}) {
   return {
+    schemaVersion: 1,
     securityVerified: true,
     enclaveHost: "inference.tinfoil.sh",
     selectedRouterEndpoint: "inference.tinfoil.sh",
     configRepo: "tinfoilsh/confidential-model-router",
-    releaseTag: "v0.0.141",
-    releaseDigest: "7dcf6bade47993752689e9574ae6fba39ebed0fa98427329fc184558488ad8f6",
+    releaseTag: "v99.0.0",
+    releaseDigest: "7d".repeat(32),
     codeFingerprint: FP,
     enclaveFingerprint: FP,
-    enclaveMeasurement: { tlsPublicKeyFingerprint: "198c3340b8b007efdb5aa9b2bff68eb6776c4710f0731121f195c65e6410c232" },
-    tlsPublicKey: "test-tls-public-key",
+    enclaveMeasurement: { tlsPublicKeyFingerprint: TLS_FP },
+    tlsPublicKey: TLS_FP,
+    verifier: { name: "@tinfoilsh/verifier", version: "1.2.1" },
     steps: {
       fetchDigest: { status: "success" },
       verifyCode: { status: "success" },
@@ -28,8 +31,8 @@ function tinfoilDoc(over: Record<string, unknown> = {}) {
   };
 }
 
-describe("Tinfoil verdict (real pin + reviewed endpoint)", () => {
-  it("verifies the v0.0.141 release at the pinned inference.tinfoil.sh endpoint", () => {
+describe("Tinfoil verdict (provider authority + reviewed endpoint)", () => {
+  it("verifies a signed release at inference.tinfoil.sh", () => {
     const v = verifyRawEvidence("tinfoil", tinfoilDoc(), { upstreamModel: "openai/gpt-oss-120b", nonce: NONCE });
     expect(v.verification_level).toBe("sdk-verified");
     expect(v.status).toBe("ok");
@@ -40,5 +43,25 @@ describe("Tinfoil verdict (real pin + reviewed endpoint)", () => {
     const v = verifyRawEvidence("tinfoil", tinfoilDoc({ selectedRouterEndpoint: "evil.example.com" }), { upstreamModel: "openai/gpt-oss-120b", nonce: NONCE });
     expect(v.status).toBe("failed");
     expect(v.reason).toBe("enclave_host_binding");
+  });
+
+  it("accepts a later signed release without changing the package policy", () => {
+    const next = "cd".repeat(48);
+    const v = verifyRawEvidence("tinfoil", tinfoilDoc({
+      releaseTag: "v9.9.9",
+      releaseDigest: "ef".repeat(32),
+      codeFingerprint: next,
+      enclaveFingerprint: next
+    }), { upstreamModel: "openai/gpt-oss-120b", nonce: NONCE });
+    expect(v.status).toBe("ok");
+    expect(v.verification_level).toBe("sdk-verified");
+  });
+
+  it("rejects a document bound to another GitHub repository", () => {
+    const v = verifyRawEvidence("tinfoil", tinfoilDoc({
+      configRepo: "attacker/confidential-model-router"
+    }), { upstreamModel: "openai/gpt-oss-120b", nonce: NONCE });
+    expect(v.status).toBe("failed");
+    expect(v.reason).toBe("provider_release_authority");
   });
 });

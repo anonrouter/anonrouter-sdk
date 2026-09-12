@@ -27,22 +27,24 @@ const CONTROL = "https://control.test.invalid";
 const CATALOG_MODEL = "openai/gpt-oss-20b";
 const UPSTREAM_MODEL = "e2ee-gpt-oss-20b-p";
 
-const TINFOIL_FP =
-  "6d657b353726893ee7202d33efc7c849a62693049c646f9394a8c6e2a165ed9936c024c4200878927767317ba3cbca7a";
+const TINFOIL_FP = "6d".repeat(48);
 
-/** The document a real Tinfoil enclave produces, at the pinned release. */
+/** The document Tinfoil's official verifier produces for a signed release. */
 function tinfoilDocument() {
+  const tlsFingerprint = "19".repeat(32);
   return {
+    schemaVersion: 1,
     securityVerified: true,
     enclaveHost: "inference.tinfoil.sh",
     selectedRouterEndpoint: "inference.tinfoil.sh",
     configRepo: "tinfoilsh/confidential-model-router",
-    releaseTag: "v0.0.141",
-    releaseDigest: "7dcf6bade47993752689e9574ae6fba39ebed0fa98427329fc184558488ad8f6",
+    releaseTag: "v99.0.0",
+    releaseDigest: "7d".repeat(32),
     codeFingerprint: TINFOIL_FP,
     enclaveFingerprint: TINFOIL_FP,
-    enclaveMeasurement: { tlsPublicKeyFingerprint: "198c3340b8b007efdb5aa9b2bff68eb6776c4710f0731121f195c65e6410c232" },
-    tlsPublicKey: "test-tls-public-key",
+    enclaveMeasurement: { tlsPublicKeyFingerprint: tlsFingerprint },
+    tlsPublicKey: tlsFingerprint,
+    verifier: { name: "@tinfoilsh/verifier", version: "1.2.1" },
     steps: {
       fetchDigest: { status: "success" },
       verifyCode: { status: "success" },

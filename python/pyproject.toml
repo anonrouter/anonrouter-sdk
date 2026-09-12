@@ -1,6 +1,6 @@
 [project]
 name = "anonrouter-confidential"
-version = "0.1.1"
+version = "0.1.2"
 description = "Independently verify AnonRouter TEE/E2EE routes and run confidential inference from Python."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -39,8 +39,6 @@ Issues = "https://github.com/anonrouter/anonrouter-sdk/issues"
 # implementation that decapsulates from the raw expanded decapsulation key the
 # Chutes wire format ships (which OpenSSL/cryptography's seed-only loader cannot).
 mlkem = ["kyber-py>=1.2"]
-# Tinfoil TEE verification via the official verifier.
-tinfoil = ["tinfoil"]
 dev = ["pytest>=8", "mypy>=1.10", "ruff>=0.6"]
 
 [build-system]

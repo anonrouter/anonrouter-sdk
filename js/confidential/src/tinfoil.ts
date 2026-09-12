@@ -1,7 +1,7 @@
 // Optional-dependency wrapper for Tinfoil verification. Tinfoil is TEE-only (not
 // client-opaque E2EE): its own SDK (`tinfoil` on npm, an OPTIONAL dependency) does
 // the hard cryptographic work (AMD SEV-SNP + NVIDIA CC hardware attestation, a
-// Sigstore-transparency-log code measurement, TLS/HPKE key binding) and refuses to
+// Sigstore-transparency-log code measurement, and TLS key binding) and refuses to
 // connect if any check fails. This wrapper runs that SDK's Verifier against the
 // enclave host, then maps its verification DOCUMENT through the ported
 // TinfoilTeeVerifier so the result is one normalized verdict shape across providers.
@@ -28,12 +28,21 @@ export interface TinfoilVerifyOptions {
 }
 
 const VERIFIER = new TinfoilTeeVerifier();
+const TINFOIL_CONFIG_REPO = "tinfoilsh/confidential-model-router";
+
+function endpointHost(value: string): string {
+  try {
+    return new URL(value.includes("://") ? value : `https://${value}`).host;
+  } catch {
+    return value;
+  }
+}
 
 function failClosed(options: TinfoilVerifyOptions, reason: string): NormalizedVerdict {
   const expectations = buildExpectations("tinfoil", {
     upstreamModel: options.model ?? options.enclaveHost,
     nonce: "",
-    endpointIdentity: options.enclaveHost,
+    endpointIdentity: endpointHost(options.enclaveHost),
     privacyModality: "tee",
     now: options.now
   });
@@ -58,13 +67,14 @@ async function obtainVerificationDocument(
   sdk: Record<string, unknown>,
   options: TinfoilVerifyOptions
 ): Promise<TinfoilVerificationDocument | null> {
-  const VerifierCtor = (sdk.Verifier ?? sdk.SecureClient ?? sdk.default) as
+  const VerifierCtor = sdk.Verifier as
     | (new (...args: unknown[]) => Record<string, unknown>)
     | undefined;
   if (typeof VerifierCtor !== "function") return null;
   try {
-    const args = options.configRepo ? [options.enclaveHost, options.configRepo] : [options.enclaveHost];
-    const verifier = new VerifierCtor(...args) as Record<string, unknown>;
+    const configRepo = options.configRepo ?? TINFOIL_CONFIG_REPO;
+    const serverURL = options.enclaveHost.includes("://") ? options.enclaveHost : `https://${options.enclaveHost}`;
+    const verifier = new VerifierCtor({ serverURL, configRepo }) as Record<string, unknown>;
     const verifyFn = verifier.verify as ((...a: unknown[]) => Promise<unknown>) | undefined;
     const verifyResult = typeof verifyFn === "function" ? await verifyFn.call(verifier) : undefined;
     const getDocFn = verifier.getVerificationDocument as ((...a: unknown[]) => unknown) | undefined;
@@ -77,11 +87,14 @@ async function obtainVerificationDocument(
 
 /**
  * Verify a Tinfoil enclave with the official Tinfoil SDK and return the normalized
- * verdict (`sdk-verified` when the SDK confirmed security and the code fingerprint
- * is on the operator-reviewed allowlist). Fails closed when the SDK is missing or
- * its verification did not pass.
+ * verdict (`sdk-verified` when the SDK confirmed security for a release signed by
+ * Tinfoil's supported GitHub authority). Fails closed when the SDK is missing,
+ * the caller selects a different repository, or verification does not pass.
  */
 export async function verifyTinfoilEnclave(options: TinfoilVerifyOptions): Promise<NormalizedVerdict> {
+  if (options.configRepo && options.configRepo !== TINFOIL_CONFIG_REPO) {
+    return failClosed(options, "tinfoil_config_repo_not_supported");
+  }
   const sdk = await loadTinfoilSdk();
   if (!sdk) return failClosed(options, "tinfoil_sdk_not_installed");
 
@@ -91,7 +104,7 @@ export async function verifyTinfoilEnclave(options: TinfoilVerifyOptions): Promi
   const expectations = buildExpectations("tinfoil", {
     upstreamModel: options.model ?? options.enclaveHost,
     nonce: "",
-    endpointIdentity: options.enclaveHost,
+    endpointIdentity: endpointHost(options.enclaveHost),
     privacyModality: "tee",
     now: options.now
   });

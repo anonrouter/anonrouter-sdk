@@ -159,7 +159,9 @@ route.
 - **Tinfoil `sdk-verified` reflects a verification document.** The `tinfoil`
   verdict returned by `verifyAttestation` / `verify_attestation` validates the
   fields of a Tinfoil verification document (security-verified flag, step
-  outcomes, code fingerprint) against the reviewed allowlist. In the client flow
+  outcomes, official verifier identity, exact GitHub repository, signed release
+  identity, live code equality, and TLS key binding) against the fixed provider
+  authority policy. In the client flow
   that document is supplied by the gateway. To verify Tinfoil independently of the
   gateway, run Tinfoil's own verifier (the optional `tinfoil` dependency, exposed
   here as `verifyTinfoilEnclave`) in your process. Tinfoil is also a TEE route, so

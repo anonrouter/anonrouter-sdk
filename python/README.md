@@ -21,7 +21,6 @@ cd anonrouter-sdk
 
 pip install ./python                  # verify + NEAR/Venice E2EE + TDX
 pip install "./python[mlkem]"         # adds the Chutes ML-KEM-768 transport
-pip install "./python[tinfoil]"       # adds Tinfoil SDK verification
 ```
 
 Once it is published the same extras apply to the package name:
@@ -275,9 +274,11 @@ Full contract, compatibility matrix, bound ticket facts, and the error taxonomy:
 Hop 2's ceiling is `provider-attested` for NEAR / Venice / Chutes: the chain to
 the vendor roots is deliberately not wired there, because several of those routes
 run GPU enclaves whose NVIDIA attestation is not available to verify, and chaining
-only the CPU quote would claim more than was checked. Tinfoil reaches
-`sdk-verified` via its official verifier (the optional `tinfoil` dependency);
-without it, Tinfoil verification fails closed.
+only the CPU quote would claim more than was checked. For Tinfoil, Python
+validates the official verifier document returned by AnonRouter against the
+fixed Tinfoil provider-authority policy. To verify the Tinfoil enclave directly
+and independently, use Tinfoil's own Python client; the JavaScript package also
+exposes this as `verifyTinfoilEnclave()`.
 
 Hop 1 can reach `hardware_verified`, and only with a real engine that actually
 chained the quote to Intel's roots with an accepted TCB status. Nothing here emits

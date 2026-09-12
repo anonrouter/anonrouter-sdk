@@ -12,6 +12,33 @@ ecosystem; checksummed artifacts are also attached to each GitHub release.
 `scripts/smoke-artifacts.mjs` builds every artifact and installs it into an empty
 environment on each CI run, so every published format is exercised.
 
+## [0.1.2] - 2026-09-11
+
+### Fixed
+
+- Replaced the second, AnonRouter-maintained Tinfoil release-fingerprint
+  allowlist with Tinfoil's signed release authority. The SDK now accepts a new
+  Tinfoil release without waiting for an AnonRouter package update only when the
+  official verifier validates the exact `tinfoilsh/confidential-model-router`
+  repository, tagged GitHub/Sigstore release, live enclave measurement, hardware
+  evidence, and TLS key binding. Wrong repositories, unsigned or malformed
+  identities, code-to-enclave mismatches, and TLS-key substitutions fail closed.
+- Updated the JavaScript wrapper for the current `tinfoil` verifier constructor.
+  The old positional call could not verify a live enclave with `tinfoil` 1.2.1;
+  the wrapper now passes the documented `serverURL` and `configRepo` options and
+  rejects any repository other than the supported Tinfoil authority.
+
+### Changed
+
+- Bumped the JavaScript and Python packages together to `0.1.2`. This changes
+  Tinfoil hop-2 verification policy only; AnonRouter's hop-1 TDX gateway pins,
+  other providers' measurement policies, and inference protocols are unchanged.
+- Removed the unused Python `tinfoil` optional extra. The Python SDK validates
+  the official-verifier document supplied by the gateway; callers that want to
+  run Tinfoil's verifier independently can use Tinfoil's client directly. The
+  JavaScript SDK continues to expose that independent check through
+  `verifyTinfoilEnclave()`.
+
 ## [0.1.1] - 2026-09-11
 
 ### Fixed

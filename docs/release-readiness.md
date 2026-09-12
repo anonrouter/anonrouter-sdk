@@ -1,19 +1,21 @@
-# Release readiness for 0.1.1
+# Release readiness for 0.1.2
 
-Recorded 2026-09-11 against the `v0.1.1` release candidate. Results below are
+Recorded 2026-09-11 against the `v0.1.2` release candidate. Results below are
 from this candidate unless a row is explicitly labeled as the last authenticated
 production observation.
 
 ## Why this patch is required
 
-The packages released as `v0.1.0` pin content-plane v1.0.17. Production now runs
-content-plane v1.0.19, so `v0.1.0` correctly refuses the live service on
-`compose_hash_pinned`, `release_pinned`, and `platform_measurements_pinned`.
-Publishing those old package bytes to a registry would therefore make a fresh
-installation report the real service as untrusted.
+`v0.1.1` shipped a correct AnonRouter hop-1 pin, but Tinfoil rotates its signed
+router release more frequently than AnonRouter releases this SDK. Keeping a
+second static list of Tinfoil release fingerprints caused valid Tinfoil routes
+to report unverified until AnonRouter manually copied each new fingerprint.
 
-`v0.1.1` refreshes that independently distributed hop-1 trust anchor. It does
-not loosen any verifier check and does not change the route protocol.
+`v0.1.2` replaces only that redundant list with a fixed provider-authority
+policy: the official verifier, exact Tinfoil GitHub repository and tagged
+Sigstore workflow, signed code/live-enclave equality, production endpoint, and
+TLS key binding remain required. It does not loosen AnonRouter's hop-1 pins,
+other providers' policies, or the inference protocol.
 
 ## Production binding
 
@@ -56,8 +58,8 @@ They are supply-chain limitations, not attestation bypasses.
 
 | Gate | Result |
 | --- | --- |
-| JavaScript offline suites | 451 confidential + 14 client passed; 39 live cases skipped |
-| Python offline suite | 372 passed; 40 live cases skipped |
+| JavaScript offline suites | 453 confidential + 14 client passed; 39 live cases skipped |
+| Python offline suite | 377 passed; 40 live cases skipped |
 | JavaScript types and builds | clean |
 | Python mypy and ruff | clean |
 | Production dependency audit | 0 vulnerabilities (`npm audit --omit=dev`); 2 moderate advisories exist only in development tooling |
@@ -65,6 +67,7 @@ They are supply-chain limitations, not attestation bypasses.
 | CLI parity | 4/4 cases produced matching JavaScript/Python documents and exit codes |
 | Live gateway verification | both languages, both production origins: `hardware_verified`, `UpToDate`, no failed or advisory checks |
 | Artifact smoke installs | both npm tarballs, the wheel, and the sdist installed and ran from empty environments; Twine metadata passed |
+| Live Tinfoil provider check | official verifier accepted the current signed release; normalized result `sdk-verified`, zero required failures |
 
 The live gateway checks were credential-free and content-free. They exercised
 fresh nonce binding, TLS-key binding, the current independently shipped policy,
@@ -83,10 +86,10 @@ The last authenticated catalog review was 2026-09-09. It found **9 callable
 
 Chutes remains listed but emergency-disabled and contributes zero callable
 routes. This patch does not re-enable it. No authenticated catalog matrix or
-paid provider canary was rerun for `v0.1.1`: provider pins and route-verification
-code did not change, and the available checks for this patch were deliberately
-content-free. The 9-route count is therefore a dated production observation,
-not a claim freshly established by this release candidate.
+paid provider canary was rerun for `v0.1.2`. The Tinfoil check was
+credential-free and content-free: it verified the provider release and enclave
+but sent no model request. The 9-route count is therefore a dated production
+observation, not a claim freshly established by this release candidate.
 
 Tinfoil evidence exposes no caller nonce, so its hop-2 `nonce_binding` remains
 advisory. That is a provider-evidence limitation and is not hidden by the
@@ -96,12 +99,14 @@ advisory. That is a provider-evidence limitation and is not hidden by the
 
 | Policy under test | Outcome on 2026-09-11 |
 | --- | --- |
-| the `v0.1.1` published pin | `hardware_verified`, TCB `UpToDate`, no failed or advisory checks |
+| the unchanged `v0.1.1` AnonRouter gateway pin | `hardware_verified`, TCB `UpToDate`, no failed or advisory checks |
 | the released `v0.1.0` pin | `untrusted` — `compose_hash_pinned`, `release_pinned`, `platform_measurements_pinned` |
+| the `v0.1.2` Tinfoil provider authority | current signed release accepted as `sdk-verified`; no static release fingerprint involved |
 | no DCAP engine supplied | cannot satisfy `--require hardware_verified` |
 
-The second row is the reason for this patch release: the old pin fails closed as
-designed and must not be republished as if it described current production.
+The old hop-1 pin still fails closed as designed. The Tinfoil row is different:
+release rotation is accepted only after the provider's signed release authority
+and live enclave checks pass.
 
 ## DCAP artifact
 
@@ -121,20 +126,16 @@ local verification tool and is not a release asset.
 
 This tree is a release candidate, not a registry publication.
 
-- The two npm package names are not yet live. Their first publication and npm
-  namespace ownership are owner-controlled bootstrap actions.
-- npm requires a package to exist before its trusted publisher can be attached.
-  The first publication therefore uses one short-lived granular token supplied
-  only as GitHub Actions secret `NPM_TOKEN`; the exact create/publish/revoke
-  sequence is in [`npm-first-publication.md`](npm-first-publication.md).
-- After that bootstrap, the npm job uses GitHub OIDC trusted publishing and is
-  independently gated by repository variable `PUBLISH_NPM`. It can be enabled
-  without enabling PyPI.
+- Both npm packages are live at `0.1.1`; `0.1.2` is not published. Use the
+  established npm release workflow for the patch release and verify the exact
+  packed artifacts before enabling its publish gate.
+- npm publication is independent of PyPI and can proceed without enabling the
+  Python registry job.
 - `PUBLISH_PYPI` must remain unset or false while the PyPI organization request
   is pending. The Python wheel and sdist can ship as checksummed GitHub release
   assets without publishing to PyPI.
 - No registry token belongs in this repository, its commits, release notes, or
   handoff documents.
 
-Do not create or push tag `v0.1.1` until the final artifact builder, checksum
-verification, npm bootstrap review, and owner signing step have all completed.
+Do not create or push tag `v0.1.2` until the final artifact builder, checksum
+verification, npm publication review, and owner signing step have all completed.

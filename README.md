@@ -26,8 +26,8 @@ package. If npm has not propagated the current release yet, install its
 checksummed tarballs from the GitHub release or build from this repository. The
 Python wheel and sdist remain available from the GitHub release while PyPI
 organization approval is pending. Every tarball, wheel and sdist is installed
-into an empty environment before release; `v0.1.1` carries the resulting
-artifacts and checksums.
+into an empty environment before release. The `v0.1.2` candidate has passed that
+artifact-install smoke test but is not yet published.
 
 Layout:
 
@@ -217,8 +217,11 @@ Verification is only as strong as where the verifier runs.
   that you can read and review. That is the configuration that earns the stronger
   claim, and it is exactly what this repo is for.
 
-So: install the SDK, review the pins in `shared/measurements.json`, and let the
-package verify the evidence on your side of the boundary.
+So: install the SDK, review the verification policy in `shared/measurements.json`,
+and let the package verify the evidence on your side of the boundary. Static
+measurements are pinned where the provider contract requires them; Tinfoil pins
+its official signed-release authority and repository instead of each release's
+generated fingerprint.
 
 ### Verification ceiling (what each level actually proves)
 
@@ -229,10 +232,13 @@ The SDK reports a `verification_level` and never inflates it:
   certificate possession and the Venice secp256k1 signing address) against the
   reviewed pins. The DCAP / NRAS chain all the way to the silicon vendor roots is
   deliberately not wired here, because faking that chain would be dishonest.
-- `sdk-verified` for `tinfoil`, via Tinfoil's official verifier (an optional
-  dependency: `tinfoil` on npm, `tinfoil` on PyPI). Tinfoil is a TEE route, so our
-  attested relay handles the plaintext in-enclave rather than ciphertext: the
-  route asks you to trust our reviewed build, where an E2EE route does not.
+- `sdk-verified` for `tinfoil`, based on Tinfoil's official verifier document.
+  JavaScript can run that verifier directly through the optional `tinfoil` npm
+  dependency and `verifyTinfoilEnclave()`; Python validates the gateway-supplied
+  document or can use Tinfoil's own Python client for a fully independent check.
+  Tinfoil is a TEE route, so our attested relay handles the plaintext in-enclave
+  rather than ciphertext: the route asks you to trust our reviewed build, where
+  an E2EE route does not.
 - `hardware-verified` is reachable **on hop 1**, and only with a real engine. The
   Intel chain is wired: install `anonrouter-dcap-verifier` and hop 1's verdict can
   reach it, having actually chained the quote's ECDSA signature to Intel's roots

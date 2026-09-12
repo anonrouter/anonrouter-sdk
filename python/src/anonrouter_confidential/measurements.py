@@ -1,4 +1,4 @@
-"""Load the operator-reviewed TEE/E2EE measurement pins.
+"""Load the operator-reviewed TEE/E2EE verification policy.
 
 The pins live in the package-local ``measurements.json`` (a synced copy of
 ``shared/measurements.json``; DO NOT hand-edit the copy). A CI parity gate keeps
@@ -36,10 +36,11 @@ def tdx_tee_type() -> int:
 def pinned_measurement_policy_for(
     provider: str, upstream_model: str
 ) -> dict[str, Any] | None:
-    """The pinned measurement policy for a route, or None when the provider binds
-    the enclave by something other than a measurement allowlist (Venice).
+    """The verification policy for a route, or None when the provider binds
+    the enclave by something other than a measurement policy (Venice).
 
-    Returns ``{"source", "version", "accepted": [...]}``.
+    ``accepted`` is provider-specific: normally a measurement list, and for
+    Tinfoil the fixed signed-release authority and repository.
     """
     providers = load_measurements().get("providers", {})
     entry = providers.get(provider)

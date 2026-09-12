@@ -1,9 +1,9 @@
 // Loader for the operator-reviewed TEE/E2EE measurement policy. `measurements.json`
 // is a byte-identical, CI-parity-gated copy of the monorepo's canonical
-// `shared/measurements.json`, which holds the same pins AnonRouter's gateway
-// enforces server-side. These pins are code-reviewed security policy, not mutable
-// provider assertions: the SDK checks a provider's live evidence against them and
-// never accepts whatever measurement a provider happens to return at request time.
+// `shared/measurements.json`, which holds the same policy AnonRouter's gateway
+// enforces server-side. Static measurements remain code-reviewed pins. Tinfoil is
+// different by design: its fixed policy pins the official signed-release authority
+// and repository while the official verifier checks the current release output.
 //
 // Every verifier and E2EE transport reads its policy through this one loader, so
 // there is a single source of truth for which enclave measurements and endpoints
@@ -26,12 +26,12 @@ export interface TdxMeasurementEntry {
   composeRepositoryPath?: string;
 }
 
-/** A single accepted Tinfoil release (Sigstore-verified code/enclave fingerprint). */
-export interface TinfoilAcceptedRelease {
-  releaseTag?: string;
-  releaseDigest?: string;
-  codeFingerprint: string;
-  enclaveFingerprint?: string;
+/** The one Tinfoil release authority accepted by the AnonRouter packages. */
+export interface TinfoilProviderAuthority {
+  authority: "github-actions-sigstore";
+  configRepo: "tinfoilsh/confidential-model-router";
+  releaseSelection: "latest";
+  requireTaggedRelease: true;
 }
 
 /** The provider-neutral measurement policy the verifier binds evidence against.

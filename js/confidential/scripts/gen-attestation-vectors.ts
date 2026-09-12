@@ -241,26 +241,26 @@ function nearEvidenceUnreviewedCompose(nonce: string): Record<string, unknown> {
 // ---- Tinfoil evidence --------------------------------------------------------
 
 /** A Tinfoil verification document, shaped like the one Tinfoil's own verifier
- *  emits. Built from a pinned release so the allowlist check has something real to
- *  match. `steps` must all read "success": that is the SDK reporting it completed
+ *  emits. `steps` must all read "success": that is the SDK reporting it completed
  *  the hard cryptography (SEV-SNP + NVIDIA CC attestation, the transparency-log
  *  measurement, TLS key binding). */
 function tinfoilDocument(opts: { failStep?: boolean } = {}): Record<string, unknown> {
-  const pin = (pinnedMeasurementPolicyFor("tinfoil", "")?.accepted as Array<Record<string, string>>)[0];
   const steps = ["fetchDigest", "verifyCode", "verifyEnclave", "compareMeasurements", "verifyCertificate"];
+  const fingerprint = "5c".repeat(48);
+  const tlsFingerprint = "3d".repeat(32);
   return {
     schemaVersion: 1,
     configRepo: "tinfoilsh/confidential-model-router",
     enclaveHost: "inference.tinfoil.sh",
     selectedRouterEndpoint: "https://inference.tinfoil.sh",
-    releaseTag: pin.releaseTag,
-    releaseDigest: pin.releaseDigest,
-    codeFingerprint: pin.codeFingerprint,
-    enclaveFingerprint: pin.enclaveFingerprint,
-    tlsPublicKey: "3d".repeat(32),
-    enclaveMeasurement: { tlsPublicKeyFingerprint: "7c".repeat(32) },
+    releaseTag: "v9.9.9",
+    releaseDigest: "d8".repeat(32),
+    codeFingerprint: fingerprint,
+    enclaveFingerprint: fingerprint,
+    tlsPublicKey: tlsFingerprint,
+    enclaveMeasurement: { tlsPublicKeyFingerprint: tlsFingerprint },
     securityVerified: true,
-    verifier: "tinfoil-go/0.0.0",
+    verifier: { name: "@tinfoilsh/verifier", version: "1.2.1" },
     steps: Object.fromEntries(
       steps.map((name, i) => [
         name,

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "generatedFrom": "AnonRouter operator-reviewed measurement policy",
-  "note": "Public, operator-reviewed TEE/E2EE measurement policy. These pins are code-reviewed security policy, not mutable provider assertions. They are the single source of truth shared by the JS and Python SDKs; a CI parity gate keeps every copy byte-identical.",
+  "note": "Public, operator-reviewed TEE/E2EE verification policy. Static measurement entries are code-reviewed pins. Tinfoil instead pins its official signed-release authority and repository, whose current output is cryptographically verified. This is the single source of truth shared by the JS and Python SDKs; a CI parity gate keeps every copy byte-identical.",
   "tdxTeeType": 129,
   "providers": {
     "chutes": {
@@ -257,29 +257,15 @@
     "tinfoil": {
       "endpointIdentity": "inference.tinfoil.sh",
       "measurementPolicy": {
-        "source": "tinfoil-sdk+sigstore-transparency-log",
-        "version": "confidential-model-router/v0.0.140+v0.0.141+v0.0.144/2026-09-04",
-        "kind": "tinfoil-release",
-        "accepted": [
-          {
-            "releaseTag": "v0.0.140",
-            "releaseDigest": "d88c75279bb24cd0674515c477a2a9ed71334036a2df69797dcd968d2c6a238b",
-            "codeFingerprint": "5cd252b81bb05d773879f65e34fc591e5d5f4b1c5f2de41861beb2ee291b57487cc336d635957d8a43b98c9b500c067c",
-            "enclaveFingerprint": "5cd252b81bb05d773879f65e34fc591e5d5f4b1c5f2de41861beb2ee291b57487cc336d635957d8a43b98c9b500c067c"
-          },
-          {
-            "releaseTag": "v0.0.141",
-            "releaseDigest": "7dcf6bade47993752689e9574ae6fba39ebed0fa98427329fc184558488ad8f6",
-            "codeFingerprint": "6d657b353726893ee7202d33efc7c849a62693049c646f9394a8c6e2a165ed9936c024c4200878927767317ba3cbca7a",
-            "enclaveFingerprint": "6d657b353726893ee7202d33efc7c849a62693049c646f9394a8c6e2a165ed9936c024c4200878927767317ba3cbca7a"
-          },
-          {
-            "releaseTag": "v0.0.144",
-            "releaseDigest": "32a9731d47629d4af429f5a3a540d411f764a936d54829f9dfef9f7dd4411145",
-            "codeFingerprint": "cc1cc66656c4c673c31df51c77c0c7527f6b8065aa82b485e61fcdec26a9003c7783176d2020bae8e5d00ae8ef7a469e",
-            "enclaveFingerprint": "cc1cc66656c4c673c31df51c77c0c7527f6b8065aa82b485e61fcdec26a9003c7783176d2020bae8e5d00ae8ef7a469e"
-          }
-        ]
+        "source": "tinfoil-official-verifier+github-actions-sigstore",
+        "version": "provider-authority/v1",
+        "kind": "tinfoil-provider-authority",
+        "accepted": {
+          "authority": "github-actions-sigstore",
+          "configRepo": "tinfoilsh/confidential-model-router",
+          "releaseSelection": "latest",
+          "requireTaggedRelease": true
+        }
       }
     },
     "venice": {

@@ -1,6 +1,6 @@
 {
   "name": "@anonrouter/client",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Thin, dependency-free JS client for AnonRouter's public API (plaintext / TEE / private routes). For content AnonRouter must never see, use @anonrouter/confidential.",
   "license": "Apache-2.0",
   "author": "AnonRouter",
