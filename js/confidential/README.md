@@ -258,32 +258,32 @@ Two things to know about the pin this package ships today:
   the quote's signature to Intel's roots, nobody has checked that the quote came
   from real silicon.
 
-## What "confidential" means here, honestly
+## How AnonRouter protects your requests
 
-- **Your plaintext does not reach ordinary AnonRouter infrastructure.** On the
-  production confidential origin the relay runs inside an attested Intel TDX CVM
-  and terminates TLS *in-enclave*: the shipped policy makes
-  `transport_terminates_in_tee` and `tls_certificate_bound_to_quote` required
-  checks, so the attested TD provably holds the key for the connection carrying
-  your request. No operator can read it off a running host.
-- **A TEE route still asks you to trust our reviewed build.** Inside the enclave,
-  the relay handles your plaintext to route and meter it. What stops that being a
-  matter of faith is that a build changed to exfiltrate it would change the
-  measurements, so hop 1 stops verifying — cheating is *detectable*, provided you
-  actually check.
-- **E2EE removes us from the trust set entirely.** On `near-ai`, `venice` and
-  `chutes` this package encrypts to a key bound to the *provider's* attested
-  enclave, so the relay holds ciphertext whatever code it happens to be running.
-  That is the difference `contentVisibleToAnonRouter` marks — which routes require
-  trusting our build, not which routes leak plaintext to normal servers.
-- **The SDK never inflates its verdict.** It reports `provider-attested` for
-  `near-ai` / `venice` / `chutes` and `sdk-verified` for `tinfoil`. It never emits
-  `hardware-verified` on its own: the DCAP / NRAS chain to the silicon vendor
-  roots is deliberately not wired here. Hop 1 will report `hardware-verified`, but
-  only when you supply a `chainVerifier` and it actually passes.
-- **Attestation is not a promise about behavior.** Both hops prove which measured
-  code is running. Neither proves that code behaves well; that is what reviewing
-  the source behind a pinned compose hash is for.
+AnonRouter cannot read or log your prompts or responses. Content-bearing
+requests go to `api.anonrouter.ai`, where TLS terminates inside an attested Intel
+TDX enclave. Plaintext exists only inside the measured relay while the request
+is routed and metered. The separate service at `control.anonrouter.ai` handles
+authorization and billing metadata and does not receive request content.
+
+On a TEE route, the measured relay processes plaintext inside the enclave. The
+SDK verifies the relay against AnonRouter's published measurements. In Node.js,
+the DCAP verifier can also verify the Intel hardware chain. If the deployed code
+or configuration changes, its measurements change and verification fails until
+the new release is reviewed and pinned.
+
+On an E2EE route, the SDK encrypts content to a key bound to the destination
+enclave's attestation. The AnonRouter relay receives only ciphertext and never
+processes prompt or response plaintext.
+
+The SDK reports only the verification it actually completes. Gateway
+verification reaches `hardware_verified` only when the DCAP verifier validates
+the quote against Intel's roots and every required policy check passes. Missing
+or failed checks are never reported as successful.
+
+Attestation identifies the exact code and configuration running inside the
+enclave. The published source and pinned compose hash let you inspect what that
+measured build contains.
 
 See the [repository README](https://github.com/anonrouter/anonrouter-sdk#readme)
 for the full trust-boundary discussion and the reviewed measurement pins.
