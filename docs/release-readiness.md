@@ -102,21 +102,24 @@ They are supply-chain limitations, not attestation bypasses.
 | CLI parity | 4/4 cases produced matching JavaScript/Python documents and exit codes |
 | Live gateway verification | both languages, both production origins: `hardware_verified`, `UpToDate`, no failed or advisory checks (last authenticated observation, 2026-09-11) |
 | Artifact smoke installs | both npm tarballs, the wheel, and the sdist installed and ran from empty environments; Twine metadata passed |
-| Live Tinfoil provider check | official verifier accepted the current signed release; the pinned connection's observed peer SPKI matched the key in the AMD report; normalized result `sdk-verified`, zero required failures (last authenticated observation, 2026-09-11) |
+| Live Tinfoil provider check | official verifier accepted the current signed release; the pinned connection's observed peer SPKI matched the key in the AMD report; normalized result `sdk-verified`, zero required failures (fresh credential-free observation from this candidate, 2026-09-12) |
 
 The live gateway checks were credential-free and content-free. They exercised
 fresh nonce binding, TLS-key binding, the current independently shipped policy,
 and the DCAP chain verifier. They did not send a model request or mutate
 production.
 
-**The live rows above predate this candidate's corrections and were not rerun
-for it.** They are carried forward as dated observations of the deployment, not
-as results this tree established. The TLS-binding change is exercised offline
-instead, against a real local TLS server: a matching peer is accepted and its
-key returned, a wrong pin is refused with no observation recorded, and a peer
-that fails ordinary PKI validation is refused even when its key would have
-matched. `verifyTinfoilEnclave()` should be rerun against the live provider
-before the release is signed.
+The live gateway row predates this candidate's corrections and is carried
+forward as a dated observation of the deployment, not as a result this tree
+established. The TLS-binding change is exercised both offline against a real
+local TLS server and live against Tinfoil from this exact candidate. Offline, a
+matching peer is accepted and its key returned, a wrong pin is refused with no
+observation recorded, and a peer that fails ordinary PKI validation is refused
+even when its key would have matched. Live on 2026-09-12,
+`verifyTinfoilEnclave()` returned `sdk-verified` with AMD SEV-SNP, the official
+signed-release authority, a present attested TLS SPKI, and zero required
+failures. It sent one credential-free, body-free `HEAD`; no inference or billing
+occurred.
 
 ## Route coverage boundary
 
@@ -141,7 +144,7 @@ advisory. That is a provider-evidence limitation and is not hidden by the
 
 ## What the package pin does now
 
-| Policy under test | Outcome on 2026-09-11 |
+| Policy under test | Latest outcome |
 | --- | --- |
 | the unchanged `v0.1.1` AnonRouter gateway pin | `hardware_verified`, TCB `UpToDate`, no failed or advisory checks |
 | the released `v0.1.0` pin | `untrusted` — `compose_hash_pinned`, `release_pinned`, `platform_measurements_pinned` |
