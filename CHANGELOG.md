@@ -13,6 +13,29 @@ from this repository, or from the checksummed artifacts attached to the release.
 environment on each CI run, so the thing a registry would carry is already
 exercised.
 
+## [0.1.1] - 2026-09-11
+
+### Fixed
+
+- Refreshed the independently distributed hop-1 trust anchor to the content
+  plane that production actually runs: `content-plane-v1.0.19`, measured
+  compose `9329f507…`, release `anonrouter-tee@xl-7a84989`. The old `v0.1.0`
+  pin fails closed against production on `compose_hash_pinned`,
+  `release_pinned`, and `platform_measurements_pinned`; publishing those bytes
+  to npm would therefore tell every verifier that the real service is
+  untrusted.
+- Bound the new pin to retained release manifest SHA-256 `d992b00b…`, not to
+  values supplied by the gateway. Two fresh nonce-bound observations, one per
+  production hostname, match the manifest and production policy field for
+  field, and each attested SPKI matches a separate TLS observation.
+
+### Changed
+
+- Bumped the JavaScript and Python packages together to `0.1.1`. npm and PyPI
+  publication remain independent switches: the npm packages can ship while
+  the matching Python wheel and sdist stay on the GitHub release pending PyPI
+  organization approval.
+
 ## [0.1.0] - 2026-09-04
 
 Initial public release.
@@ -406,4 +429,5 @@ Initial public release.
   `enableNodeCrypto()`. A browser build still degrades only that one sub-check, as
   intended.
 
+[0.1.1]: https://github.com/anonrouter/anonrouter-sdk/releases/tag/v0.1.1
 [0.1.0]: https://github.com/anonrouter/anonrouter-sdk/releases/tag/v0.1.0

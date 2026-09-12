@@ -163,10 +163,12 @@ jobs:
   # exist. Until then a tag push produces a GitHub release and touches no
   # registry.
   #
-  # Neither job holds a token. npm and PyPI both accept a short-lived OIDC
-  # identity minted for this workflow run, so there is no long-lived secret to
-  # leak, rotate, or forget. Configure the trusted publisher on the registry side
-  # as: repository anonrouter/anonrouter-sdk, workflow .github/workflows/release.yml.
+  # PyPI and every npm release after the first use a short-lived OIDC identity
+  # minted for this workflow run. npm cannot configure a trusted publisher until
+  # the package exists, so the first npm publish alone accepts a repository
+  # secret named NPM_TOKEN. Delete that secret and revoke the token immediately
+  # after configuring both package-level trusted publishers. See
+  # docs/npm-first-publication.md.
 
   publish-npm:
     name: Publish to npm (trusted publishing)
@@ -183,10 +185,23 @@ jobs:
           node-version: "22"
           registry-url: https://registry.npmjs.org
       - name: Publish both packages with provenance
+        env:
+          # Empty after the one-time bootstrap. npm 11.5.1+ detects the GitHub
+          # OIDC environment before falling back to this traditional token.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
           # OIDC trusted publishing needs a recent npm; the runner's may lag.
           npm install -g npm@latest
+          # A trusted publisher can only be attached after a package exists. Give
+          # the first run a precise refusal instead of an opaque ENEEDAUTH if the
+          # owner has not installed the one-time bootstrap secret.
+          for package in @anonrouter/client @anonrouter/confidential; do
+            if ! npm view "$package" version >/dev/null 2>&1 && [ -z "${NODE_AUTH_TOKEN:-}" ]; then
+              echo "::error::$package does not exist yet; add the one-time NPM_TOKEN described in docs/npm-first-publication.md"
+              exit 1
+            fi
+          done
           cd js && npm ci && npm run build
           npm publish --workspace @anonrouter/client --provenance --access public
           npm publish --workspace @anonrouter/confidential --provenance --access public

@@ -21,12 +21,13 @@ lives here in the open.
 Both `@anonrouter/confidential` and `anonrouter-confidential` also install an
 `anonrouter-verify` command. See [Verify from a terminal](#verify-from-a-terminal).
 
-**None of the three is on a registry yet.** The registry column above is where each
-one is headed. Install from this repository until then — see the quickstarts
-below. The exact tarball, wheel and sdist a registry would carry are built and
-installed into empty environments on every CI run, and the `v0.1.0` release
-carries them with checksums, so publishing is an account decision rather than a
-technical gap.
+The JavaScript packages are released independently from the Python registry
+package. If npm has not propagated the current release yet, install its
+checksummed tarballs from the GitHub release or build from this repository. The
+Python wheel and sdist remain available from the GitHub release while PyPI
+organization approval is pending. Every tarball, wheel and sdist is installed
+into an empty environment before release; `v0.1.1` carries the resulting
+artifacts and checksums.
 
 Layout:
 
@@ -66,7 +67,7 @@ on any of them, because the words matter.
   - "Reviewed build" is meant literally. The compose measured by the CVM names the
     content plane by image digest, and that image is built in public CI from
     [`anonrouter/confidential-content-plane`](https://github.com/anonrouter/confidential-content-plane)
-    at tag `content-plane-v1.0.17`, with a signed SLSA provenance attestation
+    at tag `content-plane-v1.0.19`, with a signed SLSA provenance attestation
     naming the same digest. Two of its base images still have no source-to-digest
     binding; the release manifest names them rather than rounding them up, and so
     does [`docs/release-readiness.md`](docs/release-readiness.md).
@@ -244,10 +245,9 @@ The SDK reports a `verification_level` and never inflates it:
 ## Quickstart: `@anonrouter/confidential` (JavaScript)
 
 ```bash
-# Once it is on npm:
-# npm install @anonrouter/confidential
+npm install @anonrouter/confidential
 
-# Until then, from a clone of this repo:
+# Before registry propagation, build from a clone of this repo:
 git clone https://github.com/anonrouter/anonrouter-sdk
 cd anonrouter-sdk/js && npm ci && npm run build
 ```

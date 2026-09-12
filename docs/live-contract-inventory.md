@@ -1,6 +1,6 @@
 # What the live origins actually serve
 
-Observed 2026-09-04 with read-only, credential-free requests and fresh 32-byte
+Observed 2026-09-11 with read-only, credential-free requests and fresh 32-byte
 nonces. No prompt, account identity, API key, or mutation was involved.
 
 This is an observation, not a trust anchor. The shipped pin comes from the
@@ -25,8 +25,8 @@ The canonical name and alias report the same workload identity:
 
 - app id `91c6a04ea7044f28d53142449c9badddbc30eff7`
 - instance id `f4324b6186f90f101f18e274e8a81102510677d1`
-- compose hash `c6f11cc59aeafc71eb02245fa90fcceac00afbc4706071e39c582c26b8427a0e`
-- release id `anonrouter-tee@xl-696b8dd`
+- compose hash `9329f5078f9ca6fe658ec999d92a3d5d7661b7d81f60d6410ac3377ce6090f02`
+- release id `anonrouter-tee@xl-7a84989`
 - OS image hash `bd369a8c2f9edb2b52dad48ac8e0b32dde5f1337c423a506b48d07403a7d8033`
 
 Each hostname has its own certificate and attested SPKI, as expected for
@@ -37,9 +37,9 @@ so the binding is not the server's word about a key it might not hold.
 ## Why the shipped pin matches
 
 `shared/gateway-policies.json` is derived from release manifest SHA-256
-`83205494da15f59b4b9a86ce3be77d331ef06d212ab9ed1a9cacfea1cdcbb730`.
+`d992b00b085d9d500d88ff926dea5c9916d29c103fe127e61273d6bde084e2a5`.
 The retained manifest binds reviewed source commit
-`696b8dde01ed3087611ba43c7572d50098360b98`, the exact measured compose,
+`3e4e9c818759b123a0cfd9a6f089c3a11769b1e1`, the exact measured compose,
 digest-pinned content image, deployment identity, canonical origin, TLS SPKI,
 and platform measurements. The SDK additionally requires an `UpToDate` TCB,
 fresh evidence, in-TD TLS, private logs, and hardware chain verification.
@@ -52,14 +52,18 @@ from source.
 
 ## Confidential routes on the day this was recorded
 
-Read from the authenticated catalog, not written down: **11 callable `tee` /
-`e2ee` routes across three providers.**
+The last authenticated catalog review was 2026-09-09: **9 callable `tee` /
+`e2ee` routes across two providers.** The gateway identity above was observed
+again on 2026-09-11; no credential was used merely to restate the route count.
 
 | Provider | Class | Routes |
 | --- | --- | --- |
 | `tinfoil` | `tee` | 6 (5 text, 1 embedding) |
 | `venice` | `e2ee` | 3 |
-| `chutes` | `e2ee` | 2 |
+
+Chutes remains listed in the catalog but is emergency-disabled and has zero
+callable routes. A disabled route is not counted as available merely because
+the SDK contains its transport and verifier.
 
 This number moves. Rows are enabled and disabled, and providers come and go —
 `near-ai` has E2EE support in this SDK and no route in the catalog today. Treat

@@ -21,11 +21,11 @@
   "policies": [
     {
       "status": "published",
-      "reviewedAt": "2026-09-04",
-      "notes": "AnonRouter confidential content plane running in an Intel TDX CVM (Large class). Published from the independently retained production release manifest with SHA-256 83205494da15f59b4b9a86ce3be77d331ef06d212ab9ed1a9cacfea1cdcbb730, which corresponds to the operator-side policy generation 2026-09-04-tinfoil-verifier. That manifest binds reviewed source commit 696b8dde01ed3087611ba43c7572d50098360b98, the exact measured app compose c6f11cc59aeafc71eb02245fa90fcceac00afbc4706071e39c582c26b8427a0e, the digest-pinned content-plane image sha256:76981a773b6fe1bebd56a32a6f1e7f9eeee20b15ea073c2e9f64acf9994d4070 and eleven further digest-pinned images, the app id, the instance id, the canonical production origin, the TLS SPKI and the platform measurements. Every value here was re-observed on 2026-09-04 in two independent nonce-bound quotes, one per origin, and the leaf SPKI each quote names was separately observed on the wire for that hostname. api.private.anonrouter.ai is retained as an attested alias; api.anonrouter.ai is the customer default. The release id is not treated as sufficient identity: app id, compose hash and every platform measurement remain independently pinned, and mrConfigId independently re-states the compose hash in a register the guest cannot re-narrate. RTMR0 is the hardware-configuration register and moves with CVM size; it was not reproduced offline with dstack-mr, so it rests on agreeing independent quotes and the retained manifest rather than on an offline recomputation. Two third-party source-to-digest provenance gaps named in the manifest (caddy-edge-base, node-base-image) remain supply-chain limitations, not attestation bypasses. requireHardwareVerified remains true, so verification fails closed unless a DCAP chain verifier is supplied.",
+      "reviewedAt": "2026-09-11",
+      "notes": "AnonRouter confidential content plane running in an Intel TDX CVM (Large class). Published from the independently retained production release manifest with SHA-256 d992b00b085d9d500d88ff926dea5c9916d29c103fe127e61273d6bde084e2a5, which corresponds to operator policy generation 2026-09-09-content-plane-v1.0.19. That manifest binds reviewed monorepo source commit 3e4e9c818759b123a0cfd9a6f089c3a11769b1e1, the exact measured app compose 9329f5078f9ca6fe658ec999d92a3d5d7661b7d81f60d6410ac3377ce6090f02, the digest-pinned public content-plane image sha256:0e7e5625538b16303c7b759e8c924f043b4da1ebfc23416f5bebaea6bb717c0f from signed tag content-plane-v1.0.19 at public commit 997bf0c181e672f0111f4a78ecb27b336c387fbf, and eleven further digest-pinned images. The image has a keyless GitHub Actions signature, SLSA v1 provenance whose subject matches the digest, and an SPDX SBOM. Every pinned identity and platform value was re-observed on 2026-09-11 in two independent fresh nonce-bound quotes, one per origin, and each quote's leaf SPKI was separately observed on the wire for that hostname. Both observations match the independently retained manifest and production measurement policy; no value was accepted merely because the gateway reported it. api.private.anonrouter.ai remains an attested alias; api.anonrouter.ai is the customer default. The release id is not treated as sufficient identity: app id, compose hash and every platform measurement remain independently pinned, and mrConfigId independently re-states the compose hash in a register the guest cannot re-narrate. RTMR0 is the hardware-configuration register; this deployment did not resize and RTMR0 remained unchanged. It was not reproduced offline with dstack-mr, so it rests on agreeing independent quotes and the retained manifest rather than an offline recomputation. Two third-party source-to-digest provenance gaps named in the manifest (caddy-edge-base, node-base-image) remain supply-chain limitations, not attestation bypasses. requireHardwareVerified remains true, so verification fails closed unless a DCAP chain verifier is supplied.",
       "policy": {
-        "source": "anonrouter-release-manifest-sha256:83205494da15f59b4b9a86ce3be77d331ef06d212ab9ed1a9cacfea1cdcbb730",
-        "version": "2026-09-04-content-plane-v1.0.17",
+        "source": "anonrouter-release-manifest-sha256:d992b00b085d9d500d88ff926dea5c9916d29c103fe127e61273d6bde084e2a5",
+        "version": "2026-09-09-content-plane-v1.0.19",
         "origins": [
           "https://api.anonrouter.ai",
           "https://api.private.anonrouter.ai"
@@ -34,10 +34,10 @@
           "91c6a04ea7044f28d53142449c9badddbc30eff7"
         ],
         "composeHashes": [
-          "c6f11cc59aeafc71eb02245fa90fcceac00afbc4706071e39c582c26b8427a0e"
+          "9329f5078f9ca6fe658ec999d92a3d5d7661b7d81f60d6410ac3377ce6090f02"
         ],
         "releaseIds": [
-          "anonrouter-tee@xl-696b8dd"
+          "anonrouter-tee@xl-7a84989"
         ],
         "keyProviderId": "3059301306072a8648ce3d020106082a8648ce3d030107034200048844eb42ccdf8c52fd4f174f362fcb9bbd19c45fd48f1edec2d8f1ca23536ec1a74021b4cee610c074f8294d431b2b7fee2c39e5333fdaf0a4522d43fb159d9f",
         "platform": {
@@ -45,7 +45,7 @@
             "f06dfda6dce1cf904d4e2bab1dc370634cf95cefa2ceb2de2eee127c9382698090d7a4a13e14c536ec6c9c3c8fa87077"
           ],
           "mrConfigId": [
-            "01c6f11cc59aeafc71eb02245fa90fcceac00afbc4706071e39c582c26b8427a0e000000000000000000000000000000"
+            "019329f5078f9ca6fe658ec999d92a3d5d7661b7d81f60d6410ac3377ce6090f02000000000000000000000000000000"
           ],
           "rtmr0": [
             "fb14dc139f33d6fcf474bc8332cac001259fb31cfbcb6b34d4ceeb552a2c4466884a0cbde45ad98a05c5c060c23ad65a"

@@ -188,7 +188,7 @@ engine. The engine itself has two forms and you should prefer the second:
 
 ```bash
 # 1. The release asset. linux/amd64, static, SHA-256 in the release's SHA256SUMS.
-curl -LO https://github.com/anonrouter/anonrouter-sdk/releases/download/v0.1.0/anonrouter-dcap-verifier-linux-amd64
+curl -LO https://github.com/anonrouter/anonrouter-sdk/releases/download/v0.1.1/anonrouter-dcap-verifier-linux-amd64
 chmod +x anonrouter-dcap-verifier-linux-amd64
 
 # 2. Your own build of the same source, which is the one that means something.

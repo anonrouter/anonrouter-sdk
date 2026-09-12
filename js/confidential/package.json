@@ -1,6 +1,6 @@
 {
   "name": "@anonrouter/confidential",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Independently verify AnonRouter TEE/E2EE routes and run confidential inference from your own app.",
   "license": "Apache-2.0",
   "author": "AnonRouter",
