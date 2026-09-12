@@ -38,6 +38,7 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const out = join(root, "dist", "artifacts");
 const skipDcap = process.argv.includes("--no-dcap");
+const python = process.env.ANONROUTER_PYTHON || "python3";
 
 const VERSION = JSON.parse(readFileSync(join(root, "js", "confidential", "package.json"), "utf8")).version;
 
@@ -90,7 +91,7 @@ for (const pkg of ["confidential", "client"]) {
 
 // ---- 3. Python distributions -------------------------------------------------
 console.log("python distributions");
-run("python3", ["-m", "build", "--outdir", out], {
+run(python, ["-m", "build", "--outdir", out], {
   cwd: join(root, "python"),
   env: { ...process.env, SOURCE_DATE_EPOCH: epoch }
 });
