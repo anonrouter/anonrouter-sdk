@@ -18,9 +18,9 @@
  * reported, and confidential routes that appeared are never checked at all.
  *
  * CONTENT-FREE BY CONSTRUCTION. Attestation is not a billable call and carries
- * no prompt. `--paid` additionally makes ONE minimal real request per provider
- * so the matrix says the route runs rather than only that it verifies; without
- * it nothing is charged. Nothing written to the evidence file is content: HTTP
+ * no prompt. `--paid` additionally makes ONE minimal real request per route so
+ * the matrix says each advertised route runs rather than only that it verifies;
+ * without it nothing is charged. Nothing written to the evidence file is content: HTTP
  * status, verdict fields, check NAMES, measurement identity prefixes, timings.
  *
  * THE KEY IS READ FROM A FILE AND NOWHERE ELSE. It is never printed, hashed, put
@@ -291,7 +291,8 @@ function classify(verdict: RouteVerdict, route: Route, detail: string): Classifi
 // ---- the paid canary ---------------------------------------------------------
 
 /**
- * ONE minimal real request, provider-pinned, priced in fractions of a cent.
+ * ONE minimal real request for this route, provider-pinned and priced in
+ * fractions of a cent.
  *
  * Verification says the route can be established. It does not say the route
  * runs: a mint can succeed, an enclave can attest, and the request can still be
@@ -619,6 +620,12 @@ async function main() {
     }, null, 1)}\n`);
     console.log(`\nwrote content-free evidence for ${results.length} routes to ${out}`);
   }
+
+  // A matrix is a gate, not merely a report. Printing FAIL while returning zero
+  // lets CI, a shell script, or an agent mistake a refused confidential route
+  // for a successful run. Preserve all output first, then fail the process if
+  // even one route did not establish both hops.
+  if (passed !== results.length) process.exitCode = 1;
 }
 
 await main();

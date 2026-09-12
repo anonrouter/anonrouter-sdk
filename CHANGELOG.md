@@ -49,6 +49,9 @@ environment on each CI run, so every published format is exercised.
   The old positional call could not verify a live enclave with `tinfoil` 1.2.1;
   the wrapper now passes the documented `serverURL` and `configRepo` options and
   rejects any repository other than the supported Tinfoil authority.
+- The live route-matrix example now exits nonzero when any advertised
+  confidential route fails. It no longer prints a failing total and then tells
+  CI or a calling shell that the run succeeded.
 
 ### Added
 
