@@ -163,9 +163,12 @@ route.
   identity, live code equality, and TLS key binding) against the fixed provider
   authority policy. In the client flow
   that document is supplied by the gateway. To verify Tinfoil independently of the
-  gateway, run Tinfoil's own verifier (the optional `tinfoil` dependency, exposed
-  here as `verifyTinfoilEnclave`) in your process. Tinfoil is also a TEE route, so
-  it is attested but not content-private from AnonRouter.
+  gateway, JavaScript callers can run Tinfoil's own verifier through
+  `verifyTinfoilEnclave()`; it loads the optional `tinfoil` npm dependency.
+  Python callers should use Tinfoil's Python client directly for that independent
+  check. The AnonRouter Python package validates the gateway-supplied document but
+  does not bundle or run Tinfoil's verifier. Tinfoil is also a TEE route, so it is
+  attested but not content-private from AnonRouter.
 
 - **A collateral fetch tells Intel which platform you are verifying.** The DCAP
   engine performs no network access on purpose, so the SDK acquires the

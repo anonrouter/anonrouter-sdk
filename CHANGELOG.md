@@ -455,5 +455,6 @@ Initial public release.
   `enableNodeCrypto()`. A browser build still degrades only that one sub-check, as
   intended.
 
+[0.1.2]: https://github.com/anonrouter/anonrouter-sdk/releases/tag/v0.1.2
 [0.1.1]: https://github.com/anonrouter/anonrouter-sdk/releases/tag/v0.1.1
 [0.1.0]: https://github.com/anonrouter/anonrouter-sdk/releases/tag/v0.1.0
