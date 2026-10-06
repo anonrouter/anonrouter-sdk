@@ -70,6 +70,15 @@ export {
 } from "./media.js";
 
 // ---- Hop 1: AnonRouter's own confidential routing plane ----------------------
+export {
+  createSignedGatewayPolicySource, verifySignedGatewayPolicy,
+  canonicalGatewayPolicyJson, packagedGatewayPolicyAuthority,
+  validateGatewayPolicyAuthority, assertGatewayPolicySecurityFloor,
+  GATEWAY_POLICY_DOMAIN, MAX_GATEWAY_POLICY_BYTES,
+  type GatewayPolicyAuthority, type GatewayPolicySource, type GatewayPolicyStateStore,
+  type GatewayPolicyCheckpoint, type VerifiedGatewayPolicy, type SignedGatewayPolicySourceOptions
+} from "./gateway/authority.js";
+export { createBrowserGatewayPolicyStateStore } from "./gateway/state.js";
 // Verifying the provider's enclave says nothing about who routed the request to
 // it. These verify the other half: that the AnonRouter data plane you connected
 // to is the exact reviewed build, running in an Intel TDX confidential VM, bound

@@ -43,6 +43,7 @@ import {
   type RouteVerdict
 } from "./verify/route.js";
 import { GATEWAY_NONCE_HEX_LENGTH } from "./gateway/binding.js";
+import { createSignedGatewayPolicySource, packagedGatewayPolicyAuthority, type GatewayPolicySource } from "./gateway/authority.js";
 import {
   pinnedGatewayPolicyFor,
   type GatewayMeasurementPolicy,
@@ -68,6 +69,10 @@ import { validateE2eeMessages, validateE2eeRequest, type RawTurnMessage } from "
 import { joinUrl, type FetchLike, type HttpContext } from "./transport/types.js";
 
 export interface CreateClientOptions {
+  /** Follow independently signed gateway approvals. Defaults to the packaged
+   * authority's activation flag. false retains exact bundled/caller pins.
+   * A source can supply durable sequence storage; it receives no API key. */
+  gatewayPolicyUpdates?: boolean | GatewayPolicySource;
   /** Confidential inference origin, e.g. "https://api.anonrouter.ai".
    *  Gateway/provider evidence and encrypted request content all use this exact
    *  origin, so verification can never be detached from the route it protects.
@@ -298,11 +303,15 @@ async function prepareChainVerifier(
 
 /** Where the policy used for a gateway verdict came from. */
 export interface GatewayPolicyProvenance {
-  origin: "caller-supplied" | "package-pinned";
+  origin: "caller-supplied" | "package-pinned" | "signed-release-authority";
   source: string;
   version: string;
   /** Only set for a package-pinned policy. */
   status?: GatewayPolicyStatus;
+  authority?: string;
+  sequence?: number;
+  payloadSha256?: string;
+  expiresAtMs?: number;
 }
 
 export interface VerifyGatewayResult {
@@ -630,6 +639,11 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
     throw new ConfidentialError("unsupported_request", "createClient needs an apiKey.");
   }
   const fetchImpl: FetchLike = options.fetch ?? (globalThis.fetch.bind(globalThis) as FetchLike);
+  const authority = packagedGatewayPolicyAuthority();
+  const updateOption = options.gatewayPolicyUpdates;
+  const gatewayPolicySource = typeof updateOption === "object" ? updateOption
+    : (updateOption === true || (updateOption === undefined && authority.enabled && authority.origins.includes(origin)))
+      ? createSignedGatewayPolicySource() : undefined;
   const authHeaders = { authorization: `Bearer ${options.apiKey}` };
   const http: HttpContext = { baseUrl: origin, fetchImpl };
 
@@ -877,18 +891,25 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
    * Resolve the policy to hold the plane to, and say where it came from.
    *
    * A caller-supplied policy always wins. Otherwise the pin this package ships
-   * for THIS client's origin is used. There is deliberately no path that fetches
-   * a policy from the gateway: a server that could hand a client the list of
-   * builds the client accepts could always name itself.
+   * for THIS client's origin is used, unless independently signed release
+   * updates were selected. The gateway never chooses the verification roots.
    */
-  function resolveGatewayPolicy(
-    input: Omit<VerifyGatewayInput, "signal">
-  ): { policy: GatewayMeasurementPolicy; provenance: GatewayPolicyProvenance } | null {
+  async function resolveGatewayPolicy(
+    input: Omit<VerifyGatewayInput, "signal">, signal?: AbortSignal, forceRefresh = false
+  ): Promise<{ policy: GatewayMeasurementPolicy; provenance: GatewayPolicyProvenance } | null> {
     if (input.policy) {
       return {
         policy: input.policy,
         provenance: { origin: "caller-supplied", source: input.policy.source, version: input.policy.version }
       };
+    }
+    if (gatewayPolicySource) {
+      const approved = await gatewayPolicySource.resolve(origin, signal, forceRefresh);
+      return { policy: approved.policy, provenance: {
+        origin: "signed-release-authority", source: approved.policy.source, version: approved.policy.version,
+        authority: approved.authority, sequence: approved.sequence, payloadSha256: approved.payloadSha256,
+        expiresAtMs: approved.expiresAtMs
+      } };
     }
     const entry = pinnedGatewayPolicyFor(origin, { allowCandidate: input.allowCandidatePolicy === true });
     if (!entry) return null;
@@ -958,6 +979,48 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
     return body as GatewayAttestationEvidence;
   }
 
+  async function verifyGatewayEvidence(
+    evidence: GatewayAttestationEvidence, nonce: string,
+    resolved: { policy: GatewayMeasurementPolicy; provenance: GatewayPolicyProvenance },
+    input: Omit<VerifyGatewayInput, "signal">, signal?: AbortSignal
+  ) {
+    let now = Date.now();
+    const chainVerifier = await prepareChainVerifier(
+      input.chainVerifier,
+      typeof evidence.quote === "string" ? evidence.quote : "",
+      resolved.policy,
+      now,
+      signal
+    );
+    now = Date.now();
+    if (resolved.provenance.expiresAtMs !== undefined && now >= resolved.provenance.expiresAtMs) {
+      throw new ConfidentialError("measurement_untrusted", "The signed gateway approval expired during verification.");
+    }
+    let verdict = verifyGatewayAttestation(evidence, {
+      nonce,
+      origin,
+      policy: resolved.policy,
+      now,
+      observedTlsSpkiSha256: input.observedTlsSpkiSha256,
+      chainVerifier
+    });
+    const moved = verdict.status === "failed"
+      && verdict.checks.some(c => c.name === "quote_signature_chain" && c.passed)
+      && verdict.checks.some(c => !c.passed && ["app_id_pinned", "compose_hash_pinned", "release_pinned", "platform_measurements_pinned", "os_image_pinned", "key_provider_pinned"].includes(c.name));
+    if (moved && gatewayPolicySource && !input.policy) {
+      const updated = await resolveGatewayPolicy(input, signal, true);
+      if (!updated) throw new ConfidentialError("measurement_untrusted", "No approved gateway policy.");
+      resolved = updated;
+      now = Date.now();
+      if (resolved.provenance.expiresAtMs !== undefined && now >= resolved.provenance.expiresAtMs) {
+        throw new ConfidentialError("measurement_untrusted", "The signed gateway approval expired during verification.");
+      }
+      verdict = verifyGatewayAttestation(evidence, { nonce, origin, policy: resolved.policy, now,
+        observedTlsSpkiSha256: input.observedTlsSpkiSha256, chainVerifier });
+    }
+    return { resolved, verdict };
+  }
+
   async function verifyGateway(input: VerifyGatewayInput = {}): Promise<VerifyGatewayResult> {
     const nonce = (input.nonce ?? freshNonce()).toLowerCase();
     if (nonce.length !== GATEWAY_NONCE_HEX_LENGTH || !/^[0-9a-f]+$/.test(nonce)) {
@@ -966,7 +1029,7 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
         `The gateway attestation nonce must be exactly ${GATEWAY_NONCE_HEX_LENGTH} hex characters.`
       );
     }
-    const resolved = resolveGatewayPolicy(input);
+    const resolved = await resolveGatewayPolicy(input, input.signal);
     if (!resolved) {
       // No policy means nothing to check the evidence against. Fetching it anyway
       // and reporting what it says would be reading the claim back to the caller.
@@ -982,23 +1045,8 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
         `${origin} does not expose gateway attestation, so it cannot be shown to run inside a confidential VM.`
       );
     }
-    const now = Date.now();
-    const chainVerifier = await prepareChainVerifier(
-      input.chainVerifier,
-      typeof evidence.quote === "string" ? evidence.quote : "",
-      resolved.policy,
-      now,
-      input.signal
-    );
-    const verdict = verifyGatewayAttestation(evidence, {
-      nonce,
-      origin,
-      policy: resolved.policy,
-      now,
-      observedTlsSpkiSha256: input.observedTlsSpkiSha256,
-      chainVerifier
-    });
-    return { origin, policy: resolved.provenance, verdict, rawEvidence: evidence };
+    const checked = await verifyGatewayEvidence(evidence, nonce, resolved, input, input.signal);
+    return { origin, policy: checked.resolved.provenance, verdict: checked.verdict, rawEvidence: evidence };
   }
 
   /**
@@ -1009,7 +1057,7 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
     option: Omit<VerifyGatewayInput, "signal">,
     signal?: AbortSignal
   ): Promise<GatewayHopReport> {
-    const resolved = resolveGatewayPolicy(option);
+    const resolved = await resolveGatewayPolicy(option, signal);
     if (!resolved) {
       return {
         requested: true,
@@ -1029,28 +1077,14 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
         policy: resolved.provenance
       };
     }
-    const now = Date.now();
-    const chainVerifier = await prepareChainVerifier(
-      option.chainVerifier,
-      typeof evidence.quote === "string" ? evidence.quote : "",
-      resolved.policy,
-      now,
-      signal
-    );
-    const verdict = verifyGatewayAttestation(evidence, {
-      nonce,
-      origin,
-      policy: resolved.policy,
-      now,
-      observedTlsSpkiSha256: option.observedTlsSpkiSha256,
-      chainVerifier
-    });
+    const checked = await verifyGatewayEvidence(evidence, nonce, resolved, option, signal);
+    const verdict = checked.verdict;
     return {
       requested: true,
       status: verdict.status === "ok" ? "ok" : "failed",
       verificationLevel: verdict.verificationLevel,
       reason: verdict.reason,
-      policy: resolved.provenance,
+      policy: checked.resolved.provenance,
       verdict,
       rawEvidence: evidence
     };

@@ -1,0 +1,21 @@
+{
+  "schema": "anonrouter.gateway-policy-authority/v1",
+  "enabled": false,
+  "authority": "anonrouter-production-custodians/v1",
+  "url": "https://anonrouter.ai/.well-known/anonrouter/gateway-policy.json",
+  "origins": [
+    "https://api.anonrouter.ai",
+    "https://api.private.anonrouter.ai"
+  ],
+  "threshold": 2,
+  "keys": {
+    "custodian.prod.usb": "25238b49e6bccb09e8966be2340928399cc11acabefabf263e12e230a5a3389d",
+    "custodian.prod.laptop": "e57d592b5f1ccdbdac0b6d29052cfe32619b73e4323db80ea8f2b51e26fb0923",
+    "custodian.prod.phone": "41ce5497a2fe5028f5b20650548c1f49e892b93cfc91e44a79733af6c975d6cd"
+  },
+  "minSequence": 1,
+  "maxLifetimeMs": 604800000,
+  "refreshMs": 300000,
+  "notes": "Staged, NOT activated. Public keys copied from the reviewed production roster at backend commit 6de7ba3b0ae077d17872002b15d35600a5bf99bf. No private keys read. Publish and independently verify the first policy, integrate a purpose-specific signing operation, then enable in a reviewed SDK release. A deployment-authorization signature is NOT a gateway-policy signature.",
+  "maxStaleMs": 3600000
+}

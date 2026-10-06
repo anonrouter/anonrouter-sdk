@@ -153,6 +153,10 @@ jobs:
         run: pip install -e "."
       - name: Compare direct provider adversarial verdicts
         run: node scripts/check-near-parity.mjs
+      - name: Signed gateway policy and durable state parity
+        run: node scripts/check-gateway-authority-parity.mjs
+      - name: Gateway policy publication preparation and refusal gates
+        run: node scripts/test-gateway-policy-release.mjs
       - name: Compare both commands
         run: node scripts/check-cli-parity.mjs
 

@@ -483,3 +483,7 @@ See `CONTRIBUTING.md` for dev setup and how the pins are maintained, and
 ## License
 
 Apache-2.0. See `LICENSE`.
+
+Signed gateway-policy updates are staged in the unpublished candidate; see
+[the approval contract and activation gates](docs/gateway-policy-updates.md).
+Default clients still use the bundled exact policy until activation.

@@ -12,6 +12,15 @@ ecosystem; checksummed artifacts are also attached to each GitHub release.
 `scripts/smoke-artifacts.mjs` builds every artifact and installs it into an empty
 environment on each CI run, so every published format is exercised.
 
+## 0.1.3 (unpublished)
+
+- Repair W8 gateway pins and NEAR/provider-other compatibility; refuse missing
+  GPU evidence and mismatched encryption keys.
+- Add staged, two-custodian signed gateway policy updates in JavaScript and
+  Python, persistent rollback protection and bounded refresh on release drift.
+  Default activation awaits a verified publication; exact policies still work.
+- Add cross-language authority tests and release preparation/verification gates.
+
 ## [0.1.2] - 2026-09-12
 
 ### Fixed

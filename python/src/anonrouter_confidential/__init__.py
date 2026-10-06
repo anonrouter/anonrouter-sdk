@@ -26,6 +26,13 @@ from .gateway import (
     pinned_gateway_policy_for,
     verify_gateway_attestation,
 )
+from .gateway.authority import (
+    SignedGatewayPolicySource,
+    canonical_gateway_policy_json,
+    packaged_gateway_policy_authority,
+    verify_signed_gateway_policy,
+)
+from .gateway.state import FileGatewayPolicyStateStore
 from .measurements import (
     load_measurements,
     pinned_endpoint_identity_for,
@@ -100,6 +107,11 @@ from .verify.state import (
 __version__ = "0.1.2"
 
 __all__ = [
+    "FileGatewayPolicyStateStore",
+    "SignedGatewayPolicySource",
+    "canonical_gateway_policy_json",
+    "packaged_gateway_policy_authority",
+    "verify_signed_gateway_policy",
     "__version__",
     # client
     "create_client",

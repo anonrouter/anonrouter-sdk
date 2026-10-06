@@ -1,0 +1,500 @@
+{
+  "description": "Synthetic signing keys exist only in generator memory. Public keys and signatures only. These are NOT production approvals.",
+  "nowMs": 1791327000000,
+  "root": {
+    "schema": "anonrouter.gateway-policy-authority/v1",
+    "enabled": false,
+    "authority": "test-authority/v1",
+    "url": "https://publication.test.invalid/policy.json",
+    "origins": [
+      "https://api.anonrouter.ai",
+      "https://api.private.anonrouter.ai"
+    ],
+    "threshold": 2,
+    "keys": {
+      "test-0": "79e184742ce8c0b64a26abf42e71f00c958ac0b9c43d6dd0ba93056b95555980",
+      "test-1": "1255119fa397cd5347a7e897926d5aab017a8e90d003d902f0cde6770febf0da",
+      "test-2": "3ace43a4819c4177d16ba9cfb79eb48e6b5c6892d50d02b7e85086eab804aa84"
+    },
+    "minSequence": 1,
+    "maxLifetimeMs": 604800000,
+    "refreshMs": 1000,
+    "maxStaleMs": 3600000
+  },
+  "origin": "https://api.anonrouter.ai",
+  "cases": [
+    {
+      "name": "accepted-current",
+      "accepted": true,
+      "envelope": {
+        "schema": "anonrouter.gateway-policy-envelope/v1",
+        "payload": "{\"authority\":\"test-authority/v1\",\"expiresAtMs\":1791327010000,\"issuedAtMs\":1791326999000,\"manifestSha256\":\"5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"policy\":{\"acceptableTcbStatuses\":[\"UpToDate\"],\"appIds\":[\"91c6a04ea7044f28d53142449c9badddbc30eff7\"],\"composeHashes\":[\"ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0\"],\"keyProviderId\":\"3059301306072a8648ce3d020106082a8648ce3d030107034200048844eb42ccdf8c52fd4f174f362fcb9bbd19c45fd48f1edec2d8f1ca23536ec1a74021b4cee610c074f8294d431b2b7fee2c39e5333fdaf0a4522d43fb159d9f\",\"maxEvidenceAgeMs\":300000,\"origins\":[\"https://api.anonrouter.ai\",\"https://api.private.anonrouter.ai\"],\"platform\":{\"mrConfigId\":[\"01ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0000000000000000000000000000000\"],\"mrTd\":[\"f06dfda6dce1cf904d4e2bab1dc370634cf95cefa2ceb2de2eee127c9382698090d7a4a13e14c536ec6c9c3c8fa87077\"],\"osImageHash\":[\"bd369a8c2f9edb2b52dad48ac8e0b32dde5f1337c423a506b48d07403a7d8033\"],\"rtmr0\":[\"fb14dc139f33d6fcf474bc8332cac001259fb31cfbcb6b34d4ceeb552a2c4466884a0cbde45ad98a05c5c060c23ad65a\"],\"rtmr1\":[\"07e6f51aa763abfe75c3ddfbf4f425fe3f0ceff66d807a75e049303dce9addf68e7218729bd419638af63a370f65878c\"],\"rtmr2\":[\"df67e467e60edc1737bcf8e682d48131bfb427f523226aa7f197a7608e9b3784783fa759ef5b28191fa12f9ddb36b858\"]},\"releaseIds\":[\"anonrouter-tee@pool-a07ae22e\"],\"requireDigestPinnedImages\":true,\"requireEvidenceExpiry\":true,\"requireHardwareVerified\":true,\"requireInTeeTls\":true,\"requirePrivateLogs\":true,\"source\":\"anonrouter-release-manifest-sha256:5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"version\":\"2026-10-06-content-plane-v1.0.26-pool\"},\"schema\":\"anonrouter.gateway-policy/v1\",\"sequence\":1}",
+        "signatures": [
+          {
+            "keyId": "test-0",
+            "signature": "8d6e89650c1bbe7015035827fdc2416172e9a815699b4f3ffaf2630989c30ccd60afc476264c4bbd442dcee62c6ced9d8b9a21b195122fedfd486f757b421f01"
+          },
+          {
+            "keyId": "test-1",
+            "signature": "17e70c8304e9c49eabd4872c9b955bfd2f087f61be3353fb8a99e2014f961596c51693d6107b568c01927c6802802759a9b7ea79b4d5ac6c5e192cc9bb806704"
+          }
+        ]
+      }
+    },
+    {
+      "name": "accepted-future-release",
+      "accepted": true,
+      "envelope": {
+        "schema": "anonrouter.gateway-policy-envelope/v1",
+        "payload": "{\"authority\":\"test-authority/v1\",\"expiresAtMs\":1791327010000,\"issuedAtMs\":1791326999000,\"manifestSha256\":\"5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"policy\":{\"acceptableTcbStatuses\":[\"UpToDate\"],\"appIds\":[\"91c6a04ea7044f28d53142449c9badddbc30eff7\"],\"composeHashes\":[\"1212121212121212121212121212121212121212121212121212121212121212\"],\"keyProviderId\":\"3059301306072a8648ce3d020106082a8648ce3d030107034200048844eb42ccdf8c52fd4f174f362fcb9bbd19c45fd48f1edec2d8f1ca23536ec1a74021b4cee610c074f8294d431b2b7fee2c39e5333fdaf0a4522d43fb159d9f\",\"maxEvidenceAgeMs\":300000,\"origins\":[\"https://api.anonrouter.ai\",\"https://api.private.anonrouter.ai\"],\"platform\":{\"mrConfigId\":[\"011212121212121212121212121212121212121212121212121212121212121212000000000000000000000000000000\"],\"mrTd\":[\"f06dfda6dce1cf904d4e2bab1dc370634cf95cefa2ceb2de2eee127c9382698090d7a4a13e14c536ec6c9c3c8fa87077\"],\"osImageHash\":[\"bd369a8c2f9edb2b52dad48ac8e0b32dde5f1337c423a506b48d07403a7d8033\"],\"rtmr0\":[\"fb14dc139f33d6fcf474bc8332cac001259fb31cfbcb6b34d4ceeb552a2c4466884a0cbde45ad98a05c5c060c23ad65a\"],\"rtmr1\":[\"07e6f51aa763abfe75c3ddfbf4f425fe3f0ceff66d807a75e049303dce9addf68e7218729bd419638af63a370f65878c\"],\"rtmr2\":[\"df67e467e60edc1737bcf8e682d48131bfb427f523226aa7f197a7608e9b3784783fa759ef5b28191fa12f9ddb36b858\"]},\"releaseIds\":[\"anonrouter-tee@future\"],\"requireDigestPinnedImages\":true,\"requireEvidenceExpiry\":true,\"requireHardwareVerified\":true,\"requireInTeeTls\":true,\"requirePrivateLogs\":true,\"source\":\"anonrouter-release-manifest-sha256:5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"version\":\"next-release\"},\"schema\":\"anonrouter.gateway-policy/v1\",\"sequence\":2}",
+        "signatures": [
+          {
+            "keyId": "test-0",
+            "signature": "31171f5d7da365d5e8055e5dc4a28780133bdbaebab20d9b25d354161cf028fa69d568fd17956ae4a5a05ac22db2ecf49f579c5a4c601c45fc6820530ca2e50e"
+          },
+          {
+            "keyId": "test-1",
+            "signature": "9a317420303c06e4c29fda3df2eecc362b029806c846ea87bbc28d3cd63a7fe7d4394d23f4ea1471c0519b52ecc149d2e690fbd2b9cc9f7bd1efe9c62cb4f60f"
+          }
+        ]
+      }
+    },
+    {
+      "name": "expired",
+      "accepted": false,
+      "envelope": {
+        "schema": "anonrouter.gateway-policy-envelope/v1",
+        "payload": "{\"authority\":\"test-authority/v1\",\"expiresAtMs\":1791327000000,\"issuedAtMs\":1791326999000,\"manifestSha256\":\"5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"policy\":{\"acceptableTcbStatuses\":[\"UpToDate\"],\"appIds\":[\"91c6a04ea7044f28d53142449c9badddbc30eff7\"],\"composeHashes\":[\"ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0\"],\"keyProviderId\":\"3059301306072a8648ce3d020106082a8648ce3d030107034200048844eb42ccdf8c52fd4f174f362fcb9bbd19c45fd48f1edec2d8f1ca23536ec1a74021b4cee610c074f8294d431b2b7fee2c39e5333fdaf0a4522d43fb159d9f\",\"maxEvidenceAgeMs\":300000,\"origins\":[\"https://api.anonrouter.ai\",\"https://api.private.anonrouter.ai\"],\"platform\":{\"mrConfigId\":[\"01ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0000000000000000000000000000000\"],\"mrTd\":[\"f06dfda6dce1cf904d4e2bab1dc370634cf95cefa2ceb2de2eee127c9382698090d7a4a13e14c536ec6c9c3c8fa87077\"],\"osImageHash\":[\"bd369a8c2f9edb2b52dad48ac8e0b32dde5f1337c423a506b48d07403a7d8033\"],\"rtmr0\":[\"fb14dc139f33d6fcf474bc8332cac001259fb31cfbcb6b34d4ceeb552a2c4466884a0cbde45ad98a05c5c060c23ad65a\"],\"rtmr1\":[\"07e6f51aa763abfe75c3ddfbf4f425fe3f0ceff66d807a75e049303dce9addf68e7218729bd419638af63a370f65878c\"],\"rtmr2\":[\"df67e467e60edc1737bcf8e682d48131bfb427f523226aa7f197a7608e9b3784783fa759ef5b28191fa12f9ddb36b858\"]},\"releaseIds\":[\"anonrouter-tee@pool-a07ae22e\"],\"requireDigestPinnedImages\":true,\"requireEvidenceExpiry\":true,\"requireHardwareVerified\":true,\"requireInTeeTls\":true,\"requirePrivateLogs\":true,\"source\":\"anonrouter-release-manifest-sha256:5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"version\":\"2026-10-06-content-plane-v1.0.26-pool\"},\"schema\":\"anonrouter.gateway-policy/v1\",\"sequence\":1}",
+        "signatures": [
+          {
+            "keyId": "test-0",
+            "signature": "c567345a86c41b50c7e96df0aa3dcbca035ce55347e6c0c2c12c819ef2603012ee3d8a7411f3af1596930004567819ddcf8441f93f5bfc47cfe817c61be0b001"
+          },
+          {
+            "keyId": "test-1",
+            "signature": "984b16c1b36d7b8a97b97c632c1d07ee1598f4b5066bcf48a6543a144fbe0a26e7cbe330e2b63a691ef179fe42b9931734c485d44b0bf41789ef153691c4900c"
+          }
+        ]
+      }
+    },
+    {
+      "name": "future-publication",
+      "accepted": false,
+      "envelope": {
+        "schema": "anonrouter.gateway-policy-envelope/v1",
+        "payload": "{\"authority\":\"test-authority/v1\",\"expiresAtMs\":1791327010000,\"issuedAtMs\":1791327000001,\"manifestSha256\":\"5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"policy\":{\"acceptableTcbStatuses\":[\"UpToDate\"],\"appIds\":[\"91c6a04ea7044f28d53142449c9badddbc30eff7\"],\"composeHashes\":[\"ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0\"],\"keyProviderId\":\"3059301306072a8648ce3d020106082a8648ce3d030107034200048844eb42ccdf8c52fd4f174f362fcb9bbd19c45fd48f1edec2d8f1ca23536ec1a74021b4cee610c074f8294d431b2b7fee2c39e5333fdaf0a4522d43fb159d9f\",\"maxEvidenceAgeMs\":300000,\"origins\":[\"https://api.anonrouter.ai\",\"https://api.private.anonrouter.ai\"],\"platform\":{\"mrConfigId\":[\"01ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0000000000000000000000000000000\"],\"mrTd\":[\"f06dfda6dce1cf904d4e2bab1dc370634cf95cefa2ceb2de2eee127c9382698090d7a4a13e14c536ec6c9c3c8fa87077\"],\"osImageHash\":[\"bd369a8c2f9edb2b52dad48ac8e0b32dde5f1337c423a506b48d07403a7d8033\"],\"rtmr0\":[\"fb14dc139f33d6fcf474bc8332cac001259fb31cfbcb6b34d4ceeb552a2c4466884a0cbde45ad98a05c5c060c23ad65a\"],\"rtmr1\":[\"07e6f51aa763abfe75c3ddfbf4f425fe3f0ceff66d807a75e049303dce9addf68e7218729bd419638af63a370f65878c\"],\"rtmr2\":[\"df67e467e60edc1737bcf8e682d48131bfb427f523226aa7f197a7608e9b3784783fa759ef5b28191fa12f9ddb36b858\"]},\"releaseIds\":[\"anonrouter-tee@pool-a07ae22e\"],\"requireDigestPinnedImages\":true,\"requireEvidenceExpiry\":true,\"requireHardwareVerified\":true,\"requireInTeeTls\":true,\"requirePrivateLogs\":true,\"source\":\"anonrouter-release-manifest-sha256:5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"version\":\"2026-10-06-content-plane-v1.0.26-pool\"},\"schema\":\"anonrouter.gateway-policy/v1\",\"sequence\":1}",
+        "signatures": [
+          {
+            "keyId": "test-0",
+            "signature": "9aa043499486851afc123c52e379685089f28db4e2eebe9ae8800c936073c006cf178ea8ae9c04c4e2d2bb2f35d119c0e0b41223f5c3a2abd6796dfeb1dbbe0f"
+          },
+          {
+            "keyId": "test-1",
+            "signature": "8f2aa45e90cd3ccf094950c1641348da5045344f3a5a784f2230b5e9a9aa5e45c026fdb76d22c67e5510dec11d73d07801c7cfd46215194fe6fd00be1590d70e"
+          }
+        ]
+      }
+    },
+    {
+      "name": "excessive-lifetime",
+      "accepted": false,
+      "envelope": {
+        "schema": "anonrouter.gateway-policy-envelope/v1",
+        "payload": "{\"authority\":\"test-authority/v1\",\"expiresAtMs\":1791931800000,\"issuedAtMs\":1791326999000,\"manifestSha256\":\"5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"policy\":{\"acceptableTcbStatuses\":[\"UpToDate\"],\"appIds\":[\"91c6a04ea7044f28d53142449c9badddbc30eff7\"],\"composeHashes\":[\"ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0\"],\"keyProviderId\":\"3059301306072a8648ce3d020106082a8648ce3d030107034200048844eb42ccdf8c52fd4f174f362fcb9bbd19c45fd48f1edec2d8f1ca23536ec1a74021b4cee610c074f8294d431b2b7fee2c39e5333fdaf0a4522d43fb159d9f\",\"maxEvidenceAgeMs\":300000,\"origins\":[\"https://api.anonrouter.ai\",\"https://api.private.anonrouter.ai\"],\"platform\":{\"mrConfigId\":[\"01ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0000000000000000000000000000000\"],\"mrTd\":[\"f06dfda6dce1cf904d4e2bab1dc370634cf95cefa2ceb2de2eee127c9382698090d7a4a13e14c536ec6c9c3c8fa87077\"],\"osImageHash\":[\"bd369a8c2f9edb2b52dad48ac8e0b32dde5f1337c423a506b48d07403a7d8033\"],\"rtmr0\":[\"fb14dc139f33d6fcf474bc8332cac001259fb31cfbcb6b34d4ceeb552a2c4466884a0cbde45ad98a05c5c060c23ad65a\"],\"rtmr1\":[\"07e6f51aa763abfe75c3ddfbf4f425fe3f0ceff66d807a75e049303dce9addf68e7218729bd419638af63a370f65878c\"],\"rtmr2\":[\"df67e467e60edc1737bcf8e682d48131bfb427f523226aa7f197a7608e9b3784783fa759ef5b28191fa12f9ddb36b858\"]},\"releaseIds\":[\"anonrouter-tee@pool-a07ae22e\"],\"requireDigestPinnedImages\":true,\"requireEvidenceExpiry\":true,\"requireHardwareVerified\":true,\"requireInTeeTls\":true,\"requirePrivateLogs\":true,\"source\":\"anonrouter-release-manifest-sha256:5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"version\":\"2026-10-06-content-plane-v1.0.26-pool\"},\"schema\":\"anonrouter.gateway-policy/v1\",\"sequence\":1}",
+        "signatures": [
+          {
+            "keyId": "test-0",
+            "signature": "3eb26ff636a7bfa12bdf6036eef78468b0074e43a4bbd9c7803d027fcac95484eec2ec06bfee76179afc00a3745ee582c61adc40375229da27fe60a69e4a7e04"
+          },
+          {
+            "keyId": "test-1",
+            "signature": "2206b53b152f9d1f783916886b9550ad777aff7a1b30cd3f43cdd73bf8a9d49830ff178ecc59212f3efd18b7e74a8f1c2605a0e6cce16eb04a57d7cc8d39df00"
+          }
+        ]
+      }
+    },
+    {
+      "name": "wrong-authority",
+      "accepted": false,
+      "envelope": {
+        "schema": "anonrouter.gateway-policy-envelope/v1",
+        "payload": "{\"authority\":\"untrusted\",\"expiresAtMs\":1791327010000,\"issuedAtMs\":1791326999000,\"manifestSha256\":\"5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"policy\":{\"acceptableTcbStatuses\":[\"UpToDate\"],\"appIds\":[\"91c6a04ea7044f28d53142449c9badddbc30eff7\"],\"composeHashes\":[\"ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0\"],\"keyProviderId\":\"3059301306072a8648ce3d020106082a8648ce3d030107034200048844eb42ccdf8c52fd4f174f362fcb9bbd19c45fd48f1edec2d8f1ca23536ec1a74021b4cee610c074f8294d431b2b7fee2c39e5333fdaf0a4522d43fb159d9f\",\"maxEvidenceAgeMs\":300000,\"origins\":[\"https://api.anonrouter.ai\",\"https://api.private.anonrouter.ai\"],\"platform\":{\"mrConfigId\":[\"01ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0000000000000000000000000000000\"],\"mrTd\":[\"f06dfda6dce1cf904d4e2bab1dc370634cf95cefa2ceb2de2eee127c9382698090d7a4a13e14c536ec6c9c3c8fa87077\"],\"osImageHash\":[\"bd369a8c2f9edb2b52dad48ac8e0b32dde5f1337c423a506b48d07403a7d8033\"],\"rtmr0\":[\"fb14dc139f33d6fcf474bc8332cac001259fb31cfbcb6b34d4ceeb552a2c4466884a0cbde45ad98a05c5c060c23ad65a\"],\"rtmr1\":[\"07e6f51aa763abfe75c3ddfbf4f425fe3f0ceff66d807a75e049303dce9addf68e7218729bd419638af63a370f65878c\"],\"rtmr2\":[\"df67e467e60edc1737bcf8e682d48131bfb427f523226aa7f197a7608e9b3784783fa759ef5b28191fa12f9ddb36b858\"]},\"releaseIds\":[\"anonrouter-tee@pool-a07ae22e\"],\"requireDigestPinnedImages\":true,\"requireEvidenceExpiry\":true,\"requireHardwareVerified\":true,\"requireInTeeTls\":true,\"requirePrivateLogs\":true,\"source\":\"anonrouter-release-manifest-sha256:5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"version\":\"2026-10-06-content-plane-v1.0.26-pool\"},\"schema\":\"anonrouter.gateway-policy/v1\",\"sequence\":1}",
+        "signatures": [
+          {
+            "keyId": "test-0",
+            "signature": "3a3437bff7ac6ff3f7b61fb6e20d62b5a49aea50cec5c82de848d7b64535546c8d4ae4e31590382217e82ce966fe1a253f433366320fb8137c979837e2d2c10f"
+          },
+          {
+            "keyId": "test-1",
+            "signature": "6faa23874130440bf00979550e9027f4330d2a80135786ad9ca046435b367f26af6ca730439e5325d9234dd077d180550cb1e55a204906ae13e0af5d88b17400"
+          }
+        ]
+      }
+    },
+    {
+      "name": "manifest-mismatch",
+      "accepted": false,
+      "envelope": {
+        "schema": "anonrouter.gateway-policy-envelope/v1",
+        "payload": "{\"authority\":\"test-authority/v1\",\"expiresAtMs\":1791327010000,\"issuedAtMs\":1791326999000,\"manifestSha256\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"policy\":{\"acceptableTcbStatuses\":[\"UpToDate\"],\"appIds\":[\"91c6a04ea7044f28d53142449c9badddbc30eff7\"],\"composeHashes\":[\"ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0\"],\"keyProviderId\":\"3059301306072a8648ce3d020106082a8648ce3d030107034200048844eb42ccdf8c52fd4f174f362fcb9bbd19c45fd48f1edec2d8f1ca23536ec1a74021b4cee610c074f8294d431b2b7fee2c39e5333fdaf0a4522d43fb159d9f\",\"maxEvidenceAgeMs\":300000,\"origins\":[\"https://api.anonrouter.ai\",\"https://api.private.anonrouter.ai\"],\"platform\":{\"mrConfigId\":[\"01ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0000000000000000000000000000000\"],\"mrTd\":[\"f06dfda6dce1cf904d4e2bab1dc370634cf95cefa2ceb2de2eee127c9382698090d7a4a13e14c536ec6c9c3c8fa87077\"],\"osImageHash\":[\"bd369a8c2f9edb2b52dad48ac8e0b32dde5f1337c423a506b48d07403a7d8033\"],\"rtmr0\":[\"fb14dc139f33d6fcf474bc8332cac001259fb31cfbcb6b34d4ceeb552a2c4466884a0cbde45ad98a05c5c060c23ad65a\"],\"rtmr1\":[\"07e6f51aa763abfe75c3ddfbf4f425fe3f0ceff66d807a75e049303dce9addf68e7218729bd419638af63a370f65878c\"],\"rtmr2\":[\"df67e467e60edc1737bcf8e682d48131bfb427f523226aa7f197a7608e9b3784783fa759ef5b28191fa12f9ddb36b858\"]},\"releaseIds\":[\"anonrouter-tee@pool-a07ae22e\"],\"requireDigestPinnedImages\":true,\"requireEvidenceExpiry\":true,\"requireHardwareVerified\":true,\"requireInTeeTls\":true,\"requirePrivateLogs\":true,\"source\":\"anonrouter-release-manifest-sha256:5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"version\":\"2026-10-06-content-plane-v1.0.26-pool\"},\"schema\":\"anonrouter.gateway-policy/v1\",\"sequence\":1}",
+        "signatures": [
+          {
+            "keyId": "test-0",
+            "signature": "651fd4cc6a4da2b56b47a176c8caca3be14c290f1880f7c11700e0ea76ed41441353a972e47cd607a0c1010765b076c36bed66208c7d454f6b2c7b6f6f2cf404"
+          },
+          {
+            "keyId": "test-1",
+            "signature": "e11380b780beadf230e872af2ccf8999de4e02e5fe3e01dce76d5734dea28453fd426ad4b0235674ee2d3f8df40359144105c61b45d910dec0348008eaa00507"
+          }
+        ]
+      }
+    },
+    {
+      "name": "unexpected-origin",
+      "accepted": false,
+      "envelope": {
+        "schema": "anonrouter.gateway-policy-envelope/v1",
+        "payload": "{\"authority\":\"test-authority/v1\",\"expiresAtMs\":1791327010000,\"issuedAtMs\":1791326999000,\"manifestSha256\":\"5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"policy\":{\"acceptableTcbStatuses\":[\"UpToDate\"],\"appIds\":[\"91c6a04ea7044f28d53142449c9badddbc30eff7\"],\"composeHashes\":[\"ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0\"],\"keyProviderId\":\"3059301306072a8648ce3d020106082a8648ce3d030107034200048844eb42ccdf8c52fd4f174f362fcb9bbd19c45fd48f1edec2d8f1ca23536ec1a74021b4cee610c074f8294d431b2b7fee2c39e5333fdaf0a4522d43fb159d9f\",\"maxEvidenceAgeMs\":300000,\"origins\":[\"https://api.anonrouter.ai\",\"https://api.private.anonrouter.ai\",\"https://attacker.invalid\"],\"platform\":{\"mrConfigId\":[\"01ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0000000000000000000000000000000\"],\"mrTd\":[\"f06dfda6dce1cf904d4e2bab1dc370634cf95cefa2ceb2de2eee127c9382698090d7a4a13e14c536ec6c9c3c8fa87077\"],\"osImageHash\":[\"bd369a8c2f9edb2b52dad48ac8e0b32dde5f1337c423a506b48d07403a7d8033\"],\"rtmr0\":[\"fb14dc139f33d6fcf474bc8332cac001259fb31cfbcb6b34d4ceeb552a2c4466884a0cbde45ad98a05c5c060c23ad65a\"],\"rtmr1\":[\"07e6f51aa763abfe75c3ddfbf4f425fe3f0ceff66d807a75e049303dce9addf68e7218729bd419638af63a370f65878c\"],\"rtmr2\":[\"df67e467e60edc1737bcf8e682d48131bfb427f523226aa7f197a7608e9b3784783fa759ef5b28191fa12f9ddb36b858\"]},\"releaseIds\":[\"anonrouter-tee@pool-a07ae22e\"],\"requireDigestPinnedImages\":true,\"requireEvidenceExpiry\":true,\"requireHardwareVerified\":true,\"requireInTeeTls\":true,\"requirePrivateLogs\":true,\"source\":\"anonrouter-release-manifest-sha256:5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"version\":\"2026-10-06-content-plane-v1.0.26-pool\"},\"schema\":\"anonrouter.gateway-policy/v1\",\"sequence\":1}",
+        "signatures": [
+          {
+            "keyId": "test-0",
+            "signature": "75fcd0b6b304ff5571e7bbd56b5edc67f6f670b616e6f8e8e8f0190e2e859d162db42f961ce22546e487421a49b27b64fd474389b8833223c7267c3d1887b809"
+          },
+          {
+            "keyId": "test-1",
+            "signature": "62b46ca609146097dc98e36e424c73524d5807d910a73096a06ca128fa8c6efc99c53f4ba42fa11c74d59e5b3ba5f256505cd2ab758db121e1856d8a1f7f3905"
+          }
+        ]
+      }
+    },
+    {
+      "name": "unknown-field",
+      "accepted": false,
+      "envelope": {
+        "schema": "anonrouter.gateway-policy-envelope/v1",
+        "payload": "{\"authority\":\"test-authority/v1\",\"expiresAtMs\":1791327010000,\"issuedAtMs\":1791326999000,\"keys\":{\"test-0\":\"79e184742ce8c0b64a26abf42e71f00c958ac0b9c43d6dd0ba93056b95555980\",\"test-1\":\"1255119fa397cd5347a7e897926d5aab017a8e90d003d902f0cde6770febf0da\",\"test-2\":\"3ace43a4819c4177d16ba9cfb79eb48e6b5c6892d50d02b7e85086eab804aa84\"},\"manifestSha256\":\"5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"policy\":{\"acceptableTcbStatuses\":[\"UpToDate\"],\"appIds\":[\"91c6a04ea7044f28d53142449c9badddbc30eff7\"],\"composeHashes\":[\"ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0\"],\"keyProviderId\":\"3059301306072a8648ce3d020106082a8648ce3d030107034200048844eb42ccdf8c52fd4f174f362fcb9bbd19c45fd48f1edec2d8f1ca23536ec1a74021b4cee610c074f8294d431b2b7fee2c39e5333fdaf0a4522d43fb159d9f\",\"maxEvidenceAgeMs\":300000,\"origins\":[\"https://api.anonrouter.ai\",\"https://api.private.anonrouter.ai\"],\"platform\":{\"mrConfigId\":[\"01ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0000000000000000000000000000000\"],\"mrTd\":[\"f06dfda6dce1cf904d4e2bab1dc370634cf95cefa2ceb2de2eee127c9382698090d7a4a13e14c536ec6c9c3c8fa87077\"],\"osImageHash\":[\"bd369a8c2f9edb2b52dad48ac8e0b32dde5f1337c423a506b48d07403a7d8033\"],\"rtmr0\":[\"fb14dc139f33d6fcf474bc8332cac001259fb31cfbcb6b34d4ceeb552a2c4466884a0cbde45ad98a05c5c060c23ad65a\"],\"rtmr1\":[\"07e6f51aa763abfe75c3ddfbf4f425fe3f0ceff66d807a75e049303dce9addf68e7218729bd419638af63a370f65878c\"],\"rtmr2\":[\"df67e467e60edc1737bcf8e682d48131bfb427f523226aa7f197a7608e9b3784783fa759ef5b28191fa12f9ddb36b858\"]},\"releaseIds\":[\"anonrouter-tee@pool-a07ae22e\"],\"requireDigestPinnedImages\":true,\"requireEvidenceExpiry\":true,\"requireHardwareVerified\":true,\"requireInTeeTls\":true,\"requirePrivateLogs\":true,\"source\":\"anonrouter-release-manifest-sha256:5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"version\":\"2026-10-06-content-plane-v1.0.26-pool\"},\"schema\":\"anonrouter.gateway-policy/v1\",\"sequence\":1}",
+        "signatures": [
+          {
+            "keyId": "test-0",
+            "signature": "4a22aa5f3567459b83ed30ceedad5fdc849806a95b031b3f3da2c87ab183621a8a62e93e62d47f34081b3c69c7422599e74a6f45d8b1ef7767245f4c360b060e"
+          },
+          {
+            "keyId": "test-1",
+            "signature": "321339cee9bb4aec6204dcdf34724ef1b7f4313ba9ab93277fa5ff8fb8b9ff1eec55ae6a78e7d60b17941ac6618e038caff947bfc98e9eaface62059557aa90b"
+          }
+        ]
+      }
+    },
+    {
+      "name": "downgrade-requireHardwareVerified",
+      "accepted": false,
+      "envelope": {
+        "schema": "anonrouter.gateway-policy-envelope/v1",
+        "payload": "{\"authority\":\"test-authority/v1\",\"expiresAtMs\":1791327010000,\"issuedAtMs\":1791326999000,\"manifestSha256\":\"5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"policy\":{\"acceptableTcbStatuses\":[\"UpToDate\"],\"appIds\":[\"91c6a04ea7044f28d53142449c9badddbc30eff7\"],\"composeHashes\":[\"ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0\"],\"keyProviderId\":\"3059301306072a8648ce3d020106082a8648ce3d030107034200048844eb42ccdf8c52fd4f174f362fcb9bbd19c45fd48f1edec2d8f1ca23536ec1a74021b4cee610c074f8294d431b2b7fee2c39e5333fdaf0a4522d43fb159d9f\",\"maxEvidenceAgeMs\":300000,\"origins\":[\"https://api.anonrouter.ai\",\"https://api.private.anonrouter.ai\"],\"platform\":{\"mrConfigId\":[\"01ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0000000000000000000000000000000\"],\"mrTd\":[\"f06dfda6dce1cf904d4e2bab1dc370634cf95cefa2ceb2de2eee127c9382698090d7a4a13e14c536ec6c9c3c8fa87077\"],\"osImageHash\":[\"bd369a8c2f9edb2b52dad48ac8e0b32dde5f1337c423a506b48d07403a7d8033\"],\"rtmr0\":[\"fb14dc139f33d6fcf474bc8332cac001259fb31cfbcb6b34d4ceeb552a2c4466884a0cbde45ad98a05c5c060c23ad65a\"],\"rtmr1\":[\"07e6f51aa763abfe75c3ddfbf4f425fe3f0ceff66d807a75e049303dce9addf68e7218729bd419638af63a370f65878c\"],\"rtmr2\":[\"df67e467e60edc1737bcf8e682d48131bfb427f523226aa7f197a7608e9b3784783fa759ef5b28191fa12f9ddb36b858\"]},\"releaseIds\":[\"anonrouter-tee@pool-a07ae22e\"],\"requireDigestPinnedImages\":true,\"requireEvidenceExpiry\":true,\"requireHardwareVerified\":false,\"requireInTeeTls\":true,\"requirePrivateLogs\":true,\"source\":\"anonrouter-release-manifest-sha256:5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"version\":\"2026-10-06-content-plane-v1.0.26-pool\"},\"schema\":\"anonrouter.gateway-policy/v1\",\"sequence\":1}",
+        "signatures": [
+          {
+            "keyId": "test-0",
+            "signature": "2b5e4acf7f4c084dad93f5125d6f5a9e631c7a5fb72b9de30b1d97c26f14eedea8646f2f70ae326259491dd954846c5eaa2fa4e2e7f7e4b8bcd284d327b7820c"
+          },
+          {
+            "keyId": "test-1",
+            "signature": "9e1bb68da05b2e6745f732627488ec6bde957168d087487af7335c1dbebc5dd6cb2486b68f5108baff602433e31ed5392ffc399538d50d4adf1343177f6e6e05"
+          }
+        ]
+      }
+    },
+    {
+      "name": "downgrade-requireInTeeTls",
+      "accepted": false,
+      "envelope": {
+        "schema": "anonrouter.gateway-policy-envelope/v1",
+        "payload": "{\"authority\":\"test-authority/v1\",\"expiresAtMs\":1791327010000,\"issuedAtMs\":1791326999000,\"manifestSha256\":\"5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"policy\":{\"acceptableTcbStatuses\":[\"UpToDate\"],\"appIds\":[\"91c6a04ea7044f28d53142449c9badddbc30eff7\"],\"composeHashes\":[\"ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0\"],\"keyProviderId\":\"3059301306072a8648ce3d020106082a8648ce3d030107034200048844eb42ccdf8c52fd4f174f362fcb9bbd19c45fd48f1edec2d8f1ca23536ec1a74021b4cee610c074f8294d431b2b7fee2c39e5333fdaf0a4522d43fb159d9f\",\"maxEvidenceAgeMs\":300000,\"origins\":[\"https://api.anonrouter.ai\",\"https://api.private.anonrouter.ai\"],\"platform\":{\"mrConfigId\":[\"01ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0000000000000000000000000000000\"],\"mrTd\":[\"f06dfda6dce1cf904d4e2bab1dc370634cf95cefa2ceb2de2eee127c9382698090d7a4a13e14c536ec6c9c3c8fa87077\"],\"osImageHash\":[\"bd369a8c2f9edb2b52dad48ac8e0b32dde5f1337c423a506b48d07403a7d8033\"],\"rtmr0\":[\"fb14dc139f33d6fcf474bc8332cac001259fb31cfbcb6b34d4ceeb552a2c4466884a0cbde45ad98a05c5c060c23ad65a\"],\"rtmr1\":[\"07e6f51aa763abfe75c3ddfbf4f425fe3f0ceff66d807a75e049303dce9addf68e7218729bd419638af63a370f65878c\"],\"rtmr2\":[\"df67e467e60edc1737bcf8e682d48131bfb427f523226aa7f197a7608e9b3784783fa759ef5b28191fa12f9ddb36b858\"]},\"releaseIds\":[\"anonrouter-tee@pool-a07ae22e\"],\"requireDigestPinnedImages\":true,\"requireEvidenceExpiry\":true,\"requireHardwareVerified\":true,\"requireInTeeTls\":false,\"requirePrivateLogs\":true,\"source\":\"anonrouter-release-manifest-sha256:5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"version\":\"2026-10-06-content-plane-v1.0.26-pool\"},\"schema\":\"anonrouter.gateway-policy/v1\",\"sequence\":1}",
+        "signatures": [
+          {
+            "keyId": "test-0",
+            "signature": "256a823ed586e047ee9ada4a6b2b578d29172dbddd8f1fa3731a3a2b56abacd2659eece8cfd4f553f3f2c0b9466f59431a069b8c3c15807ef9cb6c57ff84cb0b"
+          },
+          {
+            "keyId": "test-1",
+            "signature": "02cc42e4bed0be33e0c628428437d0dc89783358b6292625566a9f6b9d5eaadd9d5a020357752a96aef66673ff1636a2ae977dcf3e890c102ab52acba3aa610b"
+          }
+        ]
+      }
+    },
+    {
+      "name": "downgrade-requirePrivateLogs",
+      "accepted": false,
+      "envelope": {
+        "schema": "anonrouter.gateway-policy-envelope/v1",
+        "payload": "{\"authority\":\"test-authority/v1\",\"expiresAtMs\":1791327010000,\"issuedAtMs\":1791326999000,\"manifestSha256\":\"5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"policy\":{\"acceptableTcbStatuses\":[\"UpToDate\"],\"appIds\":[\"91c6a04ea7044f28d53142449c9badddbc30eff7\"],\"composeHashes\":[\"ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0\"],\"keyProviderId\":\"3059301306072a8648ce3d020106082a8648ce3d030107034200048844eb42ccdf8c52fd4f174f362fcb9bbd19c45fd48f1edec2d8f1ca23536ec1a74021b4cee610c074f8294d431b2b7fee2c39e5333fdaf0a4522d43fb159d9f\",\"maxEvidenceAgeMs\":300000,\"origins\":[\"https://api.anonrouter.ai\",\"https://api.private.anonrouter.ai\"],\"platform\":{\"mrConfigId\":[\"01ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0000000000000000000000000000000\"],\"mrTd\":[\"f06dfda6dce1cf904d4e2bab1dc370634cf95cefa2ceb2de2eee127c9382698090d7a4a13e14c536ec6c9c3c8fa87077\"],\"osImageHash\":[\"bd369a8c2f9edb2b52dad48ac8e0b32dde5f1337c423a506b48d07403a7d8033\"],\"rtmr0\":[\"fb14dc139f33d6fcf474bc8332cac001259fb31cfbcb6b34d4ceeb552a2c4466884a0cbde45ad98a05c5c060c23ad65a\"],\"rtmr1\":[\"07e6f51aa763abfe75c3ddfbf4f425fe3f0ceff66d807a75e049303dce9addf68e7218729bd419638af63a370f65878c\"],\"rtmr2\":[\"df67e467e60edc1737bcf8e682d48131bfb427f523226aa7f197a7608e9b3784783fa759ef5b28191fa12f9ddb36b858\"]},\"releaseIds\":[\"anonrouter-tee@pool-a07ae22e\"],\"requireDigestPinnedImages\":true,\"requireEvidenceExpiry\":true,\"requireHardwareVerified\":true,\"requireInTeeTls\":true,\"requirePrivateLogs\":false,\"source\":\"anonrouter-release-manifest-sha256:5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"version\":\"2026-10-06-content-plane-v1.0.26-pool\"},\"schema\":\"anonrouter.gateway-policy/v1\",\"sequence\":1}",
+        "signatures": [
+          {
+            "keyId": "test-0",
+            "signature": "8a7bb5962efad5ae5442fba5883e1d14ef2e75e69fd7c772f982f87beff46905a93fb07a8cb8b81943fc25edbdbf1e4f5ee9f801439b5ebed62ca0816eb01e0d"
+          },
+          {
+            "keyId": "test-1",
+            "signature": "8e5e65265e24cfe35a8103b4891479e40ab5262cffedb39cbdd2f8320e8ca9e154182e518ee46764aee312a32c84bfcdaaf726de3e0cf97f841fe688e53d2701"
+          }
+        ]
+      }
+    },
+    {
+      "name": "downgrade-requireDigestPinnedImages",
+      "accepted": false,
+      "envelope": {
+        "schema": "anonrouter.gateway-policy-envelope/v1",
+        "payload": "{\"authority\":\"test-authority/v1\",\"expiresAtMs\":1791327010000,\"issuedAtMs\":1791326999000,\"manifestSha256\":\"5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"policy\":{\"acceptableTcbStatuses\":[\"UpToDate\"],\"appIds\":[\"91c6a04ea7044f28d53142449c9badddbc30eff7\"],\"composeHashes\":[\"ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0\"],\"keyProviderId\":\"3059301306072a8648ce3d020106082a8648ce3d030107034200048844eb42ccdf8c52fd4f174f362fcb9bbd19c45fd48f1edec2d8f1ca23536ec1a74021b4cee610c074f8294d431b2b7fee2c39e5333fdaf0a4522d43fb159d9f\",\"maxEvidenceAgeMs\":300000,\"origins\":[\"https://api.anonrouter.ai\",\"https://api.private.anonrouter.ai\"],\"platform\":{\"mrConfigId\":[\"01ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0000000000000000000000000000000\"],\"mrTd\":[\"f06dfda6dce1cf904d4e2bab1dc370634cf95cefa2ceb2de2eee127c9382698090d7a4a13e14c536ec6c9c3c8fa87077\"],\"osImageHash\":[\"bd369a8c2f9edb2b52dad48ac8e0b32dde5f1337c423a506b48d07403a7d8033\"],\"rtmr0\":[\"fb14dc139f33d6fcf474bc8332cac001259fb31cfbcb6b34d4ceeb552a2c4466884a0cbde45ad98a05c5c060c23ad65a\"],\"rtmr1\":[\"07e6f51aa763abfe75c3ddfbf4f425fe3f0ceff66d807a75e049303dce9addf68e7218729bd419638af63a370f65878c\"],\"rtmr2\":[\"df67e467e60edc1737bcf8e682d48131bfb427f523226aa7f197a7608e9b3784783fa759ef5b28191fa12f9ddb36b858\"]},\"releaseIds\":[\"anonrouter-tee@pool-a07ae22e\"],\"requireDigestPinnedImages\":false,\"requireEvidenceExpiry\":true,\"requireHardwareVerified\":true,\"requireInTeeTls\":true,\"requirePrivateLogs\":true,\"source\":\"anonrouter-release-manifest-sha256:5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"version\":\"2026-10-06-content-plane-v1.0.26-pool\"},\"schema\":\"anonrouter.gateway-policy/v1\",\"sequence\":1}",
+        "signatures": [
+          {
+            "keyId": "test-0",
+            "signature": "32e3037f34dcb6526048008a2a08022f054bb6b036305ab6c1709a7f0b668536b8d0804314570467604584ecb15c5574c20423323f88cd9a9dbc11d8a408d90c"
+          },
+          {
+            "keyId": "test-1",
+            "signature": "b536146c26108f21f7a9b284884e93c82e3f8c9598f54be6d1dc04bcb53b07acfeb4e3286996c7c9f97e922b4562879cd6375661a99f94a4df26abf022b6b00a"
+          }
+        ]
+      }
+    },
+    {
+      "name": "downgrade-requireEvidenceExpiry",
+      "accepted": false,
+      "envelope": {
+        "schema": "anonrouter.gateway-policy-envelope/v1",
+        "payload": "{\"authority\":\"test-authority/v1\",\"expiresAtMs\":1791327010000,\"issuedAtMs\":1791326999000,\"manifestSha256\":\"5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"policy\":{\"acceptableTcbStatuses\":[\"UpToDate\"],\"appIds\":[\"91c6a04ea7044f28d53142449c9badddbc30eff7\"],\"composeHashes\":[\"ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0\"],\"keyProviderId\":\"3059301306072a8648ce3d020106082a8648ce3d030107034200048844eb42ccdf8c52fd4f174f362fcb9bbd19c45fd48f1edec2d8f1ca23536ec1a74021b4cee610c074f8294d431b2b7fee2c39e5333fdaf0a4522d43fb159d9f\",\"maxEvidenceAgeMs\":300000,\"origins\":[\"https://api.anonrouter.ai\",\"https://api.private.anonrouter.ai\"],\"platform\":{\"mrConfigId\":[\"01ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0000000000000000000000000000000\"],\"mrTd\":[\"f06dfda6dce1cf904d4e2bab1dc370634cf95cefa2ceb2de2eee127c9382698090d7a4a13e14c536ec6c9c3c8fa87077\"],\"osImageHash\":[\"bd369a8c2f9edb2b52dad48ac8e0b32dde5f1337c423a506b48d07403a7d8033\"],\"rtmr0\":[\"fb14dc139f33d6fcf474bc8332cac001259fb31cfbcb6b34d4ceeb552a2c4466884a0cbde45ad98a05c5c060c23ad65a\"],\"rtmr1\":[\"07e6f51aa763abfe75c3ddfbf4f425fe3f0ceff66d807a75e049303dce9addf68e7218729bd419638af63a370f65878c\"],\"rtmr2\":[\"df67e467e60edc1737bcf8e682d48131bfb427f523226aa7f197a7608e9b3784783fa759ef5b28191fa12f9ddb36b858\"]},\"releaseIds\":[\"anonrouter-tee@pool-a07ae22e\"],\"requireDigestPinnedImages\":true,\"requireEvidenceExpiry\":false,\"requireHardwareVerified\":true,\"requireInTeeTls\":true,\"requirePrivateLogs\":true,\"source\":\"anonrouter-release-manifest-sha256:5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"version\":\"2026-10-06-content-plane-v1.0.26-pool\"},\"schema\":\"anonrouter.gateway-policy/v1\",\"sequence\":1}",
+        "signatures": [
+          {
+            "keyId": "test-0",
+            "signature": "5444a45709b93a2fe46028ee86f4fb8b3256468bbc5e5cdd46f65d4289882c16a6bf90b752346cd9597af7937ee64cf4f824660815df63b31dfec70d1c147d01"
+          },
+          {
+            "keyId": "test-1",
+            "signature": "976a8a3aeade27d1ed2ce6c8623a60fcd892ab1fee458ff2d2f585960a8567ae662efd7d54ffca8ae5354e8e38d4ebd5162d40756561a741e392acc59ef5b80c"
+          }
+        ]
+      }
+    },
+    {
+      "name": "downgrade-platform",
+      "accepted": false,
+      "envelope": {
+        "schema": "anonrouter.gateway-policy-envelope/v1",
+        "payload": "{\"authority\":\"test-authority/v1\",\"expiresAtMs\":1791327010000,\"issuedAtMs\":1791326999000,\"manifestSha256\":\"5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"policy\":{\"acceptableTcbStatuses\":[\"UpToDate\"],\"appIds\":[\"91c6a04ea7044f28d53142449c9badddbc30eff7\"],\"composeHashes\":[\"ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0\"],\"keyProviderId\":\"3059301306072a8648ce3d020106082a8648ce3d030107034200048844eb42ccdf8c52fd4f174f362fcb9bbd19c45fd48f1edec2d8f1ca23536ec1a74021b4cee610c074f8294d431b2b7fee2c39e5333fdaf0a4522d43fb159d9f\",\"maxEvidenceAgeMs\":300000,\"origins\":[\"https://api.anonrouter.ai\",\"https://api.private.anonrouter.ai\"],\"releaseIds\":[\"anonrouter-tee@pool-a07ae22e\"],\"requireDigestPinnedImages\":true,\"requireEvidenceExpiry\":true,\"requireHardwareVerified\":true,\"requireInTeeTls\":true,\"requirePrivateLogs\":true,\"source\":\"anonrouter-release-manifest-sha256:5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"version\":\"2026-10-06-content-plane-v1.0.26-pool\"},\"schema\":\"anonrouter.gateway-policy/v1\",\"sequence\":1}",
+        "signatures": [
+          {
+            "keyId": "test-0",
+            "signature": "3db2664130d1764b75dcaab4735af2d747b2422b5bfbac2df3b013708ca6fef94ed733fd7462e08eef36457770878018f3e77fd360f006084df6219224e44b03"
+          },
+          {
+            "keyId": "test-1",
+            "signature": "b52c7316bfe93ceec7d360e34340834ab93089e01319a979c1a8cff0c706e10acdae7446a9dba3e3f5515edaa98b4579d330ce812faa189d0b5503aeeb3a8f0b"
+          }
+        ]
+      }
+    },
+    {
+      "name": "downgrade-kms",
+      "accepted": false,
+      "envelope": {
+        "schema": "anonrouter.gateway-policy-envelope/v1",
+        "payload": "{\"authority\":\"test-authority/v1\",\"expiresAtMs\":1791327010000,\"issuedAtMs\":1791326999000,\"manifestSha256\":\"5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"policy\":{\"acceptableTcbStatuses\":[\"UpToDate\"],\"appIds\":[\"91c6a04ea7044f28d53142449c9badddbc30eff7\"],\"composeHashes\":[\"ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0\"],\"maxEvidenceAgeMs\":300000,\"origins\":[\"https://api.anonrouter.ai\",\"https://api.private.anonrouter.ai\"],\"platform\":{\"mrConfigId\":[\"01ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0000000000000000000000000000000\"],\"mrTd\":[\"f06dfda6dce1cf904d4e2bab1dc370634cf95cefa2ceb2de2eee127c9382698090d7a4a13e14c536ec6c9c3c8fa87077\"],\"osImageHash\":[\"bd369a8c2f9edb2b52dad48ac8e0b32dde5f1337c423a506b48d07403a7d8033\"],\"rtmr0\":[\"fb14dc139f33d6fcf474bc8332cac001259fb31cfbcb6b34d4ceeb552a2c4466884a0cbde45ad98a05c5c060c23ad65a\"],\"rtmr1\":[\"07e6f51aa763abfe75c3ddfbf4f425fe3f0ceff66d807a75e049303dce9addf68e7218729bd419638af63a370f65878c\"],\"rtmr2\":[\"df67e467e60edc1737bcf8e682d48131bfb427f523226aa7f197a7608e9b3784783fa759ef5b28191fa12f9ddb36b858\"]},\"releaseIds\":[\"anonrouter-tee@pool-a07ae22e\"],\"requireDigestPinnedImages\":true,\"requireEvidenceExpiry\":true,\"requireHardwareVerified\":true,\"requireInTeeTls\":true,\"requirePrivateLogs\":true,\"source\":\"anonrouter-release-manifest-sha256:5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"version\":\"2026-10-06-content-plane-v1.0.26-pool\"},\"schema\":\"anonrouter.gateway-policy/v1\",\"sequence\":1}",
+        "signatures": [
+          {
+            "keyId": "test-0",
+            "signature": "96726058b1fa95d11285f0bb4fb5a6fd74c78ea51ceb1b172847cfc344c467647bfcff9cc15681172ea8aecb0a5f1028623c55d0354dbfb537a982128b39ac04"
+          },
+          {
+            "keyId": "test-1",
+            "signature": "c68c38096c697d91c3bd5bfb6e04b4dbbfec5be5bec72ec7e048ce6779d835af09c1140d692a6aa6d1bc17249245e74e19e4bf7139553ed61c02008b0d245b0c"
+          }
+        ]
+      }
+    },
+    {
+      "name": "downgrade-tcb",
+      "accepted": false,
+      "envelope": {
+        "schema": "anonrouter.gateway-policy-envelope/v1",
+        "payload": "{\"authority\":\"test-authority/v1\",\"expiresAtMs\":1791327010000,\"issuedAtMs\":1791326999000,\"manifestSha256\":\"5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"policy\":{\"acceptableTcbStatuses\":[\"UpToDate\",\"OutOfDate\"],\"appIds\":[\"91c6a04ea7044f28d53142449c9badddbc30eff7\"],\"composeHashes\":[\"ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0\"],\"keyProviderId\":\"3059301306072a8648ce3d020106082a8648ce3d030107034200048844eb42ccdf8c52fd4f174f362fcb9bbd19c45fd48f1edec2d8f1ca23536ec1a74021b4cee610c074f8294d431b2b7fee2c39e5333fdaf0a4522d43fb159d9f\",\"maxEvidenceAgeMs\":300000,\"origins\":[\"https://api.anonrouter.ai\",\"https://api.private.anonrouter.ai\"],\"platform\":{\"mrConfigId\":[\"01ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0000000000000000000000000000000\"],\"mrTd\":[\"f06dfda6dce1cf904d4e2bab1dc370634cf95cefa2ceb2de2eee127c9382698090d7a4a13e14c536ec6c9c3c8fa87077\"],\"osImageHash\":[\"bd369a8c2f9edb2b52dad48ac8e0b32dde5f1337c423a506b48d07403a7d8033\"],\"rtmr0\":[\"fb14dc139f33d6fcf474bc8332cac001259fb31cfbcb6b34d4ceeb552a2c4466884a0cbde45ad98a05c5c060c23ad65a\"],\"rtmr1\":[\"07e6f51aa763abfe75c3ddfbf4f425fe3f0ceff66d807a75e049303dce9addf68e7218729bd419638af63a370f65878c\"],\"rtmr2\":[\"df67e467e60edc1737bcf8e682d48131bfb427f523226aa7f197a7608e9b3784783fa759ef5b28191fa12f9ddb36b858\"]},\"releaseIds\":[\"anonrouter-tee@pool-a07ae22e\"],\"requireDigestPinnedImages\":true,\"requireEvidenceExpiry\":true,\"requireHardwareVerified\":true,\"requireInTeeTls\":true,\"requirePrivateLogs\":true,\"source\":\"anonrouter-release-manifest-sha256:5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"version\":\"2026-10-06-content-plane-v1.0.26-pool\"},\"schema\":\"anonrouter.gateway-policy/v1\",\"sequence\":1}",
+        "signatures": [
+          {
+            "keyId": "test-0",
+            "signature": "1c7175ac08c04fce5c02a0f25daa08e6c4f58984df87f80289ce4066e27cc7762ea35e87f81b3d6e4cb4cbea22887723a26bca7e375b04451b58eda029721c0c"
+          },
+          {
+            "keyId": "test-1",
+            "signature": "9f157158145e66bfe31b7c0b6246635204582ebf6736e94d77c5e6c1ca7e84dc588ec93fc45963e38a7ac4c0ce2c2c5e9f142a5579c2b230135c506bb863c906"
+          }
+        ]
+      }
+    },
+    {
+      "name": "downgrade-evidence-age",
+      "accepted": false,
+      "envelope": {
+        "schema": "anonrouter.gateway-policy-envelope/v1",
+        "payload": "{\"authority\":\"test-authority/v1\",\"expiresAtMs\":1791327010000,\"issuedAtMs\":1791326999000,\"manifestSha256\":\"5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"policy\":{\"acceptableTcbStatuses\":[\"UpToDate\"],\"appIds\":[\"91c6a04ea7044f28d53142449c9badddbc30eff7\"],\"composeHashes\":[\"ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0\"],\"keyProviderId\":\"3059301306072a8648ce3d020106082a8648ce3d030107034200048844eb42ccdf8c52fd4f174f362fcb9bbd19c45fd48f1edec2d8f1ca23536ec1a74021b4cee610c074f8294d431b2b7fee2c39e5333fdaf0a4522d43fb159d9f\",\"maxEvidenceAgeMs\":300001,\"origins\":[\"https://api.anonrouter.ai\",\"https://api.private.anonrouter.ai\"],\"platform\":{\"mrConfigId\":[\"01ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0000000000000000000000000000000\"],\"mrTd\":[\"f06dfda6dce1cf904d4e2bab1dc370634cf95cefa2ceb2de2eee127c9382698090d7a4a13e14c536ec6c9c3c8fa87077\"],\"osImageHash\":[\"bd369a8c2f9edb2b52dad48ac8e0b32dde5f1337c423a506b48d07403a7d8033\"],\"rtmr0\":[\"fb14dc139f33d6fcf474bc8332cac001259fb31cfbcb6b34d4ceeb552a2c4466884a0cbde45ad98a05c5c060c23ad65a\"],\"rtmr1\":[\"07e6f51aa763abfe75c3ddfbf4f425fe3f0ceff66d807a75e049303dce9addf68e7218729bd419638af63a370f65878c\"],\"rtmr2\":[\"df67e467e60edc1737bcf8e682d48131bfb427f523226aa7f197a7608e9b3784783fa759ef5b28191fa12f9ddb36b858\"]},\"releaseIds\":[\"anonrouter-tee@pool-a07ae22e\"],\"requireDigestPinnedImages\":true,\"requireEvidenceExpiry\":true,\"requireHardwareVerified\":true,\"requireInTeeTls\":true,\"requirePrivateLogs\":true,\"source\":\"anonrouter-release-manifest-sha256:5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"version\":\"2026-10-06-content-plane-v1.0.26-pool\"},\"schema\":\"anonrouter.gateway-policy/v1\",\"sequence\":1}",
+        "signatures": [
+          {
+            "keyId": "test-0",
+            "signature": "fb98962213f6d70aa47dd27b053d05c33e3db791a163e4dbfa650d1798670d42dbfcfd1d6eac8b32aec9b9fb2d1631c6c2ca6158bb7fe1c4de019b37b205d608"
+          },
+          {
+            "keyId": "test-1",
+            "signature": "f5ca5438744914afa71b21a686372baf2f79276c4054ae6577ae114f521ca31eedff2b17dd643b980467f9fb3f7254a805d5e6e159418d9bf870bd55db4d2e05"
+          }
+        ]
+      }
+    },
+    {
+      "name": "missing-security-switch",
+      "accepted": false,
+      "envelope": {
+        "schema": "anonrouter.gateway-policy-envelope/v1",
+        "payload": "{\"authority\":\"test-authority/v1\",\"expiresAtMs\":1791327010000,\"issuedAtMs\":1791326999000,\"manifestSha256\":\"5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"policy\":{\"acceptableTcbStatuses\":[\"UpToDate\"],\"appIds\":[\"91c6a04ea7044f28d53142449c9badddbc30eff7\"],\"composeHashes\":[\"ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0\"],\"keyProviderId\":\"3059301306072a8648ce3d020106082a8648ce3d030107034200048844eb42ccdf8c52fd4f174f362fcb9bbd19c45fd48f1edec2d8f1ca23536ec1a74021b4cee610c074f8294d431b2b7fee2c39e5333fdaf0a4522d43fb159d9f\",\"maxEvidenceAgeMs\":300000,\"origins\":[\"https://api.anonrouter.ai\",\"https://api.private.anonrouter.ai\"],\"platform\":{\"mrConfigId\":[\"01ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0000000000000000000000000000000\"],\"mrTd\":[\"f06dfda6dce1cf904d4e2bab1dc370634cf95cefa2ceb2de2eee127c9382698090d7a4a13e14c536ec6c9c3c8fa87077\"],\"osImageHash\":[\"bd369a8c2f9edb2b52dad48ac8e0b32dde5f1337c423a506b48d07403a7d8033\"],\"rtmr0\":[\"fb14dc139f33d6fcf474bc8332cac001259fb31cfbcb6b34d4ceeb552a2c4466884a0cbde45ad98a05c5c060c23ad65a\"],\"rtmr1\":[\"07e6f51aa763abfe75c3ddfbf4f425fe3f0ceff66d807a75e049303dce9addf68e7218729bd419638af63a370f65878c\"],\"rtmr2\":[\"df67e467e60edc1737bcf8e682d48131bfb427f523226aa7f197a7608e9b3784783fa759ef5b28191fa12f9ddb36b858\"]},\"releaseIds\":[\"anonrouter-tee@pool-a07ae22e\"],\"requireDigestPinnedImages\":true,\"requireEvidenceExpiry\":true,\"requireInTeeTls\":true,\"requirePrivateLogs\":true,\"source\":\"anonrouter-release-manifest-sha256:5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"version\":\"2026-10-06-content-plane-v1.0.26-pool\"},\"schema\":\"anonrouter.gateway-policy/v1\",\"sequence\":1}",
+        "signatures": [
+          {
+            "keyId": "test-0",
+            "signature": "34bb22277c1655adda56415260288229d84d2ad36da275b4f88e4aca88439318995026ab8097ae2030f31fa44bfeee87a290cb5f6c4d76b3742aaef05c32a009"
+          },
+          {
+            "keyId": "test-1",
+            "signature": "305d022fe3a61ccc6f690f3f91768796840600c738b8161a9906a6d92317f46b144ee1079ca8f92641fe7980524653eeb3d0fbad94ec17dfa18f8213ade0d000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "unsigned",
+      "accepted": false,
+      "envelope": {
+        "schema": "anonrouter.gateway-policy-envelope/v1",
+        "payload": "{\"authority\":\"test-authority/v1\",\"expiresAtMs\":1791327010000,\"issuedAtMs\":1791326999000,\"manifestSha256\":\"5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"policy\":{\"acceptableTcbStatuses\":[\"UpToDate\"],\"appIds\":[\"91c6a04ea7044f28d53142449c9badddbc30eff7\"],\"composeHashes\":[\"ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0\"],\"keyProviderId\":\"3059301306072a8648ce3d020106082a8648ce3d030107034200048844eb42ccdf8c52fd4f174f362fcb9bbd19c45fd48f1edec2d8f1ca23536ec1a74021b4cee610c074f8294d431b2b7fee2c39e5333fdaf0a4522d43fb159d9f\",\"maxEvidenceAgeMs\":300000,\"origins\":[\"https://api.anonrouter.ai\",\"https://api.private.anonrouter.ai\"],\"platform\":{\"mrConfigId\":[\"01ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0000000000000000000000000000000\"],\"mrTd\":[\"f06dfda6dce1cf904d4e2bab1dc370634cf95cefa2ceb2de2eee127c9382698090d7a4a13e14c536ec6c9c3c8fa87077\"],\"osImageHash\":[\"bd369a8c2f9edb2b52dad48ac8e0b32dde5f1337c423a506b48d07403a7d8033\"],\"rtmr0\":[\"fb14dc139f33d6fcf474bc8332cac001259fb31cfbcb6b34d4ceeb552a2c4466884a0cbde45ad98a05c5c060c23ad65a\"],\"rtmr1\":[\"07e6f51aa763abfe75c3ddfbf4f425fe3f0ceff66d807a75e049303dce9addf68e7218729bd419638af63a370f65878c\"],\"rtmr2\":[\"df67e467e60edc1737bcf8e682d48131bfb427f523226aa7f197a7608e9b3784783fa759ef5b28191fa12f9ddb36b858\"]},\"releaseIds\":[\"anonrouter-tee@pool-a07ae22e\"],\"requireDigestPinnedImages\":true,\"requireEvidenceExpiry\":true,\"requireHardwareVerified\":true,\"requireInTeeTls\":true,\"requirePrivateLogs\":true,\"source\":\"anonrouter-release-manifest-sha256:5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"version\":\"2026-10-06-content-plane-v1.0.26-pool\"},\"schema\":\"anonrouter.gateway-policy/v1\",\"sequence\":1}",
+        "signatures": []
+      }
+    },
+    {
+      "name": "one-signature",
+      "accepted": false,
+      "envelope": {
+        "schema": "anonrouter.gateway-policy-envelope/v1",
+        "payload": "{\"authority\":\"test-authority/v1\",\"expiresAtMs\":1791327010000,\"issuedAtMs\":1791326999000,\"manifestSha256\":\"5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"policy\":{\"acceptableTcbStatuses\":[\"UpToDate\"],\"appIds\":[\"91c6a04ea7044f28d53142449c9badddbc30eff7\"],\"composeHashes\":[\"ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0\"],\"keyProviderId\":\"3059301306072a8648ce3d020106082a8648ce3d030107034200048844eb42ccdf8c52fd4f174f362fcb9bbd19c45fd48f1edec2d8f1ca23536ec1a74021b4cee610c074f8294d431b2b7fee2c39e5333fdaf0a4522d43fb159d9f\",\"maxEvidenceAgeMs\":300000,\"origins\":[\"https://api.anonrouter.ai\",\"https://api.private.anonrouter.ai\"],\"platform\":{\"mrConfigId\":[\"01ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0000000000000000000000000000000\"],\"mrTd\":[\"f06dfda6dce1cf904d4e2bab1dc370634cf95cefa2ceb2de2eee127c9382698090d7a4a13e14c536ec6c9c3c8fa87077\"],\"osImageHash\":[\"bd369a8c2f9edb2b52dad48ac8e0b32dde5f1337c423a506b48d07403a7d8033\"],\"rtmr0\":[\"fb14dc139f33d6fcf474bc8332cac001259fb31cfbcb6b34d4ceeb552a2c4466884a0cbde45ad98a05c5c060c23ad65a\"],\"rtmr1\":[\"07e6f51aa763abfe75c3ddfbf4f425fe3f0ceff66d807a75e049303dce9addf68e7218729bd419638af63a370f65878c\"],\"rtmr2\":[\"df67e467e60edc1737bcf8e682d48131bfb427f523226aa7f197a7608e9b3784783fa759ef5b28191fa12f9ddb36b858\"]},\"releaseIds\":[\"anonrouter-tee@pool-a07ae22e\"],\"requireDigestPinnedImages\":true,\"requireEvidenceExpiry\":true,\"requireHardwareVerified\":true,\"requireInTeeTls\":true,\"requirePrivateLogs\":true,\"source\":\"anonrouter-release-manifest-sha256:5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"version\":\"2026-10-06-content-plane-v1.0.26-pool\"},\"schema\":\"anonrouter.gateway-policy/v1\",\"sequence\":1}",
+        "signatures": [
+          {
+            "keyId": "test-0",
+            "signature": "8d6e89650c1bbe7015035827fdc2416172e9a815699b4f3ffaf2630989c30ccd60afc476264c4bbd442dcee62c6ced9d8b9a21b195122fedfd486f757b421f01"
+          }
+        ]
+      }
+    },
+    {
+      "name": "duplicate-signer",
+      "accepted": false,
+      "envelope": {
+        "schema": "anonrouter.gateway-policy-envelope/v1",
+        "payload": "{\"authority\":\"test-authority/v1\",\"expiresAtMs\":1791327010000,\"issuedAtMs\":1791326999000,\"manifestSha256\":\"5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"policy\":{\"acceptableTcbStatuses\":[\"UpToDate\"],\"appIds\":[\"91c6a04ea7044f28d53142449c9badddbc30eff7\"],\"composeHashes\":[\"ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0\"],\"keyProviderId\":\"3059301306072a8648ce3d020106082a8648ce3d030107034200048844eb42ccdf8c52fd4f174f362fcb9bbd19c45fd48f1edec2d8f1ca23536ec1a74021b4cee610c074f8294d431b2b7fee2c39e5333fdaf0a4522d43fb159d9f\",\"maxEvidenceAgeMs\":300000,\"origins\":[\"https://api.anonrouter.ai\",\"https://api.private.anonrouter.ai\"],\"platform\":{\"mrConfigId\":[\"01ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0000000000000000000000000000000\"],\"mrTd\":[\"f06dfda6dce1cf904d4e2bab1dc370634cf95cefa2ceb2de2eee127c9382698090d7a4a13e14c536ec6c9c3c8fa87077\"],\"osImageHash\":[\"bd369a8c2f9edb2b52dad48ac8e0b32dde5f1337c423a506b48d07403a7d8033\"],\"rtmr0\":[\"fb14dc139f33d6fcf474bc8332cac001259fb31cfbcb6b34d4ceeb552a2c4466884a0cbde45ad98a05c5c060c23ad65a\"],\"rtmr1\":[\"07e6f51aa763abfe75c3ddfbf4f425fe3f0ceff66d807a75e049303dce9addf68e7218729bd419638af63a370f65878c\"],\"rtmr2\":[\"df67e467e60edc1737bcf8e682d48131bfb427f523226aa7f197a7608e9b3784783fa759ef5b28191fa12f9ddb36b858\"]},\"releaseIds\":[\"anonrouter-tee@pool-a07ae22e\"],\"requireDigestPinnedImages\":true,\"requireEvidenceExpiry\":true,\"requireHardwareVerified\":true,\"requireInTeeTls\":true,\"requirePrivateLogs\":true,\"source\":\"anonrouter-release-manifest-sha256:5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"version\":\"2026-10-06-content-plane-v1.0.26-pool\"},\"schema\":\"anonrouter.gateway-policy/v1\",\"sequence\":1}",
+        "signatures": [
+          {
+            "keyId": "test-0",
+            "signature": "8d6e89650c1bbe7015035827fdc2416172e9a815699b4f3ffaf2630989c30ccd60afc476264c4bbd442dcee62c6ced9d8b9a21b195122fedfd486f757b421f01"
+          },
+          {
+            "keyId": "test-0",
+            "signature": "8d6e89650c1bbe7015035827fdc2416172e9a815699b4f3ffaf2630989c30ccd60afc476264c4bbd442dcee62c6ced9d8b9a21b195122fedfd486f757b421f01"
+          }
+        ]
+      }
+    },
+    {
+      "name": "bad-signature",
+      "accepted": false,
+      "envelope": {
+        "schema": "anonrouter.gateway-policy-envelope/v1",
+        "payload": "{\"authority\":\"test-authority/v1\",\"expiresAtMs\":1791327010000,\"issuedAtMs\":1791326999000,\"manifestSha256\":\"5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"policy\":{\"acceptableTcbStatuses\":[\"UpToDate\"],\"appIds\":[\"91c6a04ea7044f28d53142449c9badddbc30eff7\"],\"composeHashes\":[\"ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0\"],\"keyProviderId\":\"3059301306072a8648ce3d020106082a8648ce3d030107034200048844eb42ccdf8c52fd4f174f362fcb9bbd19c45fd48f1edec2d8f1ca23536ec1a74021b4cee610c074f8294d431b2b7fee2c39e5333fdaf0a4522d43fb159d9f\",\"maxEvidenceAgeMs\":300000,\"origins\":[\"https://api.anonrouter.ai\",\"https://api.private.anonrouter.ai\"],\"platform\":{\"mrConfigId\":[\"01ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0000000000000000000000000000000\"],\"mrTd\":[\"f06dfda6dce1cf904d4e2bab1dc370634cf95cefa2ceb2de2eee127c9382698090d7a4a13e14c536ec6c9c3c8fa87077\"],\"osImageHash\":[\"bd369a8c2f9edb2b52dad48ac8e0b32dde5f1337c423a506b48d07403a7d8033\"],\"rtmr0\":[\"fb14dc139f33d6fcf474bc8332cac001259fb31cfbcb6b34d4ceeb552a2c4466884a0cbde45ad98a05c5c060c23ad65a\"],\"rtmr1\":[\"07e6f51aa763abfe75c3ddfbf4f425fe3f0ceff66d807a75e049303dce9addf68e7218729bd419638af63a370f65878c\"],\"rtmr2\":[\"df67e467e60edc1737bcf8e682d48131bfb427f523226aa7f197a7608e9b3784783fa759ef5b28191fa12f9ddb36b858\"]},\"releaseIds\":[\"anonrouter-tee@pool-a07ae22e\"],\"requireDigestPinnedImages\":true,\"requireEvidenceExpiry\":true,\"requireHardwareVerified\":true,\"requireInTeeTls\":true,\"requirePrivateLogs\":true,\"source\":\"anonrouter-release-manifest-sha256:5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"version\":\"2026-10-06-content-plane-v1.0.26-pool\"},\"schema\":\"anonrouter.gateway-policy/v1\",\"sequence\":1}",
+        "signatures": [
+          {
+            "keyId": "test-0",
+            "signature": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "keyId": "test-1",
+            "signature": "17e70c8304e9c49eabd4872c9b955bfd2f087f61be3353fb8a99e2014f961596c51693d6107b568c01927c6802802759a9b7ea79b4d5ac6c5e192cc9bb806704"
+          }
+        ]
+      }
+    },
+    {
+      "name": "unknown-signer",
+      "accepted": false,
+      "envelope": {
+        "schema": "anonrouter.gateway-policy-envelope/v1",
+        "payload": "{\"authority\":\"test-authority/v1\",\"expiresAtMs\":1791327010000,\"issuedAtMs\":1791326999000,\"manifestSha256\":\"5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"policy\":{\"acceptableTcbStatuses\":[\"UpToDate\"],\"appIds\":[\"91c6a04ea7044f28d53142449c9badddbc30eff7\"],\"composeHashes\":[\"ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0\"],\"keyProviderId\":\"3059301306072a8648ce3d020106082a8648ce3d030107034200048844eb42ccdf8c52fd4f174f362fcb9bbd19c45fd48f1edec2d8f1ca23536ec1a74021b4cee610c074f8294d431b2b7fee2c39e5333fdaf0a4522d43fb159d9f\",\"maxEvidenceAgeMs\":300000,\"origins\":[\"https://api.anonrouter.ai\",\"https://api.private.anonrouter.ai\"],\"platform\":{\"mrConfigId\":[\"01ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0000000000000000000000000000000\"],\"mrTd\":[\"f06dfda6dce1cf904d4e2bab1dc370634cf95cefa2ceb2de2eee127c9382698090d7a4a13e14c536ec6c9c3c8fa87077\"],\"osImageHash\":[\"bd369a8c2f9edb2b52dad48ac8e0b32dde5f1337c423a506b48d07403a7d8033\"],\"rtmr0\":[\"fb14dc139f33d6fcf474bc8332cac001259fb31cfbcb6b34d4ceeb552a2c4466884a0cbde45ad98a05c5c060c23ad65a\"],\"rtmr1\":[\"07e6f51aa763abfe75c3ddfbf4f425fe3f0ceff66d807a75e049303dce9addf68e7218729bd419638af63a370f65878c\"],\"rtmr2\":[\"df67e467e60edc1737bcf8e682d48131bfb427f523226aa7f197a7608e9b3784783fa759ef5b28191fa12f9ddb36b858\"]},\"releaseIds\":[\"anonrouter-tee@pool-a07ae22e\"],\"requireDigestPinnedImages\":true,\"requireEvidenceExpiry\":true,\"requireHardwareVerified\":true,\"requireInTeeTls\":true,\"requirePrivateLogs\":true,\"source\":\"anonrouter-release-manifest-sha256:5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"version\":\"2026-10-06-content-plane-v1.0.26-pool\"},\"schema\":\"anonrouter.gateway-policy/v1\",\"sequence\":1}",
+        "signatures": [
+          {
+            "keyId": "attacker",
+            "signature": "8d6e89650c1bbe7015035827fdc2416172e9a815699b4f3ffaf2630989c30ccd60afc476264c4bbd442dcee62c6ced9d8b9a21b195122fedfd486f757b421f01"
+          },
+          {
+            "keyId": "test-1",
+            "signature": "17e70c8304e9c49eabd4872c9b955bfd2f087f61be3353fb8a99e2014f961596c51693d6107b568c01927c6802802759a9b7ea79b4d5ac6c5e192cc9bb806704"
+          }
+        ]
+      }
+    },
+    {
+      "name": "tampered-payload",
+      "accepted": false,
+      "envelope": {
+        "schema": "anonrouter.gateway-policy-envelope/v1",
+        "payload": "{\"authority\":\"test-authority/v1\",\"expiresAtMs\":1791327010000,\"issuedAtMs\":1791326999000,\"manifestSha256\":\"5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"policy\":{\"acceptableTcbStatuses\":[\"UpToDate\"],\"appIds\":[\"91c6a04ea7044f28d53142449c9badddbc30eff7\"],\"composeHashes\":[\"ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0\"],\"keyProviderId\":\"3059301306072a8648ce3d020106082a8648ce3d030107034200048844eb42ccdf8c52fd4f174f362fcb9bbd19c45fd48f1edec2d8f1ca23536ec1a74021b4cee610c074f8294d431b2b7fee2c39e5333fdaf0a4522d43fb159d9f\",\"maxEvidenceAgeMs\":300000,\"origins\":[\"https://api.anonrouter.ai\",\"https://api.private.anonrouter.ai\"],\"platform\":{\"mrConfigId\":[\"01ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0000000000000000000000000000000\"],\"mrTd\":[\"f06dfda6dce1cf904d4e2bab1dc370634cf95cefa2ceb2de2eee127c9382698090d7a4a13e14c536ec6c9c3c8fa87077\"],\"osImageHash\":[\"bd369a8c2f9edb2b52dad48ac8e0b32dde5f1337c423a506b48d07403a7d8033\"],\"rtmr0\":[\"fb14dc139f33d6fcf474bc8332cac001259fb31cfbcb6b34d4ceeb552a2c4466884a0cbde45ad98a05c5c060c23ad65a\"],\"rtmr1\":[\"07e6f51aa763abfe75c3ddfbf4f425fe3f0ceff66d807a75e049303dce9addf68e7218729bd419638af63a370f65878c\"],\"rtmr2\":[\"df67e467e60edc1737bcf8e682d48131bfb427f523226aa7f197a7608e9b3784783fa759ef5b28191fa12f9ddb36b858\"]},\"releaseIds\":[\"anonrouter-tee@pool-a07ae22e\"],\"requireDigestPinnedImages\":true,\"requireEvidenceExpiry\":true,\"requireHardwareVerified\":true,\"requireInTeeTls\":true,\"requirePrivateLogs\":true,\"source\":\"anonrouter-release-manifest-sha256:5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"version\":\"2026-10-06-changed-plane-v1.0.26-pool\"},\"schema\":\"anonrouter.gateway-policy/v1\",\"sequence\":1}",
+        "signatures": [
+          {
+            "keyId": "test-0",
+            "signature": "8d6e89650c1bbe7015035827fdc2416172e9a815699b4f3ffaf2630989c30ccd60afc476264c4bbd442dcee62c6ced9d8b9a21b195122fedfd486f757b421f01"
+          },
+          {
+            "keyId": "test-1",
+            "signature": "17e70c8304e9c49eabd4872c9b955bfd2f087f61be3353fb8a99e2014f961596c51693d6107b568c01927c6802802759a9b7ea79b4d5ac6c5e192cc9bb806704"
+          }
+        ]
+      }
+    },
+    {
+      "name": "noncanonical",
+      "accepted": false,
+      "envelope": {
+        "schema": "anonrouter.gateway-policy-envelope/v1",
+        "payload": "{\"schema\":\"anonrouter.gateway-policy/v1\",\"authority\":\"test-authority/v1\",\"sequence\":1,\"issuedAtMs\":1791326999000,\"expiresAtMs\":1791327010000,\"manifestSha256\":\"5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"policy\":{\"source\":\"anonrouter-release-manifest-sha256:5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"version\":\"2026-10-06-content-plane-v1.0.26-pool\",\"origins\":[\"https://api.anonrouter.ai\",\"https://api.private.anonrouter.ai\"],\"appIds\":[\"91c6a04ea7044f28d53142449c9badddbc30eff7\"],\"composeHashes\":[\"ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0\"],\"releaseIds\":[\"anonrouter-tee@pool-a07ae22e\"],\"keyProviderId\":\"3059301306072a8648ce3d020106082a8648ce3d030107034200048844eb42ccdf8c52fd4f174f362fcb9bbd19c45fd48f1edec2d8f1ca23536ec1a74021b4cee610c074f8294d431b2b7fee2c39e5333fdaf0a4522d43fb159d9f\",\"platform\":{\"mrTd\":[\"f06dfda6dce1cf904d4e2bab1dc370634cf95cefa2ceb2de2eee127c9382698090d7a4a13e14c536ec6c9c3c8fa87077\"],\"mrConfigId\":[\"01ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0000000000000000000000000000000\"],\"rtmr0\":[\"fb14dc139f33d6fcf474bc8332cac001259fb31cfbcb6b34d4ceeb552a2c4466884a0cbde45ad98a05c5c060c23ad65a\"],\"rtmr1\":[\"07e6f51aa763abfe75c3ddfbf4f425fe3f0ceff66d807a75e049303dce9addf68e7218729bd419638af63a370f65878c\"],\"rtmr2\":[\"df67e467e60edc1737bcf8e682d48131bfb427f523226aa7f197a7608e9b3784783fa759ef5b28191fa12f9ddb36b858\"],\"osImageHash\":[\"bd369a8c2f9edb2b52dad48ac8e0b32dde5f1337c423a506b48d07403a7d8033\"]},\"requireInTeeTls\":true,\"requirePrivateLogs\":true,\"requireDigestPinnedImages\":true,\"requireHardwareVerified\":true,\"maxEvidenceAgeMs\":300000,\"acceptableTcbStatuses\":[\"UpToDate\"],\"requireEvidenceExpiry\":true}}",
+        "signatures": [
+          {
+            "keyId": "test-0",
+            "signature": "cf9439f15e5c0deb6ab925418943a3542453bb8ae87c9ab5bb07377c933addcce3b75f29837a145c251902d348ffc3e0ecae1bf9e3c7701addc125e0f5c9a306"
+          },
+          {
+            "keyId": "test-1",
+            "signature": "2318b690007797c1a6f39a541cdee68c524e0d65437a8fa1cd82b51d18bd48fe63dc46ceaf430932a6295c7e8a4f043159ebe7b82a799db452ac3f8635f4b10b"
+          }
+        ]
+      }
+    },
+    {
+      "name": "duplicate-json-key",
+      "accepted": false,
+      "envelope": {
+        "schema": "anonrouter.gateway-policy-envelope/v1",
+        "payload": "{\"authority\":\"test-authority/v1\",\"expiresAtMs\":1791327010000,\"issuedAtMs\":1791326999000,\"manifestSha256\":\"5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"policy\":{\"acceptableTcbStatuses\":[\"UpToDate\"],\"appIds\":[\"91c6a04ea7044f28d53142449c9badddbc30eff7\"],\"composeHashes\":[\"ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0\"],\"keyProviderId\":\"3059301306072a8648ce3d020106082a8648ce3d030107034200048844eb42ccdf8c52fd4f174f362fcb9bbd19c45fd48f1edec2d8f1ca23536ec1a74021b4cee610c074f8294d431b2b7fee2c39e5333fdaf0a4522d43fb159d9f\",\"maxEvidenceAgeMs\":300000,\"origins\":[\"https://api.anonrouter.ai\",\"https://api.private.anonrouter.ai\"],\"platform\":{\"mrConfigId\":[\"01ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0000000000000000000000000000000\"],\"mrTd\":[\"f06dfda6dce1cf904d4e2bab1dc370634cf95cefa2ceb2de2eee127c9382698090d7a4a13e14c536ec6c9c3c8fa87077\"],\"osImageHash\":[\"bd369a8c2f9edb2b52dad48ac8e0b32dde5f1337c423a506b48d07403a7d8033\"],\"rtmr0\":[\"fb14dc139f33d6fcf474bc8332cac001259fb31cfbcb6b34d4ceeb552a2c4466884a0cbde45ad98a05c5c060c23ad65a\"],\"rtmr1\":[\"07e6f51aa763abfe75c3ddfbf4f425fe3f0ceff66d807a75e049303dce9addf68e7218729bd419638af63a370f65878c\"],\"rtmr2\":[\"df67e467e60edc1737bcf8e682d48131bfb427f523226aa7f197a7608e9b3784783fa759ef5b28191fa12f9ddb36b858\"]},\"releaseIds\":[\"anonrouter-tee@pool-a07ae22e\"],\"requireDigestPinnedImages\":true,\"requireEvidenceExpiry\":true,\"requireHardwareVerified\":true,\"requireInTeeTls\":true,\"requirePrivateLogs\":true,\"source\":\"anonrouter-release-manifest-sha256:5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829\",\"version\":\"2026-10-06-content-plane-v1.0.26-pool\"},\"schema\":\"anonrouter.gateway-policy/v1\",\"sequence\":0,\"sequence\":1}",
+        "signatures": [
+          {
+            "keyId": "test-0",
+            "signature": "2447cb66c30d67257295224e6b2cc915d95088e66dd35eeafcffe01853e7ae6a5bca832ea6ef2b0ccc96614beb9223b9f8aed14804b68b48dd6fb2d69d441300"
+          },
+          {
+            "keyId": "test-1",
+            "signature": "4c15921a2b92930508eaa176e3132c6cb484e9b1cdad827e693be5c0503fba45cd9906b4ad99abf67e0f88df0aee215e6495d0b3591f1dd7f2c261fd4affa701"
+          }
+        ]
+      }
+    }
+  ]
+}

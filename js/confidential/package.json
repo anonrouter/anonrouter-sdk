@@ -15,6 +15,10 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
+    "./policy-state": {
+      "types": "./dist/gateway/state-node.d.ts",
+      "import": "./dist/gateway/state-node.js"
+    },
     ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
     "./dcap": {
       "types": "./dist/gateway/dcap/index.d.ts",

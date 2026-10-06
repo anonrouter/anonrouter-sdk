@@ -26,6 +26,10 @@ be established separately; existing wheel/sdist release assets are supported.
   Both languages must verify both hostnames with real DCAP and packaged policy
   before any GitHub/npm/PyPI publication job. npm publishes the exact checked
   tarballs, not a separate rebuild.
+- Stage signed gateway-policy updates, persistent antirollback and bounded
+  release refresh in both languages. Default activation remains disabled until
+  signer installation, first publication and packed live acceptance; see
+  [gateway-policy-updates.md](gateway-policy-updates.md).
 
 ## Trust boundary and limitations
 
@@ -43,17 +47,22 @@ traffic routing was changed by this SDK repair.
 
 ## Validation checkpoint
 
-JavaScript: 512 confidential + 14 client tests pass, 39 live cases skipped.
-Python: 408 tests pass, 40 live cases skipped. Types/build, Python mypy and ruff
+JavaScript: 559 confidential + 14 client tests pass, 39 live cases skipped.
+Python: 446 tests pass, 40 live cases skipped. Types/build, Python mypy and ruff
 pass. New shared public evidence and adversarial tests cover publication, key,
 nonce, model, GPU and provider substitution plus encrypted transport round trips.
 
-Both source CLIs independently verify both production origins as
+Prior repair checkpoint (commit `a8bbf688e9bdc2dd3a4e30cb987136553fc0aba2`):
+both source CLIs independently verified both production origins as
 `hardware_verified` with real DCAP, zero failed/advisory checks. Fresh direct
-`other` attestation passes in both languages; JavaScript encrypted session setup
-passes. Paid inference was not performed and is not claimed as newly accepted.
+`other` attestation passed in both languages; JavaScript encrypted session setup
+passed. Paid inference was not performed and is not claimed as newly accepted.
 
-Artifact checks and their exact checksums are recorded in the repair handoff.
+The signed-authority additions pass 27 shared vectors and cross-language durable
+rollback checks, release preparation/refusal tests, browser bundling and empty
+environment installation of npm tarballs, wheel and sdist. New publication/live
+canaries are still required after the feed exists. Prior artifact checksums in
+the repair handoff describe the earlier commit, not this updated candidate.
 Publication is pending explicit GitHub release authorization under the project
 source-control rule. No registry setting, tag or public branch was changed.
 The [0.1.2 readiness record](release-readiness-0.1.2.md) is historical.

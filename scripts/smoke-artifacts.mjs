@@ -23,7 +23,7 @@
 // SKIPPED rather than passed.
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readdirSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync, writeFileSync, mkdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -32,6 +32,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const keep = process.argv.includes("--keep");
 const workspace = mkdtempSync(join(tmpdir(), "anonrouter-smoke-"));
 let failures = 0;
+const expectedAuthorityEnabled = JSON.parse(readFileSync(join(root, "shared/gateway-policy-authority.json"), "utf8")).enabled;
 
 function run(command, args, options = {}) {
   return execFileSync(command, args, {
@@ -114,19 +115,23 @@ if (npmInstalled) {
   writeFileSync(probe, `
 import { createClient, verifyGatewayAttestation, loadGatewayPolicy, atLeast,
          pinnedGatewayPolicyFor, measurementPolicyDocument,
-         redactHeaders, utf16Length, MediaError } from "@anonrouter/confidential";
+         redactHeaders, utf16Length, MediaError, createSignedGatewayPolicySource,
+         verifySignedGatewayPolicy, packagedGatewayPolicyAuthority } from "@anonrouter/confidential";
 import { createAnonRouterDcapVerifier, describeDcapInstallation,
          buildDcapEngineRequest } from "@anonrouter/confidential/dcap";
 import { createSubprocessChainVerifier } from "@anonrouter/confidential/chain-verifiers";
+import { createFileGatewayPolicyStateStore } from "@anonrouter/confidential/policy-state";
 import { createClient as createPlainClient } from "@anonrouter/client";
 
 const report = {
   confidentialExports: [typeof createClient, typeof verifyGatewayAttestation,
-    typeof loadGatewayPolicy, typeof atLeast].every((t) => t === "function"),
+    typeof loadGatewayPolicy, typeof atLeast, typeof createSignedGatewayPolicySource,
+    typeof verifySignedGatewayPolicy, typeof createFileGatewayPolicyStateStore].every((t) => t === "function"),
   dcapExports: [typeof createAnonRouterDcapVerifier, typeof describeDcapInstallation,
     typeof buildDcapEngineRequest].every((t) => t === "function"),
   chainVerifierExports: typeof createSubprocessChainVerifier === "function",
   clientExports: typeof createPlainClient === "function",
+  authorityEnabled: packagedGatewayPolicyAuthority().enabled,
   // The shipped pins have to be present in the installed package, or the whole
   // "don't trust us, verify" arrangement has no allowlist on the user's disk.
   gatewayPinPresent: pinnedGatewayPolicyFor("https://api.private.anonrouter.ai")?.status === "published",
@@ -156,6 +161,8 @@ console.log(JSON.stringify(report));
 
   check("@anonrouter/confidential main entry resolves and exports the public surface",
     () => assert(probeOutput.confidentialExports, "missing exports from the main entry"));
+  check("signed policy authority activation matches reviewed source",
+    () => assert(probeOutput.authorityEnabled === expectedAuthorityEnabled, "packaged authority activation differs from source"));
   check("@anonrouter/confidential/dcap resolves",
     () => assert(probeOutput.dcapExports, "the ./dcap subpath did not resolve"));
   check("@anonrouter/confidential/chain-verifiers resolves",
@@ -294,7 +301,9 @@ import json
 from anonrouter_confidential import (create_client, verify_gateway_attestation,
                                      load_gateway_policy, at_least,
                                      pinned_gateway_policy_for, load_measurements,
-                                     MediaError, redact_headers, utf16_length)
+                                     MediaError, redact_headers, utf16_length, SignedGatewayPolicySource,
+                                     verify_signed_gateway_policy, FileGatewayPolicyStateStore,
+                                     packaged_gateway_policy_authority)
 from anonrouter_confidential.gateway.dcap import (create_anonrouter_dcap_verifier,
                                                   describe_dcap_installation,
                                                   build_dcap_engine_request)
@@ -302,7 +311,9 @@ from anonrouter_confidential.cli import run_cli
 
 print(json.dumps({
     "coreExports": all(callable(f) for f in (create_client, verify_gateway_attestation,
-                                             load_gateway_policy, at_least)),
+                                             load_gateway_policy, at_least, SignedGatewayPolicySource,
+                                             verify_signed_gateway_policy, FileGatewayPolicyStateStore)),
+    "authorityEnabled": packaged_gateway_policy_authority()["enabled"],
     "dcapExports": all(callable(f) for f in (create_anonrouter_dcap_verifier,
                                              describe_dcap_installation,
                                              build_dcap_engine_request)),
@@ -331,6 +342,7 @@ print(json.dumps({
       const probeOutput = JSON.parse(run(join(venv, "bin", "python"), [probe], { cwd: workspace }));
       check(`${label}: the package imports and its public surface is present`, () => {
         assert(probeOutput.coreExports, "missing core exports");
+        assert(probeOutput.authorityEnabled === expectedAuthorityEnabled, "packaged authority activation differs from source");
         assert(probeOutput.dcapExports, "missing dcap exports");
         assert(probeOutput.cliImportable, "the CLI module did not import");
         assert(probeOutput.mediaSurface, "the ticketed media surface did not survive packaging");

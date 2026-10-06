@@ -38,9 +38,17 @@ from .crypto import chutes as chutes_crypto
 from .crypto import near as near_crypto
 from .crypto import venice as venice_crypto
 from .errors import ConfidentialError
+from .gateway.authority import (
+    SignedGatewayPolicySource,
+    packaged_gateway_policy_authority,
+)
 from .gateway.binding import GATEWAY_NONCE_HEX_LENGTH
 from .gateway.policy import GatewayMeasurementPolicy, pinned_gateway_policy_for
-from .gateway.verify import TdxChainVerifier, verify_gateway_attestation
+from .gateway.verify import (
+    GatewayVerificationResult,
+    TdxChainVerifier,
+    verify_gateway_attestation,
+)
 from .measurements import pinned_endpoint_identity_for, pinned_measurement_policy_for
 from .media import (
     DEFAULT_CONTROL_ORIGIN,
@@ -218,6 +226,7 @@ class ConfidentialClient(MediaOwner):
         http_client: httpx.Client | None = None,
         timeout: float = 300.0,
         allow_insecure_http: bool = False,
+        gateway_policy_updates: bool | SignedGatewayPolicySource | None = None,
     ) -> None:
         """``timeout`` bounds how long a single response may take to arrive.
 
@@ -262,6 +271,15 @@ class ConfidentialClient(MediaOwner):
             configured_inference or DEFAULT_INFERENCE_ORIGIN, allow_insecure_http
         )
         self.base_url = self.origin
+        authority = packaged_gateway_policy_authority()
+        if isinstance(gateway_policy_updates, SignedGatewayPolicySource):
+            self._gateway_policy_source: SignedGatewayPolicySource | None = gateway_policy_updates
+        elif gateway_policy_updates is True or (
+            gateway_policy_updates is None and authority["enabled"] and self.origin in authority["origins"]
+        ):
+            self._gateway_policy_source = SignedGatewayPolicySource()
+        else:
+            self._gateway_policy_source = None
         # Preserve same-origin behaviour for custom/self-hosted deployments. Both
         # production content names, however, always use the credential-only control
         # origin unless the caller explicitly overrides it.
@@ -277,6 +295,9 @@ class ConfidentialClient(MediaOwner):
         self.api_key = api_key
         self._allow_insecure_http = allow_insecure_http
         self._owns_client = http_client is None
+        self._owns_gateway_policy_source = gateway_policy_updates is True or (
+            gateway_policy_updates is None and self._gateway_policy_source is not None
+        )
         self._http = http_client or httpx.Client(timeout=httpx.Timeout(timeout, connect=10.0))
         #: ``client.images.generate(...)`` -- ticketed image generation.
         self.images = ImagesApi(self)
@@ -285,6 +306,8 @@ class ConfidentialClient(MediaOwner):
 
     # -- lifecycle ---------------------------------------------------------
     def close(self) -> None:
+        if self._owns_gateway_policy_source and self._gateway_policy_source:
+            self._gateway_policy_source.close()
         if self._owns_client:
             self._http.close()
 
@@ -473,6 +496,10 @@ class ConfidentialClient(MediaOwner):
                 "run inside a confidential VM"
             )
         now_ms = time.time() * 1000.0
+        prepared_chain = _prepare_chain_verifier(chain_verifier, evidence.get("quote"), active, now_ms)
+        now_ms = time.time() * 1000.0
+        if provenance.get("expiresAtMs") is not None and now_ms >= provenance["expiresAtMs"]:
+            raise ConfidentialError("the signed gateway approval expired during verification")
         verdict = verify_gateway_attestation(
             evidence,
             nonce=nonce,
@@ -481,10 +508,11 @@ class ConfidentialClient(MediaOwner):
             now_ms=now_ms,
             observed_tls_spki_sha256=observed_tls_spki_sha256,
             observed_tls_spki_supplied=observed_tls_spki_supplied,
-            chain_verifier=_prepare_chain_verifier(
-                chain_verifier, evidence.get("quote"), active, now_ms
-            ),
+            chain_verifier=prepared_chain,
         )
+        verdict, provenance = self._retry_gateway_policy_rotation(verdict, evidence, nonce,
+            {"policy": policy, "observed_tls_spki_sha256": observed_tls_spki_sha256,
+             "observed_tls_spki_supplied": observed_tls_spki_supplied}, provenance, prepared_chain)
         return {
             "origin": self.origin,
             "policy": provenance,
@@ -650,21 +678,54 @@ class ConfidentialClient(MediaOwner):
             "reason": reason,
         }
 
+    def _retry_gateway_policy_rotation(
+        self, verdict: GatewayVerificationResult, evidence: dict[str, Any], nonce: str,
+        options: dict[str, Any], provenance: dict[str, Any], prepared_chain: TdxChainVerifier | None,
+    ) -> tuple[GatewayVerificationResult, dict[str, Any]]:
+        moved = verdict.status == "failed" and any(
+            c.name == "quote_signature_chain" and c.passed for c in verdict.checks
+        ) and any(not c.passed and c.name in {
+            "app_id_pinned", "compose_hash_pinned", "release_pinned", "platform_measurements_pinned",
+            "os_image_pinned", "key_provider_pinned",
+        } for c in verdict.checks)
+        if moved and self._gateway_policy_source and options.get("policy") is None:
+            approved = self._resolve_gateway_policy(None, False, force_refresh=True)
+            if approved is None:
+                raise ConfidentialError("no approved gateway policy")
+            active, provenance = approved
+            now_ms = time.time() * 1000.0
+            if now_ms >= provenance["expiresAtMs"]:
+                raise ConfidentialError("the signed gateway approval expired during verification")
+            verdict = verify_gateway_attestation(evidence, nonce=nonce, origin=self.origin,
+                policy=active, now_ms=now_ms,
+                observed_tls_spki_sha256=options.get("observed_tls_spki_sha256"),
+                observed_tls_spki_supplied=bool(options.get("observed_tls_spki_supplied")),
+                chain_verifier=prepared_chain)
+        return verdict, provenance
+
     def _resolve_gateway_policy(
-        self, policy: GatewayMeasurementPolicy | None, allow_candidate: bool
+        self, policy: GatewayMeasurementPolicy | None, allow_candidate: bool, *, force_refresh: bool = False
     ) -> tuple[GatewayMeasurementPolicy, dict[str, Any]] | None:
         """Resolve the policy to hold the plane to, and say where it came from.
 
         A caller-supplied policy always wins. Otherwise the pin this package ships
-        for THIS client's origin is used. There is deliberately no path that fetches
-        a policy from the gateway: a server that could hand a client the list of
-        builds the client accepts could always name itself.
+        for THIS client's origin is used unless independently signed release
+        updates were selected. The gateway never chooses verification roots.
         """
         if policy is not None:
             return policy, {
                 "origin": "caller-supplied",
                 "source": policy.source,
                 "version": policy.version,
+            }
+        if self._gateway_policy_source is not None:
+            approved = self._gateway_policy_source.resolve(self.origin, force_refresh=force_refresh)
+            active = approved["policy"]
+            return active, {
+                "origin": "signed-release-authority", "source": active.source,
+                "version": active.version, "authority": approved["authority"],
+                "sequence": approved["sequence"], "payloadSha256": approved["payloadSha256"],
+                "expiresAtMs": approved["expiresAtMs"],
             }
         entry = pinned_gateway_policy_for(self.origin, allow_candidate=allow_candidate)
         if entry is None:
@@ -727,6 +788,10 @@ class ConfidentialClient(MediaOwner):
                 "policy": provenance,
             }
         now_ms = time.time() * 1000.0
+        prepared_chain = _prepare_chain_verifier(options.get("chain_verifier"), evidence.get("quote"), active, now_ms)
+        now_ms = time.time() * 1000.0
+        if provenance.get("expiresAtMs") is not None and now_ms >= provenance["expiresAtMs"]:
+            raise ConfidentialError("the signed gateway approval expired during verification")
         verdict = verify_gateway_attestation(
             evidence,
             nonce=nonce,
@@ -735,10 +800,10 @@ class ConfidentialClient(MediaOwner):
             now_ms=now_ms,
             observed_tls_spki_sha256=options.get("observed_tls_spki_sha256"),
             observed_tls_spki_supplied=bool(options.get("observed_tls_spki_supplied")),
-            chain_verifier=_prepare_chain_verifier(
-                options.get("chain_verifier"), evidence.get("quote"), active, now_ms
-            ),
+            chain_verifier=prepared_chain,
         )
+        verdict, provenance = self._retry_gateway_policy_rotation(verdict, evidence, nonce,
+            options, provenance, prepared_chain)
         return {
             "requested": True,
             "status": "ok" if verdict.status == "ok" else "failed",

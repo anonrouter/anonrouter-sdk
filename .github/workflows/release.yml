@@ -65,6 +65,10 @@ jobs:
         run: node scripts/check-parity.mjs
       - name: Direct provider adversarial verdict parity
         run: node scripts/check-near-parity.mjs
+      - name: Signed gateway policy and durable state parity
+        run: node scripts/check-gateway-authority-parity.mjs
+      - name: Gateway policy publication preparation and refusal gates
+        run: node scripts/test-gateway-policy-release.mjs
       - name: anonrouter-verify CLI parity
         run: node scripts/check-cli-parity.mjs
       - name: Artifacts install into empty environments

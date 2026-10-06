@@ -1,0 +1,21 @@
+#!/usr/bin/env node
+import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { prepareGatewayPolicyRelease, assembleGatewayPolicyRelease } from './gateway-policy-release.mjs';
+const policy=JSON.parse(readFileSync(new URL('../shared/gateway-policies.json',import.meta.url),'utf8')).policies[0].policy;
+const manifest={schema:'anonrouter.release-manifest/v2',status:'live-hardware-measurement',source:{dirty:false},deployment:{transport:'in-tee-tls',app_id:policy.appIds[0],origin:policy.origins[0],os_image_hash:policy.platform.osImageHash[0]},compose:{measured_hash:policy.composeHashes[0]},release_id:policy.releaseIds[0]};
+const bytes=Buffer.from(JSON.stringify(manifest));
+const bound={...policy,source:'anonrouter-release-manifest-sha256:'+createHash('sha256').update(bytes).digest('hex')};
+const now=Date.now();
+const p=prepareGatewayPolicyRelease(bytes,bound,1,now,now+60000);
+assert.equal(JSON.parse(p.payload).sequence,1);
+assert.ok(p.signingBytes.startsWith('anonrouter.gateway-policy-signature/v1\n'));
+assert.throws(()=>prepareGatewayPolicyRelease(bytes,policy,1,now,now+60000));
+assert.throws(()=>prepareGatewayPolicyRelease(bytes,{...bound,composeHashes:['00'.repeat(32)]},1,now,now+60000));
+assert.throws(()=>prepareGatewayPolicyRelease(bytes,{...bound,requireHardwareVerified:false},1,now,now+60000));
+assert.throws(()=>prepareGatewayPolicyRelease(bytes,bound,1,now,now+604800001));
+assert.throws(()=>assembleGatewayPolicyRelease(p.payload,[],now));
+const vectors=JSON.parse(readFileSync(new URL('../shared/vectors/gateway-policy-authority.json',import.meta.url),'utf8'));
+assert.throws(()=>assembleGatewayPolicyRelease(vectors.cases[0].envelope.payload,vectors.cases[0].envelope.signatures,vectors.nowMs));
+process.stdout.write('Gateway policy release tooling: valid preparation and six production-root/binding/downgrade refusals passed.\n');
