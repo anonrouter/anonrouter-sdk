@@ -1,20 +1,23 @@
 # Signed gateway policy updates
 
-Implemented in the unpublished 0.1.3 candidate. **Production activation is
-pending.** `shared/gateway-policy-authority.json` deliberately has
-`enabled: false`: an unpublished feed must not break existing SDK users.
-Current default calls still use the exact bundled W8 policy. The installed gateway, signer, website, DNS, GitHub branch and registries remain
-unchanged. A purpose-specific signer implementation is staged in the separate
-backend branch `gateway-policy-authority-20261006`.
+Implemented in the unpublished 0.1.3 candidate. **The production feed is live;
+default SDK activation and package publication are pending.**
+`shared/gateway-policy-authority.json` deliberately retains `enabled: false`
+until continuing renewal ownership and the separate SDK release gates pass.
+Current default calls still use the exact bundled W8 policy. The owner installed
+the purpose-specific signer; backend branch `gateway-policy-activation-20261006`
+published real sequence 1 through the website-only KMS lane. The gateway, control,
+DNS, SDK GitHub branch and registries are unchanged. Explicit opt-in works today.
 
 ## Approval contract
 
 The SDK fixes the release authority instead of requiring a package upgrade for
 every compose hash. Two distinct Ed25519 signatures from the independently
 packaged production custodian roster authorize a policy. The running gateway
-cannot choose those keys. The proposed public publication URL is
+cannot choose those keys. The live public publication URL is
 `https://anonrouter.ai/.well-known/anonrouter/gateway-policy.json`, separate
-from both confidential API origins; this file has not been published.
+from both confidential API origins. First approval expires
+2026-10-13T23:23:16.876Z; renew by 2026-10-11T23:23:16.876Z.
 
 Automatic acceptance means trusting those custodians to approve future code.
 Signatures authenticate that approval; they do not prove that the approved code
@@ -137,35 +140,42 @@ Assembly verifies both production origins against packaged roots and refuses
 unsigned/test/development approvals. It writes a new artifact, never overwrites
 an existing one, and does not publish it. Archive each policy and signatures.
 
-**Remaining operational work:**
+**Operational gates (updated after first publication):**
 
-1. Review and install the purpose-specific signer candidate in backend branch
-   `gateway-policy-authority-20261006`; see its canonical runbook
-   `docs/operations/GATEWAY_POLICY_AUTHORITY.md`. The installed broker remains
-   unchanged. The candidate `sign-gateway-policy` operation reads fixed public
-   artifacts from the measured clean commit, retains custody/session/roster
-   checks and signs only the exact policy domain. Owner installation is a
-   separate gate. Agents never read private keys or activate the owner session.
-   Commit the unsigned canonical payload at
-   `deploy/phala/gateway-policy.approval.json` and use the reviewed backend
-   `npm run gateway:policy:authorize -- --out NEW_ENVELOPE_FILE`. Preparation
-   must be within five minutes of signing; there is no pre-signed approval in
-   either candidate branch. Backend measurement policy flags are normalized
-   only to enforce expiry and exclusively `UpToDate` TCB before comparison.
-2. Obtain the first real policy approval after fresh exact-policy hardware/TLS
-   acceptance. Establish monotonically increasing publication and renewal
-   before the seven-day maximum signed lifetime expires. Rollback is a new
-   higher-sequence approval of the retained previous release.
-3. Publish the verified artifact independently. A signed JSON file under the
-   public website's `.well-known/anonrouter/` path is one delivery option, but
-   requires its own approved site release. Coordinate policy publication with
-   gateway promotion; the single-policy protocol does not implement overlapping
-   rolling releases or zero downtime.
-4. Run exact packed JavaScript and Python canaries against the published feed,
-   with real DCAP and observed TLS at both origins. Test refresh/revocation,
-   expiry, persistent restart and rollback before activation.
-5. Enable the packaged flag and set its minimum sequence to the first accepted
-   publication. Publish the reviewed SDK through its existing separate gates.
+1. **Complete:** owner-installed purpose-specific signer in backend branch
+   `gateway-policy-activation-20261006`; see canonical backend runbook
+   `docs/operations/GATEWAY_POLICY_AUTHORITY.md`. Its fixed public-artifact
+   operation preserves custody/session/roster/source checks and signs only the
+   exact policy domain. Owner installation and session activation were separate
+   gates. Agents never read private keys or activate the owner session.
+2. **First approval complete:** sequence 1 was prepared after fresh packed
+   hardware/TLS acceptance, then signed by production USB/laptop custodians,
+   ledger 78. Its exact unsigned payload is committed at
+   `deploy/phala/gateway-policy.approval.json`. Future renewals need new higher
+   sequences and a fresh committed approval prepared within five minutes of
+   signing; use `npm run gateway:policy:authorize -- --out NEW_ENVELOPE_FILE`.
+   Continuing renewal ownership is pending; no background renewal scheduler was
+   installed. Rollback is a higher-sequence approval of a retained release.
+3. **Complete:** the exact verified envelope is public under the fixed website
+   `.well-known/anonrouter/` path, KMS site-only sequence 1791329336. Independent
+   HTTP 200/no-redirect, JSON/CORS/no-store, byte/hash and signature checks pass.
+   Coordinate future publication with gateway promotion; the single-policy
+   protocol does not overlap rolling gateway releases or guarantee zero downtime.
+4. **First-feed acceptance complete:** exact packed JavaScript/Python from
+   `16f1612d40984eae866503dd6f960b48c4e6b3a9` passed real DCAP/observed TLS at
+   both origins with signed-release-authority provenance and forced refresh.
+   Separate processes/languages reused durable state. A real isolated browser
+   accepted cross-origin feed/signatures with default IndexedDB and passed full
+   page reload, without a Node global. Expiry/tamper/threshold/conflict refused;
+   durable rollback used a separate simulated higher checkpoint. No real gateway
+   rotation or revocation was performed. Browser acceptance establishes
+   publication/storage; native hardware/TLS verification is established in the
+   JS/Python runtime checks.
+5. **Pending renewal ownership and separate SDK release:** enable the packaged
+   flag, retain minimum sequence 1 (or a newer accepted publication), rebuild and
+   verify the exact release artifacts, then use separately authorized
+   GitHub/registry publication. Renew by October 11 before October 13 expiry;
+   automatic clients fail closed if operators stop maintaining signed approvals.
 
 These gates are necessary before saying default SDK users automatically follow
 production gateway updates. Clients on older SDKs still need the migration

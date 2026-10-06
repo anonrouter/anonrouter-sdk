@@ -26,9 +26,10 @@ be established separately; existing wheel/sdist release assets are supported.
   Both languages must verify both hostnames with real DCAP and packaged policy
   before any GitHub/npm/PyPI publication job. npm publishes the exact checked
   tarballs, not a separate rebuild.
-- Stage signed gateway-policy updates, persistent antirollback and bounded
-  release refresh in both languages. Default activation remains disabled until
-  signer installation, first publication and packed live acceptance; see
+- Implement signed gateway-policy updates, persistent antirollback and bounded
+  release refresh in both languages. Owner signer installation, real feed
+  publication and packed/browser acceptance are complete. Default activation
+  remains disabled pending continuing renewal ownership and SDK release; see
   [gateway-policy-updates.md](gateway-policy-updates.md).
 
 ## Trust boundary and limitations
@@ -61,8 +62,15 @@ passed. Paid inference was not performed and is not claimed as newly accepted.
 The signed-authority additions pass 27 shared vectors and cross-language durable
 rollback checks, release preparation/refusal tests, browser bundling and empty
 environment installation of npm tarballs, wheel and sdist. New publication/live
-canaries are still required after the feed exists. Prior artifact checksums in
-the repair handoff describe the earlier commit, not this updated candidate.
+canaries against real sequence-1 publication passed for exact packed commit
+`16f1612d40984eae866503dd6f960b48c4e6b3a9`: both languages/origins reached
+hardware_verified with signed-release-authority provenance, forced refresh and
+durable cross-process state. Browser live CORS/signatures/IndexedDB/reload passed.
+Expiry/tamper/threshold/conflict and simulated higher-state rollback refuse.
+Backend publication source `c0102538909f52b1fd82266f40e62e2187e37117`, KMS site
+sequence 1791329336, is accepted. Approval expires October 13; renew by October 11.
+These canaries use explicit opt-in; SDK default flag remains false. Documentation
+updates do not replace the recorded artifact identities.
 Publication is pending explicit GitHub release authorization under the project
 source-control rule. No registry setting, tag or public branch was changed.
 The [0.1.2 readiness record](release-readiness-0.1.2.md) is historical.
