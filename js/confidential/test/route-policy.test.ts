@@ -1,4 +1,4 @@
-// The seven routes AnonRouter withheld, refused here before anything is sent.
+// The eight routes AnonRouter withheld, refused here before anything is sent.
 //
 // WHAT THIS IS AND IS NOT. The shipped route policy is a CONVENIENCE: it turns
 // "your ticket request failed" into a sentence naming the route and the reason,
@@ -26,6 +26,7 @@ const CONTROL = "https://control.anonrouter.ai";
 
 /** The owner's decision, written out independently of the file under test. */
 const WITHHELD = [
+  ["venice", "z-ai/glm-5.2"],
   ["venice", "deepseek/deepseek-v4-flash"],
   ["venice", "qwen/qwen-3.6-35b-a3b-fp8"],
   ["venice", "z-ai/glm-5.1"],
@@ -39,32 +40,31 @@ const ALLOWED = [
   ["venice", "google/gemma-4-26b-a4b-uncensored"],
   ["venice", "openai/gpt-oss-20b"],
   ["venice", "qwen/qwen-2.5-7b"],
-  ["venice", "z-ai/glm-5.2"],
   ["chutes", "deepseek/deepseek-v3.2"],
   ["chutes", "qwen/qwen3-32b"]
 ] as const;
 
 describe("the shipped policy matches the decision", () => {
-  it("withholds exactly the seven reviewed e2ee routes", () => {
+  it("withholds exactly the eight reviewed e2ee routes", () => {
     expect(WITHHELD_CONFIDENTIAL_ROUTES.map((r) => `${r.provider}:${r.model}`).sort())
       .toEqual(WITHHELD.map(([provider, model]) => `${provider}:${model}`).sort());
     for (const r of WITHHELD_CONFIDENTIAL_ROUTES) expect(r.privacyClass).toBe("e2ee");
   });
 
-  it("offers exactly the six measured-working and admissible ones", () => {
+  it("offers exactly the five measured-working and admissible ones", () => {
     expect(OFFERED_CONFIDENTIAL_ROUTES.map((r) => `${r.provider}:${r.model}`).sort())
       .toEqual(ALLOWED.map(([provider, model]) => `${provider}:${model}`).sort());
   });
 });
 
 describe("the predicate is per route", () => {
-  it("withholds each of the seven", () => {
+  it("withholds each of the eight", () => {
     for (const [provider, model] of WITHHELD) {
       expect(isRouteWithheldByService(provider, model, "e2ee"), `${provider}:${model}`).toBe(true);
     }
   });
 
-  it("allows each of the six", () => {
+  it("allows each of the five", () => {
     for (const [provider, model] of ALLOWED) {
       expect(isRouteWithheldByService(provider, model, "e2ee"), `${provider}:${model}`).toBe(false);
     }

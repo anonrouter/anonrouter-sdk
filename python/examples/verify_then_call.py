@@ -22,7 +22,7 @@ than one:
 Optional env:
     ANONROUTER_BASE_URL   default https://api.anonrouter.ai
     ANONROUTER_CONTROL_URL default https://control.anonrouter.ai
-    ANONROUTER_MODEL      default z-ai/glm-5.2
+    ANONROUTER_MODEL      default google/gemma-4-26b-a4b-uncensored
     ANONROUTER_PROVIDER   default venice
     ANONROUTER_REQUIRE    default cryptographically_checked
     PROMPT, MAX_TOKENS
@@ -50,7 +50,7 @@ from anonrouter_confidential.gateway.dcap import (
 
 BASE_URL = os.environ.get("ANONROUTER_BASE_URL", "https://api.anonrouter.ai")
 CONTROL_URL = os.environ.get("ANONROUTER_CONTROL_URL", "https://control.anonrouter.ai")
-MODEL = os.environ.get("ANONROUTER_MODEL", "z-ai/glm-5.2")
+MODEL = os.environ.get("ANONROUTER_MODEL", "google/gemma-4-26b-a4b-uncensored")
 PROVIDER = os.environ.get("ANONROUTER_PROVIDER", "venice")
 PROMPT = os.environ.get("PROMPT", "In one sentence: what does attestation prove?")
 MAX_TOKENS = int(os.environ.get("MAX_TOKENS", "64"))

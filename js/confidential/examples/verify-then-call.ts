@@ -37,7 +37,7 @@ import { createAnonRouterDcapVerifier, describeDcapInstallation } from "../src/g
 
 const BASE_URL = process.env.ANONROUTER_BASE_URL ?? "https://api.anonrouter.ai";
 const CONTROL_URL = process.env.ANONROUTER_CONTROL_URL ?? "https://control.anonrouter.ai";
-const MODEL = process.env.ANONROUTER_MODEL ?? "z-ai/glm-5.2";
+const MODEL = process.env.ANONROUTER_MODEL ?? "google/gemma-4-26b-a4b-uncensored";
 const PROVIDER = process.env.ANONROUTER_PROVIDER ?? "venice";
 const PROMPT = process.env.PROMPT ?? "In one sentence: what does attestation prove?";
 const MAX_TOKENS = Number(process.env.MAX_TOKENS ?? 64);

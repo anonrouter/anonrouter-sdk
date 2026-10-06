@@ -57,7 +57,7 @@ const client = createClient({
 
 // Verify BOTH hops, cross-bound to the route you asked for, and gate on it.
 const verdict = await client.verifyRoute({
-  model: "z-ai/glm-5.2",
+  model: "google/gemma-4-26b-a4b-uncensored",
   provider: "venice",
   gateway: { chainVerifier: createAnonRouterDcapVerifier() }
 });
@@ -70,7 +70,7 @@ if (!atLeast(verdict.overallState, "cryptographically_checked")) {
 // with a NEW nonce before a ticket is spent or a model is named, because a verdict
 // from a minute ago is a fact about a minute ago.
 const reply = await client.chat({
-  model: "z-ai/glm-5.2",
+  model: "google/gemma-4-26b-a4b-uncensored",
   provider: "venice",
   messages: [{ role: "user", content: "Draft a private message." }],
   maxOutputTokens: 512,
@@ -205,7 +205,7 @@ them to the route you asked for, and reports them separately:
 
 ```ts
 const verdict = await client.verifyRoute({
-  model: "z-ai/glm-5.2",
+  model: "google/gemma-4-26b-a4b-uncensored",
   provider: "venice",
   gateway: true            // omit to skip hop 1 entirely
 });

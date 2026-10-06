@@ -1,4 +1,4 @@
-"""The seven routes AnonRouter withheld, refused here before anything is sent.
+"""The eight routes AnonRouter withheld, refused here before anything is sent.
 
 Mirrors ``js/confidential/test/route-policy.test.ts`` case for case.
 
@@ -32,6 +32,7 @@ CONTROL = "https://control.anonrouter.ai"
 
 #: The owner's decision, written out independently of the file under test.
 WITHHELD = [
+    ("venice", "z-ai/glm-5.2"),
     ("venice", "deepseek/deepseek-v4-flash"),
     ("venice", "qwen/qwen-3.6-35b-a3b-fp8"),
     ("venice", "z-ai/glm-5.1"),
@@ -45,19 +46,18 @@ ALLOWED = [
     ("venice", "google/gemma-4-26b-a4b-uncensored"),
     ("venice", "openai/gpt-oss-20b"),
     ("venice", "qwen/qwen-2.5-7b"),
-    ("venice", "z-ai/glm-5.2"),
     ("chutes", "deepseek/deepseek-v3.2"),
     ("chutes", "qwen/qwen3-32b"),
 ]
 
 
-def test_shipped_policy_withholds_exactly_the_seven() -> None:
+def test_shipped_policy_withholds_exactly_the_eight() -> None:
     assert sorted((r["provider"], r["model"]) for r in withheld_confidential_routes()) == sorted(WITHHELD)
     for route in withheld_confidential_routes():
         assert route["privacyClass"] == "e2ee"
 
 
-def test_shipped_policy_offers_exactly_the_six() -> None:
+def test_shipped_policy_offers_exactly_the_five() -> None:
     assert sorted((r["provider"], r["model"]) for r in offered_confidential_routes()) == sorted(ALLOWED)
 
 

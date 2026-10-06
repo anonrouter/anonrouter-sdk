@@ -18,7 +18,7 @@ export interface HttpContext {
 }
 
 /** The three providers with a currently-callable client-opaque E2EE route. */
-export type E2eeProviderId = "near-ai" | "venice" | "chutes";
+export type E2eeProviderId = "near-ai" | "other" | "venice" | "chutes";
 
 /** The wire protocol each provider speaks. */
 export type E2eeProtocol = "near-v2" | "venice-legacy" | "chutes-mlkem-v1";

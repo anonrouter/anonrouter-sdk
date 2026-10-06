@@ -36,7 +36,7 @@ Installing also installs the `anonrouter-verify` command. See below.
 
 ## Provider crypto (protocols)
 
-- `near-ai` (`near-v2`): Ed25519 client key, per-field ephemeral X25519,
+- `other` (`near-v2`, direct NEAR route; legacy `near-ai` remains supported): Ed25519 client key, per-field ephemeral X25519,
   HKDF-SHA256 info `ed25519_encryption`, XChaCha20-Poly1305. Wire = 32-byte X25519
   pub then 24-byte nonce then ciphertext+tag, lowercase hex.
 - `venice` (`venice-legacy`): secp256k1 ECDH over the shared point's X coordinate,

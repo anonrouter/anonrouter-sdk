@@ -3,20 +3,21 @@
 // so the transports are resolved synchronously here.
 
 import { ConfidentialError } from "../errors.js";
-import { nearTransport } from "./near.js";
+import { nearTransport, otherTransport } from "./near.js";
 import { veniceTransport } from "./venice.js";
 import { chutesTransport } from "./chutes.js";
 import type { E2eeProviderId, E2eeTransport } from "./types.js";
 
 const TRANSPORTS: Record<E2eeProviderId, E2eeTransport> = {
   "near-ai": nearTransport,
+  other: otherTransport,
   venice: veniceTransport,
   chutes: chutesTransport
 };
 
 /** True when the provider has a client-opaque E2EE transport. */
 export function isE2eeProvider(provider: string): provider is E2eeProviderId {
-  return provider === "near-ai" || provider === "venice" || provider === "chutes";
+  return provider === "near-ai" || provider === "other" || provider === "venice" || provider === "chutes";
 }
 
 export function transportFor(provider: string): E2eeTransport {

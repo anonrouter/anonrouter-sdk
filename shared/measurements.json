@@ -271,6 +271,32 @@
     "venice": {
       "measurementPolicy": null,
       "note": "Venice binds the enclave via its secp256k1 signing key, the attested workload keyset, and report_data, not a pinned measurement allowlist."
+    },
+    "other": {
+      "byModel": {
+        "z-ai/glm-5.3-flash": {
+          "endpointIdentity": "glm-5-3-flash.completions.near.ai",
+          "measurementPolicy": {
+            "source": "nearai/cvm-compose-files+nearai/compose-manager+dstack-os-images+near-kms-base",
+            "version": "2026-10-06-near-release-authority",
+            "kind": "near-release-authority",
+            "accepted": {
+              "authority": "near-compose-manager-github/v1",
+              "composeRepository": "nearai/cvm-compose-files",
+              "maxPublicationAgeMs": 7200000,
+              "image": {
+                "authority": "dstack-published-os-images/v1",
+                "allowPrerelease": false
+              },
+              "kms": {
+                "chainId": 8453,
+                "kms": "0x8fa1593fac104c1aa0c59eaa3553f7e3e162d637"
+              },
+              "composeManagerRepository": "nearai/compose-manager"
+            }
+          }
+        }
+      }
     }
   }
 }

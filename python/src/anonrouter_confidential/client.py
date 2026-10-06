@@ -67,12 +67,12 @@ from .verify.route import (
 from .verify.state import describe_state
 from .verify.types import AttestationExpectations, NormalizedVerdict
 
-_E2EE_PROVIDERS = {"near-ai", "venice", "chutes"}
+_E2EE_PROVIDERS = {"near-ai", "other", "venice", "chutes"}
 #: The wire protocol each E2EE provider speaks. The provider NAME does not settle
 #: it: a provider that gained a second E2EE protocol would keep echoing the same
 #: name while this client encrypted to the wrong scheme, so the protocol the
 #: gateway offers is checked against the one about to be spoken.
-_E2EE_PROTOCOLS = {"near-ai": "near-v2", "venice": "venice-legacy", "chutes": "chutes-mlkem-v1"}
+_E2EE_PROTOCOLS = {"near-ai": "near-v2", "other": "near-v2", "venice": "venice-legacy", "chutes": "chutes-mlkem-v1"}
 # Whole-body opaque relays: the entire request and response are one encrypted blob,
 # so the gateway cannot meter them token by token and requires a ticket reserving
 # the route's full output ceiling. The streaming providers are metered as they go.
@@ -833,6 +833,14 @@ class ConfidentialClient(MediaOwner):
         if verdict.status != "ok":
             raise ConfidentialError(f"attestation failed independent verification: {verdict.reason}")
 
+        if provider in {"near-ai", "other"}:
+            key = _evidence_str(raw_evidence, "signing_public_key")
+            address = _evidence_str(raw_evidence, "signing_address")
+            algorithm = _evidence_str(raw_evidence, "signing_algo")
+            if (algorithm != "ed25519" or not re.fullmatch(r"[0-9a-fA-F]{64}", key or "")
+                    or not address or address.lower().removeprefix("0x") != key.lower()):
+                raise ConfidentialError("the enclave encryption key is not the Ed25519 key its quote binds")
+
         # A whole-body opaque relay (Chutes) cannot be metered token by token, so the
         # gateway requires the paid ticket to reserve the route's FULL output ceiling.
         # The caller's max_output_tokens still caps the ACTUAL generation: it travels
@@ -843,8 +851,8 @@ class ConfidentialClient(MediaOwner):
             else max_output_tokens
         )
         inference_ticket = self._mint_inference_ticket(model, provider, reserved)
-        if provider == "near-ai":
-            return self._chat_near(inference_ticket, model, upstream_model, raw_evidence, messages, max_output_tokens)
+        if provider in {"near-ai", "other"}:
+            return self._chat_near(inference_ticket, model, upstream_model, raw_evidence, messages, max_output_tokens, provider=provider)
         if provider == "venice":
             return self._chat_venice(inference_ticket, model, upstream_model, raw_evidence, messages, max_output_tokens)
         return self._chat_chutes(
@@ -1022,6 +1030,8 @@ class ConfidentialClient(MediaOwner):
         evidence: Any,
         messages: list[dict[str, str]],
         max_output_tokens: int,
+        *,
+        provider: str = "near-ai",
     ) -> dict[str, Any]:
         model_ed_pub_hex = _evidence_str(evidence, "signing_public_key")
         seed = os.urandom(32)
@@ -1033,7 +1043,7 @@ class ConfidentialClient(MediaOwner):
         ]
         body = {
             "model": model,
-            "provider": "near-ai",
+            "provider": provider,
             "messages": encrypted,
             "max_tokens": max_output_tokens,
             "stream": True,
@@ -1042,7 +1052,7 @@ class ConfidentialClient(MediaOwner):
             "content-type": "application/json",
             "accept": "text/event-stream",
             "x-anonrouter-ticket": ticket,
-            "x-anonrouter-e2ee-provider": "near-ai",
+            "x-anonrouter-e2ee-provider": provider,
             "x-signing-algo": "ed25519",
             "x-client-pub-key": client_pub.hex(),
             "x-encryption-version": "2",

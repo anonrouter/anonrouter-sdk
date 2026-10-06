@@ -10,7 +10,7 @@
 // Optional env:
 //   ANONROUTER_BASE_URL   default https://api.anonrouter.ai
 //   ANONROUTER_CONTROL_URL default https://control.anonrouter.ai
-//   E2EE_MODEL            default z-ai/glm-5.2
+//   E2EE_MODEL            default google/gemma-4-26b-a4b-uncensored
 //   E2EE_PROVIDER         default venice   (E2EE today: venice | chutes)
 //   MAX_TOKENS            default 32
 //   PROMPT                default a short prompt containing a unique canary
@@ -25,7 +25,7 @@ if (!apiKey) {
 }
 const baseUrl = process.env.ANONROUTER_BASE_URL ?? "https://api.anonrouter.ai";
 const controlBaseUrl = process.env.ANONROUTER_CONTROL_URL ?? "https://control.anonrouter.ai";
-const model = process.env.E2EE_MODEL ?? "z-ai/glm-5.2";
+const model = process.env.E2EE_MODEL ?? "google/gemma-4-26b-a4b-uncensored";
 const provider = process.env.E2EE_PROVIDER ?? "venice";
 const maxOutputTokens = Number(process.env.MAX_TOKENS ?? "32");
 

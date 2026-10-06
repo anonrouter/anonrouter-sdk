@@ -25,6 +25,7 @@ import {
   utf8Encode,
   zeroize
 } from "../bytes.js";
+import { verifyRawEvidence } from "../verify/index.js";
 import { ConfidentialError } from "../errors.js";
 import { pinnedMeasurementPolicyFor } from "../measurements.js";
 import { hexEqual, sha256Hex } from "../verify/crypto.js";
@@ -57,24 +58,26 @@ interface NearPayload {
   model_name?: unknown;
   signing_address?: unknown;
   signing_public_key?: unknown;
+  signing_algo?: unknown;
   app_compose?: unknown;
   compose_hash?: unknown;
   info?: { tcb_info?: { app_compose?: { docker_compose_file?: unknown } } };
 }
 
 class NearSession implements E2eeSession {
-  readonly provider = "near-ai" as const;
+  readonly provider: "near-ai" | "other";
   readonly protocol = "near-v2" as const;
   disposed = false;
   constructor(
     readonly upstreamModel: string,
+    provider: "near-ai" | "other",
     /** Enclave Ed25519 public key (32 bytes) content is encrypted to. */
     readonly modelEd25519Key: Uint8Array,
     /** Fresh client Ed25519 secret key (32 bytes). Kept in memory only. */
     readonly clientSecret: Uint8Array,
     /** Client Ed25519 public key, lowercase hex (sent in x-client-pub-key). */
     readonly clientPublicHex: string
-  ) {}
+  ) { this.provider = provider; }
 }
 
 function hexToBytesLoose(value: unknown): Uint8Array {
@@ -138,7 +141,15 @@ function measurementsFor(upstreamModel: string): NearPinnedMeasurement[] {
 /** Independently re-verify NEAR raw evidence (the client never trusts the gateway
  *  verdict alone). Throws on any required failure. Returns the trusted enclave
  *  Ed25519 encryption key. */
-function verifyNearEvidence(input: CreateSessionInput): Uint8Array {
+function verifyNearEvidence(input: CreateSessionInput, provider: "near-ai" | "other"): Uint8Array {
+  if (provider === "other") {
+    const verdict = verifyRawEvidence(provider, input.rawEvidence, { upstreamModel: input.upstreamModel, nonce: input.nonce, privacyModality: "e2ee" });
+    if (verdict.status !== "ok") throw new ConfidentialError("attestation_untrusted", "The direct enclave did not verify.");
+    if (input.normalized && !hexEqual(input.normalized.attested_encryption_key, verdict.attested_encryption_key)) {
+      throw new ConfidentialError("key_binding_failed", "The enclave key disagrees with the gateway verdict.");
+    }
+    return hexToBytes(verdict.attested_encryption_key!);
+  }
   const payload = input.rawEvidence as NearPayload | undefined;
   const quoteRaw = typeof payload?.intel_quote === "string" ? payload.intel_quote : null;
   const parsed = quoteRaw ? parseTdxQuote(quoteRaw) : null;
@@ -196,95 +207,103 @@ function verifyNearEvidence(input: CreateSessionInput): Uint8Array {
   if (!signingPublicKey || !/^[0-9a-f]{64}$/i.test(signingPublicKey)) {
     throw new ConfidentialError("key_binding_failed", "The enclave encryption key is missing or malformed.");
   }
+  if (payload?.signing_algo !== "ed25519" || !hexEqual(signingAddress.replace(/^0x/i, ""), signingPublicKey)) {
+    throw new ConfidentialError("key_binding_failed", "The enclave encryption key is not the Ed25519 key its quote binds.");
+  }
   if (input.normalized && !hexEqual(input.normalized.attested_encryption_key, signingPublicKey)) {
     throw new ConfidentialError("key_binding_failed", "The enclave key disagrees with the gateway verdict.");
   }
   return hexToBytes(signingPublicKey);
 }
 
-export const nearTransport: E2eeTransport = {
-  provider: "near-ai",
-  protocol: "near-v2",
-  streaming: true,
+function createNearTransport(provider: "near-ai" | "other"): E2eeTransport {
+  return {
+    provider,
+    protocol: "near-v2",
+    streaming: true,
 
-  createSession(input: CreateSessionInput): E2eeSession {
-    const modelKey = verifyNearEvidence(input);
-    const clientSecret = ed25519.utils.randomSecretKey();
-    const clientPublic = ed25519.getPublicKey(clientSecret);
-    return new NearSession(input.upstreamModel, modelKey, clientSecret, bytesToHex(clientPublic));
-  },
+    createSession(input: CreateSessionInput): E2eeSession {
+      const modelKey = verifyNearEvidence(input, provider);
+      const clientSecret = ed25519.utils.randomSecretKey();
+      const clientPublic = ed25519.getPublicKey(clientSecret);
+      return new NearSession(input.upstreamModel, provider, modelKey, clientSecret, bytesToHex(clientPublic));
+    },
 
-  async complete(session: E2eeSession, request: E2eeChatRequest, options: CompleteOptions): Promise<E2eeCompletion> {
-    if (!(session instanceof NearSession) || session.disposed) {
-      throw new ConfidentialError("transport_failed", "The encrypted session is not usable.");
-    }
-    const encryptedMessages = request.messages.map((message) => ({
-      role: message.role,
-      content: encryptField(message.content, session.modelEd25519Key)
-    }));
-    const body = JSON.stringify({
-      model: request.model,
-      // The relay re-derives the provider-policy digest from the body and requires
-      // it to equal the one bound into the ticket at issuance.
-      provider: session.provider,
-      messages: encryptedMessages,
-      max_tokens: request.maxOutputTokens,
-      stream: true
-    });
-
-    let response: Response;
-    try {
-      response = await options.http.fetchImpl(joinUrl(options.http.baseUrl, "/v1/chat/completions"), {
-        method: "POST",
-        // Credential-isolated relay: never attach a session cookie.
-        credentials: "omit",
-        cache: "no-store",
-        headers: {
-          "content-type": "application/json",
-          accept: "text/event-stream",
-          "x-anonrouter-ticket": options.ticket,
-          "x-anonrouter-e2ee-provider": "near-ai",
-          "x-signing-algo": "ed25519",
-          "x-client-pub-key": session.clientPublicHex,
-          "x-encryption-version": "2"
-        },
-        body,
-        signal: options.signal
+    async complete(session: E2eeSession, request: E2eeChatRequest, options: CompleteOptions): Promise<E2eeCompletion> {
+      if (!(session instanceof NearSession) || session.disposed || session.provider !== provider) {
+        throw new ConfidentialError("transport_failed", "The encrypted session is not usable.");
+      }
+      const encryptedMessages = request.messages.map((message) => ({
+        role: message.role,
+        content: encryptField(message.content, session.modelEd25519Key)
+      }));
+      const body = JSON.stringify({
+        model: request.model,
+        // The relay re-derives the provider-policy digest from the body and requires
+        // it to equal the one bound into the ticket at issuance.
+        provider: session.provider,
+        messages: encryptedMessages,
+        max_tokens: request.maxOutputTokens,
+        stream: true
       });
-    } catch {
-      if (options.signal?.aborted) throw new ConfidentialError("cancelled", "The request was cancelled.");
-      throw new ConfidentialError("transport_failed", "The encrypted request could not be sent.");
-    }
-    if (!response.ok) throw new ConfidentialError("transport_failed", await parseRelayError(response));
 
-    let content = "";
-    let reasoning = "";
-    let usage: E2eeCompletion["usage"];
-    let finishReason: string | undefined;
-    for await (const frame of parseSseStream(response, options.signal)) {
-      const streamError = extractStreamError(frame);
-      if (streamError) throw new ConfidentialError("transport_failed", streamError);
-      const delta = extractOpenAiDelta(frame);
-      if (delta.content) {
-        const text = decryptField(delta.content, session.clientSecret);
-        content += text;
-        options.onDelta?.({ content: text });
+      let response: Response;
+      try {
+        response = await options.http.fetchImpl(joinUrl(options.http.baseUrl, "/v1/chat/completions"), {
+          method: "POST",
+          // Credential-isolated relay: never attach a session cookie.
+          credentials: "omit",
+          cache: "no-store",
+          headers: {
+            "content-type": "application/json",
+            accept: "text/event-stream",
+            "x-anonrouter-ticket": options.ticket,
+            "x-anonrouter-e2ee-provider": session.provider,
+            "x-signing-algo": "ed25519",
+            "x-client-pub-key": session.clientPublicHex,
+            "x-encryption-version": "2"
+          },
+          body,
+          signal: options.signal
+        });
+      } catch {
+        if (options.signal?.aborted) throw new ConfidentialError("cancelled", "The request was cancelled.");
+        throw new ConfidentialError("transport_failed", "The encrypted request could not be sent.");
       }
-      if (delta.reasoning) {
-        const text = decryptField(delta.reasoning, session.clientSecret);
-        reasoning += text;
-        options.onDelta?.({ reasoning: text });
-      }
-      if (delta.usage) usage = delta.usage;
-      if (delta.finishReason) finishReason = delta.finishReason;
-    }
-    return { content, reasoningContent: reasoning || undefined, usage, finishReason };
-  },
+      if (!response.ok) throw new ConfidentialError("transport_failed", await parseRelayError(response));
 
-  dispose(session: E2eeSession): void {
-    if (session instanceof NearSession && !session.disposed) {
-      zeroize(session.clientSecret, session.modelEd25519Key);
-      session.disposed = true;
+      let content = "";
+      let reasoning = "";
+      let usage: E2eeCompletion["usage"];
+      let finishReason: string | undefined;
+      for await (const frame of parseSseStream(response, options.signal)) {
+        const streamError = extractStreamError(frame);
+        if (streamError) throw new ConfidentialError("transport_failed", streamError);
+        const delta = extractOpenAiDelta(frame);
+        if (delta.content) {
+          const text = decryptField(delta.content, session.clientSecret);
+          content += text;
+          options.onDelta?.({ content: text });
+        }
+        if (delta.reasoning) {
+          const text = decryptField(delta.reasoning, session.clientSecret);
+          reasoning += text;
+          options.onDelta?.({ reasoning: text });
+        }
+        if (delta.usage) usage = delta.usage;
+        if (delta.finishReason) finishReason = delta.finishReason;
+      }
+      return { content, reasoningContent: reasoning || undefined, usage, finishReason };
+    },
+
+    dispose(session: E2eeSession): void {
+      if (session instanceof NearSession && !session.disposed) {
+        zeroize(session.clientSecret, session.modelEd25519Key);
+        session.disposed = true;
+      }
     }
-  }
-};
+  };
+}
+
+export const nearTransport = createNearTransport("near-ai");
+export const otherTransport = createNearTransport("other");

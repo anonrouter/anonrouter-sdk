@@ -21,11 +21,11 @@
   "policies": [
     {
       "status": "published",
-      "reviewedAt": "2026-09-12",
-      "notes": "AnonRouter confidential content plane running in an Intel TDX CVM (Large class). Published from the independently retained production release manifest with SHA-256 303e61fb7c89a6b7079c489a58955aa9cc76b1e09e03b777f133cdf525f34c8d, which corresponds to operator policy generation 2026-09-12-content-plane-v1.0.20. That manifest binds reviewed monorepo source commit 4c9b984b981a823c016efbbb7d019817e22beca4, the exact measured app compose 9e369fb632fb3b98c604b0c8457448ce88a29077c1766948b87fb6673db494fb, the digest-pinned public content-plane image sha256:d10f4f129efa395bb724798058e93c51f9eb150a25744abee0cbbbc7622de885 from signed tag content-plane-v1.0.20 at public commit 644f50d48f920f1f7720bd5edde4fb93bb1267bf, and eleven further digest-pinned images. The image has a keyless GitHub Actions signature, SLSA v1 provenance whose subject matches the digest, and an SPDX SBOM. Every pinned identity and platform value was re-observed on 2026-09-12 in two independent fresh nonce-bound quotes, one per origin, and each quote's leaf SPKI was separately observed on the wire for that hostname. Both observations match the independently retained manifest and production measurement policy; no value was accepted merely because the gateway reported it. api.private.anonrouter.ai remains an attested alias; api.anonrouter.ai is the customer default. The release id is not treated as sufficient identity: app id, compose hash and every platform measurement remain independently pinned, and mrConfigId independently re-states the compose hash in a register the guest cannot re-narrate. RTMR0 is the hardware-configuration register; this deployment did not resize and RTMR0 remained unchanged. It was not reproduced offline with dstack-mr, so it rests on agreeing independent quotes and the retained manifest rather than an offline recomputation. Two third-party source-to-digest provenance gaps named in the manifest (caddy-edge-base, node-base-image) remain supply-chain limitations, not attestation bypasses. requireHardwareVerified remains true, so verification fails closed unless a DCAP chain verifier is supplied.",
+      "reviewedAt": "2026-10-06",
+      "notes": "Reviewed retained accepted W8 pool release manifest SHA-256 5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829; content-plane v1.0.26, image sha256:536e7fcb8be62ce027a764098f07237c1fdb282be9a71dc62334d75bcf08ce8d, reviewed source c5adf8ba59d2628b5ef1fb1e68c9c38e1993ad05. Exact measured compose and deployment app identity agree with the retained acceptance packet. Both production origins require fresh hardware verification, quote-bound observed TLS, private logs, digest-pinned images and UpToDate TCB. MRTD/RTMR0-2 and OS-image pins are unchanged from the prior reviewed Large deployment; MRCONFIGID binds the new measured compose. RTMR0 was not reproduced offline. Retained third-party provenance gaps and unavailable private application-log sweep remain documented supply-chain/observability limitations, not waived cryptographic checks. This policy is independently packaged; never fetched from the gateway being verified.",
       "policy": {
-        "source": "anonrouter-release-manifest-sha256:303e61fb7c89a6b7079c489a58955aa9cc76b1e09e03b777f133cdf525f34c8d",
-        "version": "2026-09-12-content-plane-v1.0.20",
+        "source": "anonrouter-release-manifest-sha256:5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829",
+        "version": "2026-10-06-content-plane-v1.0.26-pool",
         "origins": [
           "https://api.anonrouter.ai",
           "https://api.private.anonrouter.ai"
@@ -34,10 +34,10 @@
           "91c6a04ea7044f28d53142449c9badddbc30eff7"
         ],
         "composeHashes": [
-          "9e369fb632fb3b98c604b0c8457448ce88a29077c1766948b87fb6673db494fb"
+          "ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0"
         ],
         "releaseIds": [
-          "anonrouter-tee@xl-4c9b984"
+          "anonrouter-tee@pool-a07ae22e"
         ],
         "keyProviderId": "3059301306072a8648ce3d020106082a8648ce3d030107034200048844eb42ccdf8c52fd4f174f362fcb9bbd19c45fd48f1edec2d8f1ca23536ec1a74021b4cee610c074f8294d431b2b7fee2c39e5333fdaf0a4522d43fb159d9f",
         "platform": {
@@ -45,7 +45,7 @@
             "f06dfda6dce1cf904d4e2bab1dc370634cf95cefa2ceb2de2eee127c9382698090d7a4a13e14c536ec6c9c3c8fa87077"
           ],
           "mrConfigId": [
-            "019e369fb632fb3b98c604b0c8457448ce88a29077c1766948b87fb6673db494fb000000000000000000000000000000"
+            "01ddaf9ec16ea2099a0bf1da5d394c421b4efe470f3a90c97ed8003123556841f0000000000000000000000000000000"
           ],
           "rtmr0": [
             "fb14dc139f33d6fcf474bc8332cac001259fb31cfbcb6b34d4ceeb552a2c4466884a0cbde45ad98a05c5c060c23ad65a"
@@ -64,11 +64,11 @@
         "requirePrivateLogs": true,
         "requireDigestPinnedImages": true,
         "requireHardwareVerified": true,
+        "maxEvidenceAgeMs": 300000,
         "acceptableTcbStatuses": [
           "UpToDate"
         ],
-        "requireEvidenceExpiry": true,
-        "maxEvidenceAgeMs": 300000
+        "requireEvidenceExpiry": true
       }
     }
   ]

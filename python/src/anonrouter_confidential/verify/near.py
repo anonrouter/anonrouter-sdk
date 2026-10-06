@@ -16,6 +16,8 @@ the client SDK surface.
 from __future__ import annotations
 
 import hashlib
+import re
+import time
 from typing import Any
 
 from .._util import as_dict, as_list, as_str
@@ -28,6 +30,7 @@ from .checks import (
     nonce_binding_check,
     read_envelope,
 )
+from .near_authority import verify_near_gpu_evidence, verify_near_release_authority
 from .types import AttestationExpectations, NormalizedVerdict
 
 VERIFIER_VERSION = "near-tdx/1"
@@ -110,22 +113,43 @@ def verify_near(evidence: Any, expectations: AttestationExpectations) -> Normali
         else:
             checks.append(check("compose_binding", False, True, "no app_compose provided to bind"))
 
-        allowlist = as_list(as_dict(expectations.measurement_policy).get("accepted"))
-        if allowlist:
+        accepted = as_dict(expectations.measurement_policy).get("accepted")
+        if isinstance(accepted, dict) and accepted.get("authority") == "near-compose-manager-github/v1":
+            valid = False
+            try:
+                verify_near_release_authority(payload, parsed, expectations.nonce, accepted,
+                                              expectations.now_ms if expectations.now_ms is not None else time.time() * 1000)
+                valid = True
+            except (ValueError, TypeError, KeyError, IndexError, AttributeError, OverflowError, RecursionError):
+                pass
+            checks.append(check("release_authority", valid, True,
+                                None if valid else "provider release authority did not verify"))
+        else:
+            allowlist = as_list(accepted)
             matched_name = match_measurement_allowlist(parsed, allowlist)
             matched_entry = next((e for e in allowlist if e.get("name") == matched_name), None) if matched_name else None
             entry_compose = as_str(matched_entry.get("composeSha256")) if matched_entry else None
             matched_policy = entry_compose is not None and hex_equal(entry_compose, compose_sha256)
             checks.append(check("measurement_allowlist", matched_policy, True,
                                 None if matched_policy else "measurements not in accepted allowlist"))
-        else:
-            checks.append(check("measurement_allowlist", False, True, "no accepted-measurement policy pinned"))
 
     checks.append(check("model_binding", model_name == expectations.upstream_model, True,
                         None if model_name else "attestation did not name a model"))
     gpu = payload.get("nvidia_payload")
     gpu_ok = isinstance(gpu, str) and len(gpu) > 0
     checks.append(check("gpu_evidence_present", gpu_ok, True, None if gpu_ok else "no NVIDIA GPU evidence"))
+    if expectations.provider == "other":
+        gpu_bound = False
+        try:
+            verify_near_gpu_evidence(gpu, expectations.nonce)
+            gpu_bound = True
+        except (ValueError, TypeError, KeyError, AttributeError):
+            pass
+        checks.append(check("gpu_nonce_binding", gpu_bound, True))
+        key = _str_or_none(payload.get("signing_public_key"))
+        key_bound = payload.get("signing_algo") == "ed25519" and key is not None and bool(re.fullmatch(r"[0-9a-fA-F]{64}", key))
+        key_bound = key_bound and hex_equal(signing_address.removeprefix("0x") if signing_address else None, key)
+        checks.append(check("encryption_key_binding", key_bound, True))
     checks.append(freshness_check(envelope.fetched_at_ms, expectations))
 
     bound_nonce = parsed.report_data[64:128] if parsed else None

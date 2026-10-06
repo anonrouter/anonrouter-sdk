@@ -26,8 +26,9 @@ package. If npm has not propagated the current release yet, install its
 checksummed tarballs from the GitHub release or build from this repository. The
 Python wheel and sdist remain available from the GitHub release while PyPI
 organization approval is pending. Every tarball, wheel and sdist is installed
-into an empty environment before release. The `v0.1.2` candidate has passed that
-artifact-install smoke test but is not yet published.
+into an empty environment before release. npm serves v0.1.2; this v0.1.3
+repair is a release candidate until separately published. See
+[release readiness](docs/release-readiness.md) for the exact validation and limits.
 
 Layout:
 
@@ -67,17 +68,19 @@ on any of them, because the words matter.
   - "Reviewed build" is meant literally. The compose measured by the CVM names the
     content plane by image digest, and that image is built in public CI from
     [`anonrouter/confidential-content-plane`](https://github.com/anonrouter/confidential-content-plane)
-    at tag `content-plane-v1.0.20`, with a signed SLSA provenance attestation
+    at tag `content-plane-v1.0.26`, with a signed SLSA provenance attestation
     naming the same digest. Two of its base images still have no source-to-digest
     binding; the release manifest names them rather than rounding them up, and so
     does [`docs/release-readiness.md`](docs/release-readiness.md).
-- **E2EE removes us from the trust set entirely.** On an E2EE route the SDK
+- **E2EE encrypts content to the provider enclave.** On an E2EE route the SDK
   encrypts your request to a key bound to the *provider's* attested enclave, so
   AnonRouter's relay holds ciphertext whatever code it happens to be running. Use
-  this when the requirement is that AnonRouter cannot read your content **even if
-  we wanted to and shipped code to try**, rather than that we would be caught
-  doing so. The SDK ships E2EE transports and verifiers for `venice`, `chutes`
-  and `near-ai`; which of them the catalog actually serves changes, so read
+  this with the assurance your route establishes. The direct `other` route
+  rechecks NEAR release-authority evidence and quote-bound encryption keys, but
+  publication/RPC collateral arrives through AnonRouter's measured worker. Verify
+  hop 1 as well when relying on that fetch layer; this route does not establish
+  provider vendor-root hardware verification independently. The SDK ships E2EE transports and verifiers for `venice`, `chutes`
+  and `other` (NEAR protocol), plus legacy `near-ai`; which of them the catalog actually serves changes, so read
   `client.models()` rather than this list — `npm run example:route-matrix` prints
   it.
 - **`@anonrouter/client` is the plaintext client.** It speaks the ordinary
@@ -227,7 +230,7 @@ generated fingerprint.
 
 The SDK reports a `verification_level` and never inflates it:
 
-- `provider-attested` for `near-ai`, `venice`, and `chutes`. The SDK checks the
+- `provider-attested` for `other` (NEAR protocol), legacy `near-ai`, `venice`, and `chutes`. The SDK checks the
   provider's attestation and cryptographic bindings (for example the Chutes X.509
   certificate possession and the Venice secp256k1 signing address) against the
   reviewed pins. The DCAP / NRAS chain all the way to the silicon vendor roots is
@@ -287,7 +290,7 @@ const client = createClient({
 // Verify BOTH hops and gate on the result. This is the stable contract; see
 // VERIFYING.md for the five states and what each one does and does not prove.
 const verdict = await client.verifyRoute({
-  model: "z-ai/glm-5.2",
+  model: "google/gemma-4-26b-a4b-uncensored",
   provider: "venice",
   gateway: { chainVerifier: createAnonRouterDcapVerifier() }
 });
@@ -299,7 +302,7 @@ if (!atLeast(verdict.overallState, "cryptographically_checked")) {
 // reaches AnonRouter's relay, and requireGateway re-establishes hop 1 with a new
 // nonce BEFORE a ticket is spent or a model is named.
 const reply = await client.chat({
-  model: "z-ai/glm-5.2",
+  model: "google/gemma-4-26b-a4b-uncensored",
   provider: "venice",
   messages: [{ role: "user", content: "Draft a private message." }],
   maxOutputTokens: 512,
@@ -343,7 +346,7 @@ client = create_client(
 # Verify BOTH hops and gate on the result. This is the stable contract; see
 # VERIFYING.md for the five states and what each one does and does not prove.
 verdict = client.verify_route(
-    model="z-ai/glm-5.2",
+    model="google/gemma-4-26b-a4b-uncensored",
     provider="venice",
     gateway={"chain_verifier": create_anonrouter_dcap_verifier()},
 )
@@ -351,7 +354,7 @@ if not at_least(verdict.overall_state, "cryptographically_checked"):
     raise SystemExit(f"route not established: {verdict.reason}")
 
 reply = client.chat(
-    model="z-ai/glm-5.2",
+    model="google/gemma-4-26b-a4b-uncensored",
     provider="venice",
     messages=[{"role": "user", "content": "Draft a private message."}],
     max_output_tokens=512,
@@ -380,7 +383,7 @@ const models = await client.models();
 // single-use ticket accompanies the content. Content on this route is visible
 // to the gateway: use @anonrouter/confidential when it must not be.
 const completion = await client.chat({
-  model: "z-ai/glm-5.2",
+  model: "google/gemma-4-26b-a4b-uncensored",
   messages: [{ role: "user", content: "Hello." }]
 });
 ```

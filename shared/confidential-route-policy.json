@@ -10,7 +10,7 @@
     "verdict is still computed from that evidence. A route missing from this file",
     "is not thereby trusted, and a route listed in it is not thereby verified."
   ],
-  "version": "2026-09-04-confidential-e2ee-per-route",
+  "version": "2026-10-06-confidential-e2ee-sdk",
   "verified": [
     {
       "provider": "venice",
@@ -25,11 +25,6 @@
     {
       "provider": "venice",
       "model": "qwen/qwen-2.5-7b",
-      "privacyClass": "e2ee"
-    },
-    {
-      "provider": "venice",
-      "model": "z-ai/glm-5.2",
       "privacyClass": "e2ee"
     },
     {
@@ -85,6 +80,12 @@
       "model": "moonshotai/kimi-k2.6",
       "privacyClass": "e2ee",
       "classification": "deployment_admission_limit"
+    },
+    {
+      "provider": "venice",
+      "model": "z-ai/glm-5.2",
+      "privacyClass": "e2ee",
+      "classification": "provider_evidence_insufficient"
     }
   ],
   "governedProviders": {

@@ -151,6 +151,8 @@ jobs:
       - name: Install the Python command
         working-directory: python
         run: pip install -e "."
+      - name: Compare direct provider adversarial verdicts
+        run: node scripts/check-near-parity.mjs
       - name: Compare both commands
         run: node scripts/check-cli-parity.mjs
 

@@ -13,6 +13,7 @@ from .venice import verify_venice
 
 _VERIFIERS = {
     "near-ai": verify_near,
+    "other": verify_near,
     "venice": verify_venice,
     "chutes": verify_chutes,
     "tinfoil": verify_tinfoil,

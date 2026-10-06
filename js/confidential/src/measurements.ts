@@ -71,6 +71,9 @@ interface RawMeasurements {
     "near-ai"?: {
       byModel?: Record<string, { endpointIdentity?: string; measurementPolicy?: RawMeasurementPolicy | null }>;
     };
+    other?: {
+      byModel?: Record<string, { endpointIdentity?: string; measurementPolicy?: RawMeasurementPolicy | null }>;
+    };
   };
 }
 
@@ -95,19 +98,19 @@ export function pinnedMeasurementPolicyFor(provider: string, model: string): Mea
   if (provider === "chutes") return toPolicy(providers.chutes?.measurementPolicy);
   if (provider === "tinfoil") return toPolicy(providers.tinfoil?.measurementPolicy);
   if (provider === "venice") return toPolicy(providers.venice?.measurementPolicy);
-  if (provider === "near-ai") return toPolicy(providers["near-ai"]?.byModel?.[model]?.measurementPolicy);
+  if (provider === "near-ai" || provider === "other") return toPolicy(providers[provider]?.byModel?.[model]?.measurementPolicy);
   return undefined;
 }
 
 /**
  * Resolve the operator-pinned endpoint identity (direct enclave host) for a route,
- * or undefined when the route is not host-pinned. Only `near-ai` direct routes are
+ * or undefined when the route is not host-pinned. Only reviewed NEAR-protocol direct routes are
  * host-pinned in policy today.
  */
 export function pinnedEndpointIdentityFor(provider: string, model: string): string | undefined {
   const providers = DATA.providers ?? {};
-  if (provider === "near-ai") {
-    const identity = providers["near-ai"]?.byModel?.[model]?.endpointIdentity;
+  if (provider === "near-ai" || provider === "other") {
+    const identity = providers[provider]?.byModel?.[model]?.endpointIdentity;
     return typeof identity === "string" ? identity : undefined;
   }
   // Other providers (e.g. tinfoil) carry a single reviewed endpoint identity.

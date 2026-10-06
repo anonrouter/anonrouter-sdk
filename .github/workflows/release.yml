@@ -63,6 +63,8 @@ jobs:
 
       - name: Cross-language pin parity
         run: node scripts/check-parity.mjs
+      - name: Direct provider adversarial verdict parity
+        run: node scripts/check-near-parity.mjs
       - name: anonrouter-verify CLI parity
         run: node scripts/check-cli-parity.mjs
       - name: Artifacts install into empty environments
@@ -124,10 +126,37 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  live-acceptance:
+    name: Packed SDK verifies current production
+    runs-on: ubuntu-latest
+    needs: artifacts
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.11"
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+        with:
+          name: release-artifacts
+          path: dist/artifacts
+      - name: Fresh installs verify both live origins without credentials or inference
+        run: |
+          chmod +x dist/artifacts/anonrouter-dcap-verifier-linux-amd64
+          node scripts/check-live-gateways.mjs --out live-sdk-acceptance.json
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        if: always()
+        with:
+          name: live-sdk-acceptance
+          path: live-sdk-acceptance.json
+          if-no-files-found: warn
+
   publish:
     name: Publish the GitHub release
     runs-on: ubuntu-latest
-    needs: artifacts
+    needs: [artifacts, live-acceptance]
     # The only elevated scope in the workflow, and only for the job that needs
     # it. No registry credential is involved: GITHUB_TOKEN is short-lived and
     # scoped to this run.
@@ -173,7 +202,7 @@ jobs:
   publish-npm:
     name: Publish to npm (trusted publishing)
     runs-on: ubuntu-latest
-    needs: artifacts
+    needs: [artifacts, live-acceptance]
     if: vars.PUBLISH_NPM == 'true'
     permissions:
       contents: read
@@ -184,6 +213,10 @@ jobs:
         with:
           node-version: "22"
           registry-url: https://registry.npmjs.org
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+        with:
+          name: release-artifacts
+          path: dist/artifacts
       - name: Publish both packages with provenance
         env:
           # Empty after the one-time bootstrap. npm 11.5.1+ detects the GitHub
@@ -202,14 +235,16 @@ jobs:
               exit 1
             fi
           done
-          cd js && npm ci && npm run build
-          npm publish --workspace @anonrouter/client --provenance --access public
-          npm publish --workspace @anonrouter/confidential --provenance --access public
+          cd dist/artifacts
+          sha256sum --check SHA256SUMS
+          version=$(node -p "require('../../js/confidential/package.json').version")
+          npm publish "anonrouter-client-${version}.tgz" --provenance --access public
+          npm publish "anonrouter-confidential-${version}.tgz" --provenance --access public
 
   publish-pypi:
     name: Publish to PyPI (trusted publishing)
     runs-on: ubuntu-latest
-    needs: artifacts
+    needs: [artifacts, live-acceptance]
     if: vars.PUBLISH_PYPI == 'true'
     permissions:
       contents: read

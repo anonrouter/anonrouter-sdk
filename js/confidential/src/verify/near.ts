@@ -14,6 +14,7 @@
 import { assembleResult, check, freshnessCheck, hexEqual, nonceBindingCheck, readEnvelope } from "./checks.js";
 import { fromHex, sha256Hex } from "./crypto.js";
 import { matchMeasurementAllowlist, parseTdxQuote, TDX_TEE_TYPE, type TdxMeasurementEntry } from "./tdx.js";
+import { isNearReleaseAuthorityPolicy, verifyNearReleaseAuthority, verifyNearGpuEvidence } from "./near-authority.js";
 import { concatBytes } from "../bytes.js";
 import type {
   AttestationCheck,
@@ -39,13 +40,15 @@ interface NearAttestationPayload {
 
 export interface NearVerifierOptions {
   verifierVersion?: string;
+  provider?: "near-ai" | "other";
 }
 
 export class NearTeeVerifier implements TeeVerifier {
-  readonly provider = "near-ai";
+  readonly provider: "near-ai" | "other";
   readonly verifierVersion: string;
 
   constructor(opts: NearVerifierOptions = {}) {
+    this.provider = opts.provider ?? "near-ai";
     this.verifierVersion = opts.verifierVersion ?? "near-tdx/1";
   }
 
@@ -120,16 +123,24 @@ export class NearTeeVerifier implements TeeVerifier {
         checks.push(check("compose_binding", false, true, "no app_compose provided to bind"));
       }
 
-      const allowlist = (expectations.measurementPolicy?.accepted as Array<TdxMeasurementEntry & { composeSha256?: string }> | undefined) ?? [];
-      if (allowlist.length > 0) {
+      const accepted = expectations.measurementPolicy?.accepted;
+      if (isNearReleaseAuthorityPolicy(accepted)) {
+        let valid = false;
+        try {
+          verifyNearReleaseAuthority({ document: payload, quote: parsed, nonce: expectations.nonce,
+            policy: accepted, now: expectations.now });
+          valid = true;
+        } catch { /* fixed failure detail; never reflect an evidence payload */ }
+        checks.push(check("release_authority", valid, true,
+          valid ? undefined : "provider release authority did not verify"));
+      } else {
+        const allowlist = Array.isArray(accepted) ? accepted as Array<TdxMeasurementEntry & { composeSha256?: string }> : [];
         const matchedName = matchMeasurementAllowlist(parsed, allowlist);
         const matchedEntry = matchedName ? allowlist.find((entry) => entry.name === matchedName) : undefined;
-        matchedPolicy = Boolean(matchedEntry)
-          && typeof matchedEntry?.composeSha256 === "string"
+        matchedPolicy = Boolean(matchedEntry) && typeof matchedEntry?.composeSha256 === "string"
           && hexEqual(matchedEntry.composeSha256, composeSha256);
-        checks.push(check("measurement_allowlist", matchedPolicy, true, matchedPolicy ? undefined : "measurements not in accepted allowlist"));
-      } else {
-        checks.push(check("measurement_allowlist", false, true, "no accepted-measurement policy pinned"));
+        checks.push(check("measurement_allowlist", matchedPolicy, true,
+          matchedPolicy ? undefined : "measurements not in accepted allowlist"));
       }
     }
 
@@ -138,6 +149,14 @@ export class NearTeeVerifier implements TeeVerifier {
     const gpuOk = typeof payload?.nvidia_payload === "string" && (payload.nvidia_payload as string).length > 0;
     checks.push(check("gpu_evidence_present", gpuOk, true, gpuOk ? undefined : "no NVIDIA GPU evidence"));
 
+    if (expectations.provider === "other") {
+      let gpuBound = false;
+      try { verifyNearGpuEvidence(payload?.nvidia_payload, expectations.nonce); gpuBound = true; } catch { /* fail closed */ }
+      checks.push(check("gpu_nonce_binding", gpuBound, true));
+      const key = typeof payload?.signing_public_key === "string" ? payload.signing_public_key : null;
+      checks.push(check("encryption_key_binding", payload?.signing_algo === "ed25519"
+        && key !== null && /^[0-9a-f]{64}$/i.test(key) && hexEqual(signingAddress?.replace(/^0x/i, ""), key), true));
+    }
     checks.push(freshnessCheck(envelope.fetchedAtMs, expectations));
 
     const boundNonce = parsed ? parsed.reportData.slice(64, 128) : null;

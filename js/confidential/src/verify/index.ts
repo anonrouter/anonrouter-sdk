@@ -18,7 +18,7 @@ import {
 } from "./types.js";
 
 /** The providers this SDK can verify. */
-export type VerifiableProvider = "near-ai" | "venice" | "chutes" | "tinfoil";
+export type VerifiableProvider = "near-ai" | "other" | "venice" | "chutes" | "tinfoil";
 
 /** Public expectations for `verifyRawEvidence`. Only `upstreamModel` + `nonce` are
  *  required; everything else is derived from the pinned policy or sensible defaults. */
@@ -46,6 +46,7 @@ export interface VerifyExpectations {
 
 const VERIFIERS: Record<VerifiableProvider, TeeVerifier> = {
   "near-ai": new NearTeeVerifier(),
+  other: new NearTeeVerifier({ provider: "other" }),
   venice: new VeniceTeeVerifier(),
   chutes: new ChutesTeeVerifier(),
   tinfoil: new TinfoilTeeVerifier()

@@ -47,7 +47,7 @@ def pinned_measurement_policy_for(
     if not isinstance(entry, dict):
         return None
 
-    if provider == "near-ai":
+    if provider in {"near-ai", "other"}:
         by_model = entry.get("byModel", {})
         model_entry = by_model.get(upstream_model)
         if not isinstance(model_entry, dict):
@@ -76,7 +76,7 @@ def pinned_endpoint_identity_for(
     entry = providers.get(provider)
     if not isinstance(entry, dict):
         return None
-    if provider == "near-ai":
+    if provider in {"near-ai", "other"}:
         model_entry = entry.get("byModel", {}).get(upstream_model)
         if isinstance(model_entry, dict):
             identity = model_entry.get("endpointIdentity")

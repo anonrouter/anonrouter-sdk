@@ -61,7 +61,7 @@ decrypts the reply. It wraps `fetch` to PROVE the relay never received your prom
 in plaintext, then prints the decrypted answer. This makes a real, tiny billable
 inference call.
 
-Env: `E2EE_MODEL` (default `z-ai/glm-5.2`), `E2EE_PROVIDER`
+Env: `E2EE_MODEL` (default `google/gemma-4-26b-a4b-uncensored`), `E2EE_PROVIDER`
 (default `venice`; E2EE only: `venice`, `chutes`, and `near-ai` when the catalog
 carries it), `MAX_TOKENS`
 (default 32), `PROMPT`, `ANONROUTER_BASE_URL`.
