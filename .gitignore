@@ -39,3 +39,5 @@ venv/
 .bound-client-vite-cache/
 .bound-client-tls-*/
 .synthetic-tls-*/
+
+.python-bound-pytest-cache/

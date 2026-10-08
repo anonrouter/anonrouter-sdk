@@ -32,7 +32,10 @@ from __future__ import annotations
 import base64
 import binascii
 import re
+import threading
 import time
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -385,6 +388,8 @@ class _MediaTransport:
         self.inference_origin = inference_origin
         self.api_key = api_key
         self.http = http
+        self.content_http = http
+        self.before_ticket: Callable[[], None] | None = None
 
     # -- step 1: the content-free ticket mint ---------------------------------
 
@@ -412,6 +417,8 @@ class _MediaTransport:
             origin=self.control_origin, path=TICKET_PATH, headers=redact_headers(headers)
         )
         try:
+            if self.before_ticket:
+                self.before_ticket()
             response = self.http.post(
                 f"{self.control_origin}{TICKET_PATH}",
                 headers=headers,
@@ -486,7 +493,7 @@ class _MediaTransport:
             origin=self.inference_origin, path=path, headers=redact_headers(headers)
         )
         try:
-            response = self.http.post(
+            response = self.content_http.post(
                 f"{self.inference_origin}{path}",
                 headers=headers,
                 json=body,
@@ -649,6 +656,7 @@ class SpeechApi:
         response_format: str | None = None,
         speed: float | None = None,
         timeout: float | None = None,
+        cancel_event: threading.Event | None = None,
     ) -> SpeechCreateResult:
         """Synthesize speech over the two-origin ticketed exchange.
 
@@ -677,60 +685,60 @@ class SpeechApi:
                 "speed must be 1 or omitted."
             )
 
-        transport = self._owner._media_transport()
-        # CONTENT-FREE. ``input_chars`` is a COUNT; the text never appears here.
-        mint_payload: dict[str, Any] = {
-            "operation": "speech",
-            "model": model,
-            "input_chars": input_chars,
-            "response_format": SPEECH_RESPONSE_FORMAT,
-        }
-        if voice is not None:
-            mint_payload["voice"] = voice
-        ticket = transport.mint_ticket(
-            mint_payload,
-            {
+        with self._owner._media_operation(cancel_event) as transport:
+            # CONTENT-FREE. ``input_chars`` is a COUNT; the text never appears here.
+            mint_payload: dict[str, Any] = {
                 "operation": "speech",
                 "model": model,
                 "input_chars": input_chars,
                 "response_format": SPEECH_RESPONSE_FORMAT,
-                "voice": voice,
-            },
-            timeout,
-        )
-
-        content_body: dict[str, Any] = {
-            "model": model,
-            "input": input,
-            "response_format": SPEECH_RESPONSE_FORMAT,
-        }
-        if voice is not None:
-            content_body["voice"] = voice
-        response = transport.post_content(
-            SPEECH_PATH, ticket, content_body, "audio/mpeg", timeout
-        )
-
-        diagnostics = MediaErrorDiagnostics(
-            origin=transport.inference_origin,
-            path=SPEECH_PATH,
-            headers=redact_headers({"content-type": "application/json", TICKET_HEADER: ticket}),
-            status=response.status_code,
-        )
-        content_type = response.headers.get("content-type", "")
-        if not content_type.startswith("audio/"):
-            raise MediaError(
-                "response_invalid",
-                f"The speech response was not audio (content-type: {content_type or 'absent'}).",
-                diagnostics,
+            }
+            if voice is not None:
+                mint_payload["voice"] = voice
+            ticket = transport.mint_ticket(
+                mint_payload,
+                {
+                    "operation": "speech",
+                    "model": model,
+                    "input_chars": input_chars,
+                    "response_format": SPEECH_RESPONSE_FORMAT,
+                    "voice": voice,
+                },
+                timeout,
             )
-        audio = response.content
-        if not audio:
-            raise MediaError(
-                "response_invalid", "The speech response carried no audio bytes.", diagnostics
+
+            content_body: dict[str, Any] = {
+                "model": model,
+                "input": input,
+                "response_format": SPEECH_RESPONSE_FORMAT,
+            }
+            if voice is not None:
+                content_body["voice"] = voice
+            response = transport.post_content(
+                SPEECH_PATH, ticket, content_body, "audio/mpeg", timeout
             )
-        return SpeechCreateResult(
-            audio=audio, content_type=content_type, **_metadata_from(response)
-        )
+
+            diagnostics = MediaErrorDiagnostics(
+                origin=transport.inference_origin,
+                path=SPEECH_PATH,
+                headers=redact_headers({"content-type": "application/json", TICKET_HEADER: ticket}),
+                status=response.status_code,
+            )
+            content_type = response.headers.get("content-type", "")
+            if not content_type.startswith("audio/"):
+                raise MediaError(
+                    "response_invalid",
+                    f"The speech response was not audio (content-type: {content_type or 'absent'}).",
+                    diagnostics,
+                )
+            audio = response.content
+            if not audio:
+                raise MediaError(
+                    "response_invalid", "The speech response carried no audio bytes.", diagnostics
+                )
+            return SpeechCreateResult(
+                audio=audio, content_type=content_type, **_metadata_from(response)
+            )
 
 
 class AudioApi:
@@ -755,6 +763,7 @@ class ImagesApi:
         response_format: str | None = None,
         n: int | None = None,
         timeout: float | None = None,
+        cancel_event: threading.Event | None = None,
     ) -> ImageGenerateResult:
         """Generate one image over the two-origin ticketed exchange.
 
@@ -781,50 +790,50 @@ class ImagesApi:
             )
         canonical_size = canonical_image_size(size if size is not None else IMAGE_DEFAULT_SIZE)
 
-        transport = self._owner._media_transport()
-        # CONTENT-FREE. ``prompt`` is deliberately absent and must stay absent.
-        ticket = transport.mint_ticket(
-            {
-                "operation": "image",
-                "model": model,
-                "size": canonical_size,
-                "response_format": IMAGE_RESPONSE_FORMAT,
-            },
-            {
-                "operation": "image",
-                "model": model,
-                "size": canonical_size,
-                "response_format": IMAGE_RESPONSE_FORMAT,
-            },
-            timeout,
-        )
+        with self._owner._media_operation(cancel_event) as transport:
+            # CONTENT-FREE. ``prompt`` is deliberately absent and must stay absent.
+            ticket = transport.mint_ticket(
+                {
+                    "operation": "image",
+                    "model": model,
+                    "size": canonical_size,
+                    "response_format": IMAGE_RESPONSE_FORMAT,
+                },
+                {
+                    "operation": "image",
+                    "model": model,
+                    "size": canonical_size,
+                    "response_format": IMAGE_RESPONSE_FORMAT,
+                },
+                timeout,
+            )
 
-        response = transport.post_content(
-            IMAGE_PATH,
-            ticket,
-            {
-                "model": model,
-                "prompt": prompt,
-                "size": canonical_size,
-                "response_format": IMAGE_RESPONSE_FORMAT,
-            },
-            "application/json",
-            timeout,
-        )
+            response = transport.post_content(
+                IMAGE_PATH,
+                ticket,
+                {
+                    "model": model,
+                    "prompt": prompt,
+                    "size": canonical_size,
+                    "response_format": IMAGE_RESPONSE_FORMAT,
+                },
+                "application/json",
+                timeout,
+            )
 
-        diagnostics = MediaErrorDiagnostics(
-            origin=transport.inference_origin,
-            path=IMAGE_PATH,
-            headers=redact_headers({"content-type": "application/json", TICKET_HEADER: ticket}),
-            status=response.status_code,
-        )
-        try:
-            body = response.json()
-        except Exception as exc:
-            raise MediaError(
-                "response_invalid", "The image response could not be parsed as JSON.", diagnostics
-            ) from exc
-        return _parse_image_response(body, response, diagnostics)
+            diagnostics = MediaErrorDiagnostics(
+                origin=transport.inference_origin,
+                path=IMAGE_PATH,
+                headers=redact_headers({"content-type": "application/json", TICKET_HEADER: ticket}),
+                status=response.status_code,
+            )
+            try:
+                body = response.json()
+            except Exception as exc:
+                raise MediaError(
+                    "response_invalid", "The image response could not be parsed as JSON.", diagnostics
+                ) from exc
+            return _parse_image_response(body, response, diagnostics)
 
 
 class MediaOwner:
@@ -837,3 +846,7 @@ class MediaOwner:
 
     def _media_transport(self) -> _MediaTransport:  # pragma: no cover - overridden
         raise NotImplementedError
+
+    @contextmanager
+    def _media_operation(self, cancel_event: threading.Event | None = None) -> Iterator[_MediaTransport]:
+        yield self._media_transport()

@@ -35,6 +35,9 @@ Repository = "https://github.com/anonrouter/anonrouter-sdk"
 Issues = "https://github.com/anonrouter/anonrouter-sdk/issues"
 
 [project.optional-dependencies]
+# Required socket binding depends on reviewed HTTPX/HTTPCore internals. Ordinary
+# mode keeps its broader HTTPX support; this extra installs the tested pair.
+connection-binding = ["httpx==0.28.1", "httpcore==1.0.9"]
 # ML-KEM-768 (FIPS 203) for the Chutes transport. kyber-py is a pure-Python
 # implementation that decapsulates from the raw expanded decapsulation key the
 # Chutes wire format ships (which OpenSSL/cryptography's seed-only loader cannot).

@@ -19,12 +19,18 @@ from __future__ import annotations
 
 import base64
 import binascii
+import copy
 import hashlib
+import inspect
 import json
 import os
 import re
+import ssl
+import threading
 import time
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Iterator, Sequence
+from contextlib import contextmanager
+from dataclasses import replace
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -40,9 +46,11 @@ from .crypto import venice as venice_crypto
 from .errors import ConfidentialError
 from .gateway.authority import (
     SignedGatewayPolicySource,
+    assert_gateway_policy_security_floor,
     packaged_gateway_policy_authority,
 )
 from .gateway.binding import GATEWAY_NONCE_HEX_LENGTH
+from .gateway.connection_session import VerifiedGatewayConnection
 from .gateway.policy import GatewayMeasurementPolicy, pinned_gateway_policy_for
 from .gateway.verify import (
     GatewayVerificationResult,
@@ -227,6 +235,7 @@ class ConfidentialClient(MediaOwner):
         timeout: float = 300.0,
         allow_insecure_http: bool = False,
         gateway_policy_updates: bool | SignedGatewayPolicySource | None = None,
+        gateway_connection_binding: dict[str, Any] | None = None,
     ) -> None:
         """``timeout`` bounds how long a single response may take to arrive.
 
@@ -292,13 +301,39 @@ class ConfidentialClient(MediaOwner):
             control_base_url or implicit_control_origin,
             allow_insecure_http,
         )
+        self._required_gateway_verification: dict[str, Any] | None = None
+        if gateway_connection_binding is not None:
+            binding = gateway_connection_binding
+            verification = binding.get("verification") if isinstance(binding, dict) else None
+            if (not isinstance(binding, dict) or set(binding) != {"mode", "verification"}
+                    or binding["mode"] != "required" or not isinstance(verification, dict)
+                    or set(verification) - {"policy", "allow_candidate_policy", "chain_verifier"}
+                    or verification.get("chain_verifier") is None or http_client is not None
+                    or not self.origin.startswith("https://") or self.control_origin == self.origin):
+                raise ConfidentialError("required sync gateway binding needs a chain verifier and distinct origins; custom HTTPX/async clients and unsafe overrides are refused")
+            verifier = verification["chain_verifier"]
+            if any(inspect.iscoroutinefunction(getattr(verifier, name, None)) for name in ["prepare", "verify_chain"]):
+                raise ConfidentialError("required binding supports synchronous quote verifiers only; async mode is unsupported")
+            self._required_gateway_verification = dict(verification)
+            if verification.get("policy") is not None:
+                self._required_gateway_verification["policy"] = copy.deepcopy(verification["policy"])
+        self._bound_lock = threading.Lock()
+        self._bound_connections: set[VerifiedGatewayConnection] = set()
+        self._closed = False
+        self._bound_timeout = timeout
         self.api_key = api_key
         self._allow_insecure_http = allow_insecure_http
         self._owns_client = http_client is None
         self._owns_gateway_policy_source = gateway_policy_updates is True or (
             gateway_policy_updates is None and self._gateway_policy_source is not None
         )
-        self._http = http_client or httpx.Client(timeout=httpx.Timeout(timeout, connect=10.0))
+        if http_client is not None:
+            self._http = http_client
+        elif self._required_gateway_verification:
+            self._http = httpx.Client(timeout=httpx.Timeout(timeout, connect=10.0),
+                trust_env=False, follow_redirects=False, verify=ssl.create_default_context())
+        else:
+            self._http = httpx.Client(timeout=httpx.Timeout(timeout, connect=10.0))
         #: ``client.images.generate(...)`` -- ticketed image generation.
         self.images = ImagesApi(self)
         #: ``client.audio.speech.create(...)`` -- ticketed text-to-speech.
@@ -306,6 +341,11 @@ class ConfidentialClient(MediaOwner):
 
     # -- lifecycle ---------------------------------------------------------
     def close(self) -> None:
+        with self._bound_lock:
+            self._closed = True
+            active = list(self._bound_connections)
+        for operation in active:
+            operation.close()
         if self._owns_gateway_policy_source and self._gateway_policy_source:
             self._gateway_policy_source.close()
         if self._owns_client:
@@ -317,6 +357,80 @@ class ConfidentialClient(MediaOwner):
     def __exit__(self, *exc: object) -> None:
         self.close()
 
+    @contextmanager
+    def _bound_operation(self, cancel_event: threading.Event | None = None) -> Iterator[VerifiedGatewayConnection | None]:
+        if self._required_gateway_verification is None:
+            yield None
+            return
+        if cancel_event is not None and not isinstance(cancel_event, threading.Event):
+            raise ConfidentialError("sync binding cancellation must be a threading.Event")
+        if self._closed or (cancel_event is not None and cancel_event.is_set()):
+            raise ConfidentialError("the bound gateway operation was cancelled")
+        verification = self._required_gateway_verification
+        resolved = self._resolve_gateway_policy(verification.get("policy"), verification.get("allow_candidate_policy", False))
+        if resolved is None:
+            raise ConfidentialError("no approved gateway policy for connection binding")
+        assert_gateway_policy_security_floor(resolved[0])
+        report = self.verify_gateway(**verification)
+        # Rotation can change policy while verifying; enforce the refreshed floor.
+        # Take the smaller age bound conservatively if the source moves again.
+        latest = self._resolve_gateway_policy(verification.get("policy"), verification.get("allow_candidate_policy", False))
+        if latest is None:
+            raise ConfidentialError("no approved gateway policy for connection binding")
+        assert_gateway_policy_security_floor(latest[0])
+        operation_policy = replace(latest[0], max_evidence_age_ms=min(resolved[0].max_evidence_age_ms, latest[0].max_evidence_age_ms))
+        operation = VerifiedGatewayConnection(origin=self.origin, verdict=report["verdict"], policy=operation_policy,
+            evidence_issued_at_ms=report["raw_evidence"].get("issued_at_ms"),
+            approval_expires_at_ms=report["policy"].get("expiresAtMs"), cancel_event=cancel_event, timeout=self._bound_timeout)
+        operation.report = report
+        with self._bound_lock:
+            if self._closed:
+                operation.close()
+                raise ConfidentialError("the bound gateway operation was cancelled")
+            self._bound_connections.add(operation)
+        try:
+            yield operation
+        finally:
+            operation.close()
+            with self._bound_lock:
+                self._bound_connections.discard(operation)
+
+    def _refuse_gateway_replacement(self, value: Any) -> None:
+        if self._required_gateway_verification is not None and value is not None and value is not True:
+            raise ConfidentialError("per-call gateway options cannot disable or replace required connection binding")
+
+    def verify_attestation(self, model: str, provider: str, nonce: str | None = None, *,
+                           privacy_modality: str | None = None, upstream_model: str | None = None,
+                           cancel_event: threading.Event | None = None) -> dict[str, Any]:
+        with self._bound_operation(cancel_event) as operation:
+            return self._verify_attestation(model, provider, nonce, privacy_modality=privacy_modality,
+                upstream_model=upstream_model, _operation=operation)
+
+    def verify_route(self, model: str, provider: str, *, nonce: str | None = None,
+                     upstream_model: str | None = None, privacy_class: str | None = None,
+                     gateway: bool | dict[str, Any] | None = None,
+                     cancel_event: threading.Event | None = None) -> RouteVerdict:
+        self._refuse_gateway_replacement(gateway)
+        with self._bound_operation(cancel_event) as operation:
+            return self._verify_route(model, provider, nonce=nonce, upstream_model=upstream_model,
+                privacy_class=privacy_class, gateway=False if gateway is None else gateway, _operation=operation)
+
+    def verify(self, model: str, provider: str, *, nonce: str | None = None,
+               upstream_model: str | None = None, gateway: bool | dict[str, Any] | None = None,
+               cancel_event: threading.Event | None = None) -> dict[str, Any]:
+        self._refuse_gateway_replacement(gateway)
+        with self._bound_operation(cancel_event) as operation:
+            return self._verify(model, provider, nonce=nonce, upstream_model=upstream_model,
+                gateway=False if gateway is None else gateway, _operation=operation)
+
+    def chat(self, model: str, provider: str, messages: list[dict[str, str]], max_output_tokens: int,
+             *, require_gateway: bool | dict[str, Any] | None = None,
+             cancel_event: threading.Event | None = None) -> dict[str, Any]:
+        self._refuse_gateway_replacement(require_gateway)
+        with self._bound_operation(cancel_event) as operation:
+            return self._chat(model, provider, messages, max_output_tokens,
+                require_gateway=False if require_gateway is None else require_gateway, _operation=operation)
+
     def _attest_route(
         self,
         model: str,
@@ -325,6 +439,7 @@ class ConfidentialClient(MediaOwner):
         *,
         privacy_modality: str | None = None,
         upstream_model: str | None = None,
+        _operation: VerifiedGatewayConnection | None = None,
     ) -> dict[str, Any]:
         """Fetch evidence, resolve the route facts and verify. Does NOT raise on a
         route disagreement.
@@ -337,7 +452,7 @@ class ConfidentialClient(MediaOwner):
         cross-binding rule was reachable only from a hand-built test.
         """
         nonce = nonce or os.urandom(32).hex()
-        attestation = self._fetch_attestation_for_route(model, provider, nonce)
+        attestation = self._fetch_attestation_for_route(model, provider, nonce, _operation)
 
         served_provider = as_str(attestation.get("provider"))
         served_model = as_str(attestation.get("model"))
@@ -390,7 +505,7 @@ class ConfidentialClient(MediaOwner):
         }
 
     # -- public API --------------------------------------------------------
-    def verify_attestation(
+    def _verify_attestation(
         self,
         model: str,
         provider: str,
@@ -398,6 +513,7 @@ class ConfidentialClient(MediaOwner):
         *,
         privacy_modality: str | None = None,
         upstream_model: str | None = None,
+        _operation: VerifiedGatewayConnection | None = None,
     ) -> dict[str, Any]:
         """Verify a route's attestation INDEPENDENTLY of AnonRouter's own verdict.
 
@@ -431,6 +547,7 @@ class ConfidentialClient(MediaOwner):
             nonce,
             privacy_modality=privacy_modality,
             upstream_model=upstream_model,
+            _operation=_operation,
         )
         echo = result["gateway_route"]
         if echo["provider"] and echo["provider"] != provider:
@@ -521,7 +638,7 @@ class ConfidentialClient(MediaOwner):
         }
 
     # -- THE STABLE CONTRACT --------------------------------------------------
-    def verify_route(
+    def _verify_route(
         self,
         model: str,
         provider: str,
@@ -530,6 +647,7 @@ class ConfidentialClient(MediaOwner):
         upstream_model: str | None = None,
         privacy_class: str | None = None,
         gateway: bool | dict[str, Any] = False,
+        _operation: VerifiedGatewayConnection | None = None,
     ) -> RouteVerdict:
         """Establish the route end to end and report what actually held.
 
@@ -546,6 +664,7 @@ class ConfidentialClient(MediaOwner):
         """
         gateway_options = _gateway_option_to_kwargs(gateway)
         gateway_hop = (
+            gateway_hop_verdict(_operation.report["verdict"]) if _operation else
             hop_not_requested() if gateway_options is None else self._gateway_route_hop(gateway_options)
         )
 
@@ -558,6 +677,7 @@ class ConfidentialClient(MediaOwner):
                 nonce,
                 privacy_modality=privacy_class,
                 upstream_model=upstream_model,
+                _operation=_operation,
             )
         except ConfidentialError as exc:
             provider_failure = str(exc)
@@ -613,7 +733,7 @@ class ConfidentialClient(MediaOwner):
         return gateway_hop_verdict(verdict)
 
     # -- both hops (earlier report shape; prefer verify_route) ----------------
-    def verify(
+    def _verify(
         self,
         model: str,
         provider: str,
@@ -621,6 +741,7 @@ class ConfidentialClient(MediaOwner):
         nonce: str | None = None,
         upstream_model: str | None = None,
         gateway: bool | dict[str, Any] = False,
+        _operation: VerifiedGatewayConnection | None = None,
     ) -> dict[str, Any]:
         """Verify both hops and return one report that says what it covered.
 
@@ -633,14 +754,14 @@ class ConfidentialClient(MediaOwner):
         arguments :meth:`verify_gateway` accepts.
         """
         gateway_options = _gateway_option_to_kwargs(gateway)
-        gateway_report = (
+        gateway_report = ({"requested": True, "status": "ok", "verification_level": _operation.report["verdict"].verification_level, "reason": None, **_operation.report} if _operation else (
             {"requested": False, "status": "not-requested", "verification_level": None, "reason": None}
             if gateway_options is None
             else self._gateway_hop(gateway_options)
-        )
+        ))
 
-        attestation = self.verify_attestation(
-            model, provider, nonce, upstream_model=upstream_model
+        attestation = self._verify_attestation(
+            model, provider, nonce, upstream_model=upstream_model, _operation=_operation
         )
         verdict: NormalizedVerdict = attestation["verdict"]
         provider_report = {
@@ -814,7 +935,7 @@ class ConfidentialClient(MediaOwner):
             "raw_evidence": evidence,
         }
 
-    def chat(
+    def _chat(
         self,
         model: str,
         provider: str,
@@ -822,6 +943,7 @@ class ConfidentialClient(MediaOwner):
         max_output_tokens: int,
         *,
         require_gateway: bool | dict[str, Any] = False,
+        _operation: VerifiedGatewayConnection | None = None,
     ) -> dict[str, Any]:
         """Run one browser-parity confidential inference request end to end.
 
@@ -854,7 +976,7 @@ class ConfidentialClient(MediaOwner):
         # caller who requires AnonRouter's own plane to be attested must not have
         # spent a ticket, or named a model, against a plane that is not.
         gateway_requirement = _gateway_option_to_kwargs(require_gateway)
-        if gateway_requirement is not None:
+        if gateway_requirement is not None and _operation is None:
             hop = self._gateway_hop(gateway_requirement)
             if hop["status"] != "ok":
                 detail = f": {hop['reason']}" if hop.get("reason") else ""
@@ -863,9 +985,9 @@ class ConfidentialClient(MediaOwner):
                     "Nothing was sent."
                 )
 
-        ticket = self._mint_attestation_ticket(model, provider)
+        ticket = self._mint_attestation_ticket(model, provider, _operation)
         nonce = os.urandom(32).hex()
-        attestation = self._fetch_attestation(ticket, nonce)
+        attestation = self._fetch_attestation(ticket, nonce, _operation)
         # Every check here runs BEFORE the paid inference ticket below, so a
         # substituted route costs nothing.
         if attestation.get("provider") not in (None, provider):
@@ -915,17 +1037,19 @@ class ConfidentialClient(MediaOwner):
             if provider in _OPAQUE_E2EE_PROVIDERS
             else max_output_tokens
         )
-        inference_ticket = self._mint_inference_ticket(model, provider, reserved)
+        inference_ticket = self._mint_inference_ticket(model, provider, reserved, _operation)
         if provider in {"near-ai", "other"}:
-            return self._chat_near(inference_ticket, model, upstream_model, raw_evidence, messages, max_output_tokens, provider=provider)
+            return self._chat_near(inference_ticket, model, upstream_model, raw_evidence, messages, max_output_tokens, provider=provider, _operation=_operation)
         if provider == "venice":
-            return self._chat_venice(inference_ticket, model, upstream_model, raw_evidence, messages, max_output_tokens)
+            return self._chat_venice(inference_ticket, model, upstream_model, raw_evidence, messages, max_output_tokens, _operation=_operation)
         return self._chat_chutes(
-            inference_ticket, upstream_model, raw_evidence, messages, max_output_tokens, nonce, expectations
+            inference_ticket, upstream_model, raw_evidence, messages, max_output_tokens, nonce, expectations, _operation=_operation
         )
 
     # -- control requests --------------------------------------------------
-    def _mint_attestation_ticket(self, model: str, provider: str) -> str:
+    def _mint_attestation_ticket(self, model: str, provider: str, _operation: VerifiedGatewayConnection | None = None) -> str:
+        if _operation:
+            _operation.assert_dispatch_allowed()
         resp = self._http.post(
             self._control_url("/v1/inference/attestation-tickets"),
             headers=self._auth_headers(),
@@ -937,7 +1061,7 @@ class ConfidentialClient(MediaOwner):
             raise ConfidentialError("gateway returned an invalid attestation ticket")
         return ticket
 
-    def _fetch_attestation_for_route(self, model: str, provider: str, nonce: str) -> dict[str, Any]:
+    def _fetch_attestation_for_route(self, model: str, provider: str, nonce: str, _operation: VerifiedGatewayConnection | None = None) -> dict[str, Any]:
         """Fetch raw attestation evidence for a route, for verification only.
 
         Two paths exist, and which one is reachable depends on how AnonRouter is
@@ -970,7 +1094,7 @@ class ConfidentialClient(MediaOwner):
         """
         ticket: str | None = None
         try:
-            ticket = self._mint_attestation_ticket(model, provider)
+            ticket = self._mint_attestation_ticket(model, provider, _operation)
         except ConfidentialError:
             # In the split production architecture the account key belongs only
             # to the control origin. A failed ticket mint must therefore fail
@@ -983,7 +1107,7 @@ class ConfidentialClient(MediaOwner):
             ticket = None
 
         if ticket is not None:
-            resp = self._http.post(
+            resp = (_operation.http if _operation else self._http).post(
                 self._url("/v1/tee/attestation"),
                 headers={"content-type": "application/json", "x-anonrouter-ticket": ticket},
                 json={"nonce": nonce},
@@ -1000,7 +1124,7 @@ class ConfidentialClient(MediaOwner):
                     f"ticket with status {resp.status_code}; the API key was not sent there"
                 )
 
-        resp = self._http.get(
+        resp = (_operation.http if _operation else self._http).get(
             self._url("/v1/tee/attestation"),
             headers={"accept": "application/json", **self._auth_headers()},
             params={"model": model, "provider": provider, "nonce": nonce},
@@ -1023,9 +1147,9 @@ class ConfidentialClient(MediaOwner):
             raise ConfidentialError("attestation response did not contain evidence")
         return parsed
 
-    def _fetch_attestation(self, ticket: str, nonce: str) -> dict[str, Any]:
+    def _fetch_attestation(self, ticket: str, nonce: str, _operation: VerifiedGatewayConnection | None = None) -> dict[str, Any]:
         # Credential-free: the single-use ticket authenticates this, never the API key.
-        resp = self._http.post(
+        resp = (_operation.http if _operation else self._http).post(
             self._url("/v1/tee/attestation"),
             headers={"content-type": "application/json", "x-anonrouter-ticket": ticket},
             json={"nonce": nonce},
@@ -1069,7 +1193,9 @@ class ConfidentialClient(MediaOwner):
             )
         return ceiling
 
-    def _mint_inference_ticket(self, model: str, provider: str, max_output_tokens: int) -> str:
+    def _mint_inference_ticket(self, model: str, provider: str, max_output_tokens: int, _operation: VerifiedGatewayConnection | None = None) -> str:
+        if _operation:
+            _operation.assert_dispatch_allowed()
         resp = self._http.post(
             self._control_url("/v1/inference/tickets"),
             headers=self._auth_headers(),
@@ -1097,6 +1223,7 @@ class ConfidentialClient(MediaOwner):
         max_output_tokens: int,
         *,
         provider: str = "near-ai",
+        _operation: VerifiedGatewayConnection | None = None,
     ) -> dict[str, Any]:
         model_ed_pub_hex = _evidence_str(evidence, "signing_public_key")
         seed = os.urandom(32)
@@ -1122,7 +1249,9 @@ class ConfidentialClient(MediaOwner):
             "x-client-pub-key": client_pub.hex(),
             "x-encryption-version": "2",
         }
-        return self._consume_sse(body, headers, lambda ct: near_crypto.decrypt(ct, client_secret_hex))
+        if _operation is None:
+            return self._consume_sse(body, headers, lambda ct: near_crypto.decrypt(ct, client_secret_hex))
+        return self._consume_sse(body, headers, lambda ct: near_crypto.decrypt(ct, client_secret_hex), _operation)
 
     def _chat_venice(
         self,
@@ -1132,6 +1261,7 @@ class ConfidentialClient(MediaOwner):
         evidence: Any,
         messages: list[dict[str, str]],
         max_output_tokens: int,
+        _operation: VerifiedGatewayConnection | None = None,
     ) -> dict[str, Any]:
         model_pub_hex = _evidence_str(evidence, "signing_public_key") or _evidence_str(evidence, "signing_key")
         client_private = ec.generate_private_key(_CURVE)
@@ -1159,7 +1289,9 @@ class ConfidentialClient(MediaOwner):
             "x-venice-tee-model-pub-key": model_pub_hex.lower().removeprefix("0x"),
             "x-venice-tee-signing-algo": "ecdsa",
         }
-        return self._consume_sse(body, headers, lambda ct: venice_crypto.decrypt(ct, client_private_hex))
+        if _operation is None:
+            return self._consume_sse(body, headers, lambda ct: venice_crypto.decrypt(ct, client_private_hex))
+        return self._consume_sse(body, headers, lambda ct: venice_crypto.decrypt(ct, client_private_hex), _operation)
 
     def _chat_chutes(
         self,
@@ -1170,6 +1302,7 @@ class ConfidentialClient(MediaOwner):
         max_output_tokens: int,
         nonce: str,
         expectations: AttestationExpectations,
+        _operation: VerifiedGatewayConnection | None = None,
     ) -> dict[str, Any]:
         # Encrypt ONLY to the ML-KEM key that report_data binds to this request's
         # nonce, independently re-verified here (not the raw e2e_instances field the
@@ -1194,19 +1327,19 @@ class ConfidentialClient(MediaOwner):
             "x-chutes-instance-id": instance_id,
             "x-chutes-e2e-nonce": instance_nonce,
         }
-        resp = self._http.post(
+        resp = (_operation.http if _operation else self._http).post(
             self._url("/v1/e2ee/chat/completions"), headers=headers, content=blob
         )
         self._raise_for_status(resp, "encrypted inference")
         parsed = chutes_crypto.decrypt_response(resp.content, response_secret_key)
         return _normalize_completion(parsed)
 
-    def _consume_sse(self, body: dict[str, Any], headers: dict[str, str], decrypt: Any) -> dict[str, Any]:
+    def _consume_sse(self, body: dict[str, Any], headers: dict[str, str], decrypt: Any, _operation: VerifiedGatewayConnection | None = None) -> dict[str, Any]:
         content = ""
         reasoning = ""
         usage: dict[str, Any] | None = None
         finish_reason: str | None = None
-        with self._http.stream(
+        with (_operation.http if _operation else self._http).stream(
             "POST", self._url("/v1/chat/completions"), headers=headers, json=body
         ) as resp:
             self._raise_for_status(resp, "encrypted inference")
@@ -1252,6 +1385,15 @@ class ConfidentialClient(MediaOwner):
         return headers
 
     # -- ticketed media ----------------------------------------------------
+    @contextmanager
+    def _media_operation(self, cancel_event: threading.Event | None = None) -> Iterator[_MediaTransport]:
+        with self._bound_operation(cancel_event) as operation:
+            transport = self._media_transport()
+            if operation:
+                transport.content_http = operation.http
+                transport.before_ticket = operation.assert_dispatch_allowed
+            yield transport
+
     def _media_transport(self) -> _MediaTransport:
         """Build the two-origin media transport, refusing a collapsed boundary.
 

@@ -25,10 +25,13 @@ export function createVerifiedGatewayConnection(input: {
   if (input.verdict.status !== "ok" || input.verdict.verificationLevel !== "hardware-verified"
       || input.verdict.tcbStatus !== "UpToDate" || !binding || binding.origin !== input.origin
       || binding.transport !== "in-tee-tls" || typeof binding.tls_spki_sha256 !== "string"
-      || !/^[0-9a-f]{64}$/.test(binding.tls_spki_sha256)
+      || binding.tls_spki_sha256.length !== 64 || !/^[0-9a-f]{64}$/.test(binding.tls_spki_sha256)
       || !input.verdict.checks.some(check => check.name === "quote_signature_chain" && check.passed)
       || input.verdict.checks.some(check => check.required && !check.passed)
-      || !Number.isSafeInteger(input.evidenceIssuedAtMs)) {
+      || !Number.isSafeInteger(input.evidenceIssuedAtMs) || input.evidenceIssuedAtMs < 0
+      || !Number.isSafeInteger(input.policy.maxEvidenceAgeMs) || input.policy.maxEvidenceAgeMs <= 0
+      || !Number.isSafeInteger(input.evidenceIssuedAtMs + input.policy.maxEvidenceAgeMs)
+      || (input.approvalExpiresAtMs !== undefined && (!Number.isSafeInteger(input.approvalExpiresAtMs) || input.approvalExpiresAtMs < 0))) {
     throw new ConfidentialError("attestation_untrusted", "A fully verified gateway identity is required for connection binding.");
   }
   const expiry = Math.min(input.evidenceIssuedAtMs + input.policy.maxEvidenceAgeMs, input.approvalExpiresAtMs ?? Infinity);

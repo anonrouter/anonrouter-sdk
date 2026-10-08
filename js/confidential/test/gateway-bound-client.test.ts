@@ -8,6 +8,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createHash, X509Certificate } from "node:crypto";
 import { createClient, type CreateClientOptions } from "../dist/client.js";
+import { createVerifiedGatewayConnection } from "../dist/gateway/connection-session.js";
 import { gatewayBindingHash, GATEWAY_BINDING_VERSION } from "../src/gateway/binding.js";
 import { loadGatewayPolicy } from "../src/gateway/policy.js";
 import { buildAppCompose, buildSyntheticEventLog, buildSyntheticTdxQuote, buildVmConfig,
@@ -281,4 +282,21 @@ describe("required gateway content connection wiring — synthetic native port, 
     expect(t.observed.attTickets).toBe(0);
     expect(t.observed.content).toEqual([]);
   });
+});
+
+// Defensive helper validation; the supplied verdict is synthetic, not DCAP.
+it("refuses invalid expiry bounds and noncanonical pins before constructing a transport", () => {
+  const origin = "https://localhost";
+  const input = { origin, policy: policy(origin), evidenceIssuedAtMs: Date.now(),
+    verdict: { status: "ok", verificationLevel: "hardware-verified", tcbStatus: "UpToDate",
+      binding: evidence(origin, "ab".repeat(32), "a").binding,
+      checks: [{ name: "quote_signature_chain", passed: true, required: true }] } };
+  const changes = [
+    { approvalExpiresAtMs: NaN }, { approvalExpiresAtMs: Infinity }, { approvalExpiresAtMs: 1.5 },
+    { evidenceIssuedAtMs: -1 }, { evidenceIssuedAtMs: Number.MAX_SAFE_INTEGER },
+    { policy: { ...input.policy, maxEvidenceAgeMs: NaN } },
+    { policy: { ...input.policy, maxEvidenceAgeMs: 0 } },
+    { verdict: { ...input.verdict, binding: { ...input.verdict.binding, tls_spki_sha256: pins.a + "\n" } } }
+  ];
+  for (const change of changes) expect(() => createVerifiedGatewayConnection({ ...input, ...change } as Parameters<typeof createVerifiedGatewayConnection>[0])).toThrow();
 });

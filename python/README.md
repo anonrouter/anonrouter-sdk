@@ -34,6 +34,42 @@ dependencies: `cryptography`, `pynacl`, `httpx`, `pycryptodome`.
 
 Installing also installs the `anonrouter-verify` command. See below.
 
+## Required gateway connection binding (unpublished candidate)
+
+Install `pip install "./python[connection-binding]"` for the reviewed synchronous
+transport pair (HTTPX 0.28.1 / HTTPCore 1.0.9). Add `mlkem` to the extras only for
+Chutes. Other versions and asynchronous transports refuse required mode.
+
+```python
+from anonrouter_confidential import create_client
+from anonrouter_confidential.gateway.dcap import create_anonrouter_dcap_verifier
+
+with create_client(
+    api_key="...",
+    gateway_policy_updates=True,
+    gateway_connection_binding={
+        "mode": "required",
+        "verification": {"chain_verifier": create_anonrouter_dcap_verifier()},
+    },
+) as client:
+    result = client.verify_route(model="venice-uncensored", provider="venice")
+```
+
+Each operation verifies a fresh nonce-bound gateway quote before minting tickets.
+Its private content client checks normal certificate trust, hostname and the
+attested TLS key before HTTP dispatch. Provider evidence, encrypted chat and
+image/speech use that transport; control remains separate. Expiry is checked
+before tickets and again after TLS. Custom clients, proxies, redirect overrides
+and per-call disabling are refused. A `threading.Event` supplied as `cancel_event`
+cancels only that operation; completing or closing it never replays inference.
+
+Standalone `verify_gateway()` reports evidence and does not bind a later generic
+HTTP client. Ordinary mode remains unchanged. Required binding is sync only; DNS
+resolution cannot be interrupted and ordinary control/evidence I/O still obeys
+HTTPX timeouts. Per-operation quote capacity and deployment switching remain
+unaccepted: a quote from A followed by a socket routed to B safely refuses, which
+can visibly fail a request during cache convergence. The candidate is unpublished.
+
 ## Provider crypto (protocols)
 
 - `other` (`near-v2`, direct NEAR route; legacy `near-ai` remains supported): Ed25519 client key, per-field ephemeral X25519,

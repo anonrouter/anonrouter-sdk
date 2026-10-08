@@ -1,4 +1,4 @@
-"""Private opt-in sync transport primitive; no SDK integration or defaults.
+"""Opt-in sync transport primitive; SDK defaults never select it implicitly.
 
 A supplied fingerprint is not a verification verdict. Install it only after
 fresh quote/policy verification. Tested API: httpx 0.28.1, httpcore 1.0.9.
@@ -13,7 +13,7 @@ import socket
 import ssl
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from typing import Any
 
 import httpcore
@@ -30,13 +30,14 @@ class BoundGatewayTransportError(Exception):
 
 
 def _failure(code: str) -> BoundGatewayTransportError:
-    phase = "before_http" if code in {"configuration", "tls_pin_mismatch", "tls_certificate"} else "may_have_dispatched"
+    phase = "before_http" if code in {"configuration", "tls_pin_mismatch", "tls_certificate", "authorization"} else "may_have_dispatched"
     return BoundGatewayTransportError(code, f"Bound gateway transport refused ({code}).", phase)
 
 
 class _Operation:
-    def __init__(self, cancel: threading.Event, timeout: float) -> None:
+    def __init__(self, cancel: threading.Event, timeout: float, before_http_dispatch: Callable[[], None] | None = None) -> None:
         self.cancel = cancel
+        self.before_http_dispatch = before_http_dispatch
         self.expires = time.monotonic() + timeout
         self.done = threading.Event()
         self.lock = threading.Lock()
@@ -166,6 +167,11 @@ class _BoundStream(httpcore.NetworkStream):
             if actual != self.pin:
                 raise _failure("tls_pin_mismatch")
             self.operation.remaining()
+            try:
+                if self.operation.before_http_dispatch:
+                    self.operation.before_http_dispatch()
+            except Exception:  # noqa: BLE001 -- Fail any authorization guard before HTTP without exposing its inputs.
+                raise _failure("authorization") from None
             # Returning is the enforcement point: HTTPCore cannot construct/write
             # its HTTP exchange until the TLS upgrade has returned successfully.
             return _BoundStream(tls, self.operation, self.host, self.pin, verified=True)
@@ -264,11 +270,20 @@ class SpkiBoundGatewayTransport(httpx.BaseTransport):
     This is sync-only preparation, not HTTPX AsyncClient support.
     """
     def __init__(self, *, origin: str, expected_tls_spki_sha256: str, ca_pem: str | None = None,
-                 handshake_timeout: float = 10.0, request_timeout: float = 900.0) -> None:
+                 handshake_timeout: float = 10.0, request_timeout: float = 900.0,
+                 cancel_event: threading.Event | None = None,
+                 before_http_dispatch: Callable[[], None] | None = None) -> None:
         # This preparation is accepted against one reviewed API combination.
         # SDK integration must widen this matrix through tests, not assumptions.
         if httpx.__version__ != "0.28.1" or httpcore.__version__ != "1.0.9":
             raise _failure("configuration")
+        if (not isinstance(origin, str) or not isinstance(expected_tls_spki_sha256, str)
+                or (cancel_event is not None and not isinstance(cancel_event, threading.Event))
+                or (before_http_dispatch is not None and not callable(before_http_dispatch))):
+            raise _failure("configuration")
+        self._fixed_cancel = cancel_event is not None
+        self._cancel_event = cancel_event or threading.Event()
+        self._before_http_dispatch = before_http_dispatch
         self._origin = httpx.URL(origin)
         if (self.origin.scheme != "https" or self.origin.userinfo or self.origin.query
                 or self.origin.fragment or self.origin.path != "/"
@@ -316,12 +331,23 @@ class SpkiBoundGatewayTransport(httpx.BaseTransport):
             raise _failure("configuration")
         if "content-length" in request.headers and request.headers["content-length"] != str(len(content)):
             raise _failure("configuration")
-        cancel = request.extensions.get("bound_gateway_cancel", threading.Event())
-        if not isinstance(cancel, threading.Event):
+        cancel = request.extensions.get("bound_gateway_cancel", self._cancel_event)
+        if not isinstance(cancel, threading.Event) or (self._fixed_cancel and cancel is not self._cancel_event):
             raise _failure("configuration")
         if cancel.is_set():
             raise _failure("cancelled")
-        operation = _Operation(cancel, self._request_timeout)
+        budgets = request.extensions.get("timeout", {})
+        if not isinstance(budgets, dict) or set(budgets) - {"connect", "read", "write", "pool"}:
+            raise _failure("configuration")
+        for value in budgets.values():
+            if value is not None and (type(value) not in {int, float} or not math.isfinite(value) or value <= 0):
+                raise _failure("configuration")
+        # Caller deadlines can tighten the owned operation, never remove its
+        # absolute stream deadline. This narrow adapter uses the smaller read/
+        # write budget as a whole-operation bound rather than a per-read reset.
+        request_timeout = min([self._request_timeout] + [budgets[name] for name in ["read", "write"] if budgets.get(name) is not None])
+        handshake_timeout = min(self._handshake_timeout, budgets.get("connect") or self._handshake_timeout)
+        operation = _Operation(cancel, request_timeout, self._before_http_dispatch)
         with self.lock:
             if self.closed:
                 operation.stop()
@@ -338,8 +364,8 @@ class SpkiBoundGatewayTransport(httpx.BaseTransport):
                 method=request.method, url=httpcore.URL(scheme=url.raw_scheme, host=url.raw_host,
                                                        port=url.port, target=url.raw_path),
                 headers=headers, content=content,
-                extensions={"timeout": {"connect": self._handshake_timeout, "read": self._request_timeout,
-                                        "write": self._request_timeout, "pool": self._handshake_timeout}},
+                extensions={"timeout": {"connect": handshake_timeout, "read": request_timeout,
+                                        "write": request_timeout, "pool": handshake_timeout}},
             ))
             if 300 <= core.status < 400 and core.status != 304:
                 raise _failure("redirect")
@@ -355,6 +381,15 @@ class SpkiBoundGatewayTransport(httpx.BaseTransport):
             if isinstance(error, BoundGatewayTransportError):
                 raise
             raise _failure(operation.failure or "transport") from None
+
+    async def __aenter__(self) -> SpkiBoundGatewayTransport:
+        raise _failure("configuration")
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        raise _failure("configuration")
+
+    async def aclose(self) -> None:
+        self.close()
 
     def close(self) -> None:
         with self.lock:

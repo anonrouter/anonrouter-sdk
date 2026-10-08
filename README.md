@@ -311,6 +311,12 @@ const reply = await client.chat({
 console.log(reply.content);
 ```
 
+The unpublished connection-binding candidate adds required socket checks in
+Node and synchronous Python. See the [Node package instructions](js/confidential/README.md)
+and [Python package instructions](python/README.md) for opt-in setup and limits.
+Standalone gateway evidence verification in the examples above does not bind a
+later content connection. Operational continuity and publication remain pending.
+
 ## Quickstart: `anonrouter-confidential` (Python)
 
 > **Not on PyPI yet.** Install the Python package from this repository or from the

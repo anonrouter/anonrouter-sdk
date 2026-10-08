@@ -86,15 +86,20 @@ fetch/browser/per-call downgrade refuses, expiry is checked before tickets and
 HTTP dispatch, streams retain ownership, and no paid inference retry is added.
 Standalone verifyGateway remains evidence-only and authority defaults stay off.
 
-The isolated port passes 16 real local TLS client cases, 16 transport cases and 547
+The isolated port passes 17 real local TLS client cases, 17 transport cases and 547
 existing offline regressions, package/example types and build. Synthetic native
 verifier boundaries are explicit; these are not new hardware or paid acceptance.
 The network-dependent no-insecure-escape-hatch file was excluded: an earlier
 scratch broad run attempted one credential-free public evidence GET and failed
 before its expected chain check. No content/ticket/inference was sent or retried.
 
-Python's synchronous transport primitive is preparation; Python and ordinary
-client integration remain incomplete. Fresh per-operation quotes can hit the
+Python synchronous confidential-client integration passes 26 real local TLS
+client cases, 14 primitive cases and 436 offline regressions importing the changed
+source, plus ruff and full source/examples mypy (41 files). Required mode covers
+provider evidence, encrypted chat and image/speech. The optional connection-binding
+extra pins the reviewed HTTPX 0.28.1 / HTTPCore 1.0.9 pair; ordinary mode preserves
+its broader dependency support. Async and ordinary-client/embeddings integration
+remain incomplete. Fresh per-operation quotes can hit the
 current 20/client-address and 240 aggregate per-minute service limits; capacity is
 unverified. A quote from A followed by a connection to B safely refuses but can
 still fail visibly during switching. Packed-artifact installation, hardware and

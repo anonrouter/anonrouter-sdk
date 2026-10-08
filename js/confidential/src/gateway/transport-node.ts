@@ -135,7 +135,7 @@ export function createSpkiBoundGatewayTransport(options: BoundGatewayTransportOp
   let origin: URL;
   try { origin = new URL(options.origin); } catch { throw configuration(); }
   if (origin.protocol !== "https:" || origin.username || origin.password || origin.search || origin.hash
-      || origin.pathname !== "/" || !/^[0-9a-f]{64}$/i.test(options.expectedTlsSpkiSha256)
+      || origin.pathname !== "/" || options.expectedTlsSpkiSha256.length !== 64 || !/^[0-9a-f]{64}$/i.test(options.expectedTlsSpkiSha256)
       || (options.ca !== undefined && (typeof options.ca !== "string" || !options.ca.trim()))) throw configuration();
   const pin = options.expectedTlsSpkiSha256.toLowerCase();
   const handshakeTimeout = deadline(options.handshakeTimeoutMs, 10_000);

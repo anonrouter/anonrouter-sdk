@@ -173,6 +173,12 @@ test('origin and fingerprint must be runtime strings without implicit coercion',
   assert.throws(() => createSpkiBoundGatewayTransport({ origin: 'https://example.com', expectedTlsSpkiSha256: BigInt('1'.repeat(64)) }), rejection('configuration'));
 });
 
+test('fingerprints with trailing line breaks refuse before creating a connection', () => {
+  for (const suffix of ['\n', '\r\n']) {
+    assert.throws(() => createSpkiBoundGatewayTransport({ origin: 'https://example.com', expectedTlsSpkiSha256: 'a'.repeat(64) + suffix }), rejection('configuration'));
+  }
+});
+
 test('streaming response finishes normally over the verified connection', async () => {
   const a = await server('a', async (_req, res) => {
     res.setHeader('content-type', 'text/event-stream');
