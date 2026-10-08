@@ -6,9 +6,14 @@ import { createServer as httpsServer } from "node:https";
 import { createServer as httpServer } from "node:http";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { createHash, X509Certificate } from "node:crypto";
-import { createClient, type CreateClientOptions } from "../dist/client.js";
-import { createVerifiedGatewayConnection } from "../dist/gateway/connection-session.js";
+import type { CreateClientOptions } from "../dist/client.js";
+const packageRoot = process.env.SDK_BOUND_CLIENT_PACKAGE_ROOT;
+const { createClient }: typeof import("../dist/client.js") = await import(
+  packageRoot ? pathToFileURL(join(packageRoot, "dist/client.js")).href : new URL("../dist/client.js", import.meta.url).href);
+const { createVerifiedGatewayConnection }: typeof import("../dist/gateway/connection-session.js") = await import(
+  packageRoot ? pathToFileURL(join(packageRoot, "dist/gateway/connection-session.js")).href : new URL("../dist/gateway/connection-session.js", import.meta.url).href);
 import { gatewayBindingHash, GATEWAY_BINDING_VERSION } from "../src/gateway/binding.js";
 import { loadGatewayPolicy } from "../src/gateway/policy.js";
 import { buildAppCompose, buildSyntheticEventLog, buildSyntheticTdxQuote, buildVmConfig,

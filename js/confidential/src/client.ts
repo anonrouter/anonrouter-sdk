@@ -682,7 +682,7 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
     try {
       const runtime = globalThis as unknown as { process?: { versions?: { node?: string } }; window?: { document?: unknown } };
       if (!runtime.process?.versions?.node || runtime.window?.document) throw new Error("unsupported runtime");
-      const sessionSpecifier = "./gateway/connection-session.js";
+      const sessionSpecifier = new URL("./gateway/connection-session.js", import.meta.url).href;
       sessionModule = await import(sessionSpecifier) as typeof import("./gateway/connection-session.js");
     } catch {
       throw new ConfidentialError("unsupported_request", "Required gateway connection binding is available only through Node's native TLS transport.");

@@ -20,7 +20,13 @@ from unittest.mock import patch
 from urllib.parse import urlsplit, parse_qs
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path[:0] = [str(ROOT / 'python/src'), str(ROOT / 'python/tests')]
+sys.path.insert(0, str(ROOT / 'python/tests'))
+if os.environ.get('SDK_BOUND_INSTALLED') != '1':
+    sys.path.insert(0, str(ROOT / 'python/src'))
+else:
+    import anonrouter_confidential as installed_sdk
+    if not Path(installed_sdk.__file__).resolve().is_relative_to(Path(sys.prefix).resolve()):
+        raise RuntimeError('Installed-artifact mode requires the isolated environment package')
 import httpx
 from cryptography import x509
 from cryptography.hazmat.primitives.asymmetric import ec
