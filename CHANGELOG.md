@@ -20,6 +20,12 @@ environment on each CI run, so every published format is exercised.
   Python, persistent rollback protection and bounded refresh on release drift.
   Default activation awaits a verified publication; exact policies still work.
 - Add cross-language authority tests and release preparation/verification gates.
+- Add explicit gateway platform kinds and tuple-form policies: whole release
+  tuples evaluated as OR with per-tuple expiry, mixed forms refused, legacy
+  Phala policies unchanged. Add `gcp-tdx-native` verification with native DCAP,
+  exact hardware registers and mandatory same-socket TLS key binding. It is not
+  qualified: the packaged registry and signed feed refuse it, and a caller policy
+  needs an explicit pilot opt-in. See `docs/gateway-platform-tuples.md`.
 
 ## [0.1.2] - 2026-09-12
 

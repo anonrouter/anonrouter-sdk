@@ -48,6 +48,10 @@ must remain exclusively `UpToDate`; evidence age cannot exceed five minutes.
 The policy source must equal the signed retained manifest digest. Every origin
 must belong to the independently configured authority.
 
+Tuple-form policies (explicit `platformKind`, whole release tuples) are
+described in [gateway-platform-tuples.md](gateway-platform-tuples.md). The feed
+accepts them only for a qualified platform kind; `gcp-tdx-native` is refused.
+
 ## Resolution and rollback
 
 Publication requests carry no API key, cookies or body, refuse redirects, have

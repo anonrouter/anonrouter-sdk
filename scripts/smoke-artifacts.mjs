@@ -116,7 +116,8 @@ if (npmInstalled) {
 import { createClient, verifyGatewayAttestation, loadGatewayPolicy, atLeast,
          pinnedGatewayPolicyFor, measurementPolicyDocument,
          redactHeaders, utf16Length, MediaError, createSignedGatewayPolicySource,
-         verifySignedGatewayPolicy, packagedGatewayPolicyAuthority } from "@anonrouter/confidential";
+         verifySignedGatewayPolicy, packagedGatewayPolicyAuthority,
+         GATEWAY_PLATFORM_QUALIFIED } from "@anonrouter/confidential";
 import { createAnonRouterDcapVerifier, describeDcapInstallation,
          buildDcapEngineRequest } from "@anonrouter/confidential/dcap";
 import { createSubprocessChainVerifier } from "@anonrouter/confidential/chain-verifiers";
@@ -135,6 +136,11 @@ const report = {
   // The shipped pins have to be present in the installed package, or the whole
   // "don't trust us, verify" arrangement has no allowlist on the user's disk.
   gatewayPinPresent: pinnedGatewayPolicyFor("https://api.private.anonrouter.ai")?.status === "published",
+  // An installed package must keep the unqualified GCP platform gated off and
+  // the shipped production pin in its legacy Phala form.
+  platformGate: GATEWAY_PLATFORM_QUALIFIED["gcp-tdx-native"] === false
+    && GATEWAY_PLATFORM_QUALIFIED["phala-dstack-kms"] === true
+    && !("platformKind" in (pinnedGatewayPolicyFor("https://api.private.anonrouter.ai")?.policy ?? { platformKind: 1 })),
   providerPinsPresent: Object.keys(measurementPolicyDocument().providers ?? {}).length > 0,
   engineDetected: describeDcapInstallation().available,
   // The ticketed media surface, reached the way a user reaches it. A packaging
@@ -173,6 +179,8 @@ console.log(JSON.stringify(report));
     () => assert(probeOutput.gatewayPinPresent, "no gateway pin found after install"));
   check("the reviewed production gateway pin resolves by default",
     () => assert(probeOutput.gatewayPinPresent, "the published pin did not resolve by default"));
+  check("the unqualified GCP platform stays gated and the shipped pin stays legacy-form",
+    () => assert(probeOutput.platformGate, "platform qualification gate or legacy pin form changed in the artifact"));
   check("the shipped provider pins are present in the installed package",
     () => assert(probeOutput.providerPinsPresent, "no provider measurement pins found after install"));
   check("client.images.generate and client.audio.speech.create are reachable after install",
@@ -308,6 +316,7 @@ from anonrouter_confidential.gateway.dcap import (create_anonrouter_dcap_verifie
                                                   describe_dcap_installation,
                                                   build_dcap_engine_request)
 from anonrouter_confidential.cli import run_cli
+from anonrouter_confidential.gateway.policy import GATEWAY_PLATFORM_QUALIFIED
 
 print(json.dumps({
     "coreExports": all(callable(f) for f in (create_client, verify_gateway_attestation,
@@ -323,6 +332,11 @@ print(json.dumps({
     "gatewayPinPresent": (
         pinned_gateway_policy_for("https://api.private.anonrouter.ai") is not None
         and pinned_gateway_policy_for("https://api.private.anonrouter.ai").status == "published"
+    ),
+    "platformGate": (
+        GATEWAY_PLATFORM_QUALIFIED == {"phala-dstack-kms": True, "gcp-tdx-native": False}
+        and pinned_gateway_policy_for("https://api.private.anonrouter.ai") is not None
+        and pinned_gateway_policy_for("https://api.private.anonrouter.ai").policy.platform_kind is None
     ),
     "providerPinsPresent": len(load_measurements().get("providers", {})) > 0,
     # The ticketed media surface, reached the way a user reaches it. A packaging
@@ -351,6 +365,7 @@ print(json.dumps({
         assert(probeOutput.gatewayPinPresent, "no gateway pin found after install");
         assert(probeOutput.gatewayPinPresent, "the published pin did not resolve by default");
         assert(probeOutput.providerPinsPresent, "no provider measurement pins found after install");
+        assert(probeOutput.platformGate, "platform qualification gate or legacy pin form changed in the artifact");
       });
 
       const doctor = runAllowingFailure(join(venv, "bin", "anonrouter-verify"), ["doctor", "--compact"]);
