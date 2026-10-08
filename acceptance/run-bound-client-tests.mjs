@@ -4,7 +4,8 @@
 import { mkdtemp, writeFile, rm, readdir, chmod, readFile, realpath } from 'node:fs/promises';
 import { execFileSync, spawn } from 'node:child_process';
 import { resolve, join } from 'node:path';
-const root = resolve('.');
+import { fileURLToPath } from 'node:url';
+const root = fileURLToPath(new URL('../', import.meta.url));
 const vitestEntry = resolve(process.env.SDK_VITEST_ENTRY ?? join(root, 'js/node_modules/vitest/vitest.mjs'));
 // Optional unpacked exact npm artifact. The test imports its dist runtime while
 // fixture helpers remain in this checkout; dependencies may be reused read-only.

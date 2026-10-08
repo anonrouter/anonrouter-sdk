@@ -45,6 +45,22 @@ cd js/confidential
 npm run example:selftest
 ```
 
+Required Node connection binding also has a real loopback TLS suite. Its runner
+starts a fresh process with an owned synthetic CA, then removes the fixture;
+ordinary `npm test` excludes that suite because Node must load the CA at startup.
+Run both checks when changing the connection or confidential client:
+
+```bash
+cd js/confidential
+npm run build
+npm run test:bound
+```
+
+For the primitive retained-operation suite, run
+`node acceptance/run-retained-operation-tests.mjs` from the repository root.
+These local checks use a synthetic native verifier boundary, not hardware
+attestation or production inference.
+
 ## Python (`python/`)
 
 ```bash

@@ -1,7 +1,7 @@
-// Synthetic child/fetch lifecycle only. No native engine, Intel requests or
-// hardware acceptance. Real private executable fixture is never executed.
+// Synthetic child/fetch lifecycle, plus two real single-process Node lifecycle
+// fixtures. No native engine, Intel requests or hardware/capacity acceptance.
 import { EventEmitter } from "node:events";
-import { execFile } from "node:child_process";
+import { execFile, type ChildProcess } from "node:child_process";
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -176,4 +176,46 @@ describe("Node DCAP cancellation and join (synthetic fixtures)", () => {
     expect(result.nextUpdateMs).toBe(Date.parse("2099-01-01T00:00:00Z"));
     expect(fetcher.mock.calls.every(([url]) => url.startsWith("https://"))).toBe(true);
   });
+
+  // POSIX executable shebang fixtures; Windows process acceptance is separate.
+  // These fixtures deliberately launch no children. They exercise real SDK
+  // execFile kill/join, not the native engine's audited no-child or hardware path.
+  for (const mode of ["cancel", "deadline"] as const) it.skipIf(process.platform === "win32")(
+    `real single-process ${mode} joins close and death and refuses already-printed success`, async () => {
+      const actual = await vi.importActual<typeof import("node:child_process")>("node:child_process");
+      let realChild: ChildProcess | undefined, stdoutSeen = false, closed = false, stdoutBytes = 0;
+      vi.mocked(execFile).mockImplementation(((...args: any[]) => {
+        const spawned = (actual.execFile as unknown as (...parameters: any[]) => ChildProcess)(...args);
+        realChild = spawned;
+        spawned.stdout!.on("data", (chunk: Buffer) => {
+          stdoutBytes += chunk.length; stdoutSeen ||= chunk.toString("utf8").includes("synthetic-NOT-native");
+        });
+        spawned.once("close", () => { closed = true; });
+        return spawned;
+      }) as unknown as typeof execFile);
+      writeFileSync(binary, `#!${process.execPath}\nprocess.stdin.resume();process.stdin.on("end",()=>{process.stdout.write(${JSON.stringify(pass + "\n")});setInterval(()=>{},1000);});\n`);
+      chmodSync(binary, 0o700);
+      let settled = false;
+      const started = performance.now();
+      const job = runDcapEngine(binary, payload, mode === "cancel" ? 1500 : 1000, controller.signal)
+        .then(value => { settled = true; return value; });
+      try {
+        while (!stdoutSeen && !closed && performance.now() - started < 750) await new Promise(resolve => setTimeout(resolve, 5));
+        expect(stdoutSeen).toBe(true); expect(stdoutBytes).toBeLessThan(1024); expect(settled).toBe(false);
+        expect(realChild?.pid).toBeGreaterThan(1); process.kill(realChild!.pid!, 0);
+        if (mode === "cancel") controller.abort();
+        const verdict = await job;
+        expect(verdict.verified).toBe(false); expect(closed).toBe(true);
+        let dead = false;
+        try { process.kill(realChild!.pid!, 0); } catch (error) { dead = (error as NodeJS.ErrnoException).code === "ESRCH"; }
+        expect(dead).toBe(true);
+      } finally {
+        // Never remove the private executable fixture while it is still alive.
+        controller.abort();
+        if (realChild && !closed) {
+          realChild.kill("SIGKILL"); await new Promise(resolve => realChild!.once("close", resolve));
+        }
+        await job;
+      }
+    }, 3000);
 });
