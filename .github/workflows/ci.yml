@@ -157,6 +157,8 @@ jobs:
         run: node scripts/check-gateway-authority-parity.mjs
       - name: Gateway policy publication preparation and refusal gates
         run: node scripts/test-gateway-policy-release.mjs
+      - name: GCP qualification candidate and boot-chain checks (synthetic, never signable)
+        run: node scripts/test-gateway-qualification.mjs
       - name: Compare both commands
         run: node scripts/check-cli-parity.mjs
 

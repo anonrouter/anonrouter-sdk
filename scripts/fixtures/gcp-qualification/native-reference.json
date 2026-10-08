@@ -1,0 +1,29 @@
+{
+  "_provenance": [
+    "Output of the content guest's native `ar-guest-verify reference` (Rust, toolchain 1.94.1) over the SYNTHETIC",
+    "artifacts that scripts/gateway-qualification-fixtures.mjs writeReferenceBoot() generates deterministically, with a synthetic",
+    "DCAP verdict file. Built read-only from an uncommitted copy of native/gcp-content-guest (guest worker ctx_a93c938d4c80) whose",
+    "source SHA-256s were: boot_policy.rs 1acfd163..., eventlog.rs 4e806f74..., authenticode.rs 45a329d1..., uki.rs 1699a13e....",
+    "Its classification list is omitted. It proves only that two independent implementations agree on these synthetic bytes."
+  ],
+  "gate_n1_uki_in_rtmr1": true,
+  "uki_authenticode_sha384_edk2": "da1569bbe4279790bfee98eb2bdb204778757f7a13692c907172f7f16524f5a8098ac7ace6fe6f14df900b0c864487b6",
+  "replay_matches_quote": [
+    true,
+    true,
+    true,
+    true
+  ],
+  "rtmr3_zero": true,
+  "proposed_pin": {
+    "mrtd": "1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a",
+    "reference_quote_sha256": "8420fbacad30e81294f9471afb6e84168ce225cfd4b540d501ee4dfc3b5cae89",
+    "release_id": "content@synthetic-a",
+    "rtmr0": "88b039451a8a3495e7a22ccd22806a61182d704f186f4a5a9ba956ab97941861a406933ea4a1dc2df1eda2e2100c0052",
+    "rtmr1": "89df8c1a36f053b04b80ab0081935fedef78faf19e9acf2374f46b94c9db8e96401fe17273e6d656646d1a36c9d59145",
+    "rtmr2": "f5831cc81077412c658d6d13215a5c6c52055d076128924b3ed011f78e86aac921b6d76751c217f332f2bfa0ba60f7cb",
+    "rtmr3": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+    "shape": "c4-standard-2"
+  },
+  "quote_sha256": "8420fbacad30e81294f9471afb6e84168ce225cfd4b540d501ee4dfc3b5cae89"
+}
