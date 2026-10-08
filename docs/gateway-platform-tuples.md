@@ -35,7 +35,7 @@ A policy document **with** `platformKind` is the tuple form:
     "tupleId": "release-a@c4-standard-2@fw1", "releaseId": "...",
     "appId": "<64 hex dm-verity root>", "composeHash": "<64 hex>",
     "mrTd": "<96 hex>", "rtmr0": "<96 hex>", "rtmr1": "<96 hex>",
-    "rtmr2": "<96 hex>", "tdAttributes": "<16 hex>",
+    "rtmr2": "<96 hex>", "tdAttributes": "<16 hex>", "xfam": "<16 hex>",
     "notBeforeMs": 0, "expiresAtMs": 0
   }],
   "requireInTeeTls": true, "requirePrivateLogs": true,
@@ -60,7 +60,9 @@ A policy document **with** `platformKind` is the tuple form:
   `rtmr0`, `rtmr1`, `rtmr2` and its validity window. `phala-dstack-kms` tuples
   add `mrConfigId`, `osImageHash` and the exact `keyProviderPayload` (compared
   byte for byte; it must decode to JSON naming `kms`). `gcp-tdx-native` tuples
-  add only `tdAttributes` (exact, debug bit refused) and their `appId` must be
+  add only `tdAttributes` (exact, debug bit refused) and `xfam` (exact: the
+  extended CPU state the TD may use, as the guest's boot policy also pins it),
+  and their `appId` must be
   the 32-byte dm-verity root; they cannot carry MRCONFIGID, an OS image or a key
   provider, because that guest has none of them.
 - The parsed policy also carries `appIds`/`composeHashes`/`releaseIds` as unions
@@ -76,8 +78,8 @@ and TCB exactly `UpToDate`. The verifier re-checks it on every call
 
 - **Native DCAP only.** `quote_signature_chain` and `tcb_status_acceptable` are
   required. No vTPM quote, PCR or Google attestation token substitutes for them.
-- **Hardware registers are the measurements.** MRTD, RTMR0..RTMR2 and
-  td_attributes come from the quote and must equal one tuple. The application
+- **Hardware registers are the measurements.** MRTD, RTMR0..RTMR2,
+  td_attributes and XFAM come from the quote and must equal one tuple. The application
   (compose and images) is baked into the dm-verity root named on the UKI command
   line, which firmware measures into RTMR1, so RTMR1 pins it and `appId` names
   it. RTMR3 must be zero (`rtmr3_unextended`) and MRCONFIGID, MROWNER and
@@ -165,7 +167,8 @@ approvals and verifiers are untouched.
   retained, natively DCAP-verified quotes before anyone signs.
 - **gcp-tdx-native:** `prepare` refuses it. `qualify-gcp --policy <p>
   --evidence <bundle> --unqualified-platform-pilot acknowledged [--dcap-binary
-  <engine>] --out <candidate>` writes a **non-signable** qualification
+  <engine>] [--native-verifier <ar-guest-verify>] --out <candidate>` writes a
+  **non-signable** qualification
   candidate (`anonrouter.gateway-policy-qualification-candidate/v1`,
   `signable: false`). It has no payload, sequence or signing bytes, and the feed,
   the packaged registry and every client refuse the platform kind regardless.
@@ -173,9 +176,12 @@ approvals and verifiers are untouched.
 ### GCP qualification candidate: what the tool recomputes
 
 For each reference boot in an `anonrouter.gcp-qualification-evidence/v1` bundle
-(the reference boot's gateway_attest JSON, its CCEL, its UKI, the baked compose,
-retained Intel collateral and, optionally, `ar-guest-verify reference` output),
-the tool recomputes from bytes:
+the tool recomputes everything from bytes. A reference names only `tupleId`,
+`shape` and the paths of five artifacts: the reference boot's gateway_attest
+JSON, its CCEL, its UKI, the baked compose and retained Intel collateral. Any
+other field (a verdict, a digest, a code allowlist, a pre-computed native output)
+is refused rather than ignored, and the clock used for collateral validity is the
+real time of the run, never an option.
 
 | Check | Meaning |
 |---|---|
@@ -183,15 +189,15 @@ the tool recomputes from bytes:
 | `report_data_binds_binding` | SHA-512 of the binding equals the quote's report_data |
 | `binding_correlates_with_tuple` | release id, verity-root app id and compose hash equal the tuple; in-TEE TLS; authorized origin |
 | `instance_id_derives_from_boot_key` | SHA-256 of the 32-byte Ed25519 boot key |
-| `quote_registers_match_tuple` | MRTD, RTMR0..RTMR2 and td_attributes exactly |
+| `quote_registers_match_tuple` | MRTD, RTMR0..RTMR2, td_attributes and XFAM exactly |
 | `rtmr3_unextended`, `owner_config_registers_zero` | RTMR3, MRCONFIGID, MROWNER, MROWNERCONFIG are zero |
-| `native_dcap_verified` | The tool ran the native DCAP engine on retained collateral: verified, UpToDate, no advisories, engine and SDK agree on the TD report. A verdict file is never accepted. |
+| `native_dcap_verified` | The tool ran the native DCAP engine on retained collateral: verified, UpToDate, no advisories, and the engine's report agrees with the parsed quote on MRTD, every RTMR, report_data, MRCONFIGID, MROWNER, MROWNERCONFIG, td_attributes and XFAM. A verdict file is never accepted. |
 | `uki_parsed`, `uki_cmdline_names_verity_root`, `uki_cmdline_hardened` | `.linux`, `.initrd`, `.cmdline` present; one `dstack.rootfs_hash` equal to the tuple app id; no override, debug or rescue token; nothing after the NUL |
 | `ccel_replays_quote` | Strict TCG crypto-agile parse; replay equals RTMR0..RTMR3 |
 | `rtmr1_boot_application_is_uki` | Exactly one RTMR1 boot application, equal to the UKI's EDK2 Authenticode SHA-384 (hardware gate N1) |
-| `ccel_events_classified` | Self-describing events hash to their data; no unknown types; no unlisted code |
+| `ccel_events_classified` | Self-describing events hash to their data; no unknown types; no code other than the UKI (an evidence bundle cannot allowlist extra firmware code) |
 | `compose_digest_matches_tuple` | SHA-256 of the compose bytes equals the tuple compose hash |
-| `native_reference_digests_agree` | `ar-guest-verify reference` names the same quote, UKI Authenticode and register digests; its booleans are not read |
+| `native_reference_digests_agree` | The tool itself ran `ar-guest-verify reference` on the same artifacts (fed this tool's own DCAP result) and it proposed the same quote, UKI Authenticode, release and register digests; its booleans are not read |
 
 The CCEL, Authenticode and UKI code is an independent JavaScript
 implementation (`scripts/gateway-qualification.mjs`). On deterministic synthetic
@@ -208,9 +214,9 @@ unmet by construction, so nothing produced by the tool can be promoted.
 | Gate | Status source |
 |---|---|
 | P1 every tuple has a reference boot whose locally recomputed checks all pass | tool |
-| P2 native DCAP run by the tool on every reference quote | tool (needs `--dcap-binary` and retained collateral) |
+| P2 native DCAP run by the tool on every reference quote, by an engine whose SHA-256 is in the SDK's reviewed list | tool (needs `--dcap-binary`, retained collateral and a reviewed engine build) |
 | P3 hardware gate N1, derived from P2 plus CCEL replay and the single-UKI RTMR1 check | tool, never asserted |
-| P4 `ar-guest-verify reference` digests agree | tool (needs the native output) |
+| P4 `ar-guest-verify reference`, run by the tool, agrees on every digest, and its SHA-256 is in the SDK's reviewed list | tool (needs `--native-verifier` and a reviewed build) |
 | P5 `ar-guest-verify release-check` accepts the exact UKI, rootfs, app manifest, compose and images, and its verity root equals each app id | external; the candidate lists the verity root and compose digest it must name |
 | P6 a Google-signed launch endorsement for every MRTD | external; the candidate lists the MRTDs |
 | P7 an independent rebuild reproduces each UKI Authenticode digest | external; the candidate lists the digests |
@@ -236,6 +242,13 @@ unmet by construction, so nothing produced by the tool can be promoted.
   quote on stock Ubuntu, not the AnonRouter guest. Hardware gate N1 (Google
   firmware measures the UKI Authenticode digest into RTMR1 with the vTPM
   present) is still open, so no GCP tuple can be written yet.
+- `REVIEWED_DCAP_ENGINE_SHA256` and `REVIEWED_NATIVE_GUEST_VERIFIER_SHA256` in
+  `scripts/gateway-policy-release.mjs` are empty, so P2, P3 and P4 cannot be
+  satisfied by this release: an unreviewed helper that prints "verified" would
+  otherwise be a self-asserted verdict. Adding a reproducibly built digest is a
+  reviewed SDK change, never an option.
+- Phala tuples do not pin td_attributes or XFAM, exactly as the legacy Phala
+  form never did; release-manifest/v2 records neither.
 - Qualifying the platform requires promotion gates P2 to P8 on real hardware
   artifacts, then a reviewed SDK release that flips `GATEWAY_PLATFORM_QUALIFIED`
   and defines GCP tuple-form signed approval. Until then GCP preparation yields
@@ -254,7 +267,7 @@ unmet by construction, so nothing produced by the tool can be promoted.
 ## Tests
 
 - `shared/vectors/gateway-release-tuples.json`, generated by
-  `npm run gen:gateway-tuple-vectors`, holds 30 policy-document, 22 verdict and 2
+  `npm run gen:gateway-tuple-vectors`, holds 33 policy-document, 23 verdict and 2
   signed-approval cases. JavaScript (`test/gateway-release-tuples.test.ts`) and
   Python (`tests/test_gateway_release_tuples.py`) verify the same bytes.
 - Real loopback TLS: four gcp-tdx-native cases each in
@@ -266,8 +279,10 @@ unmet by construction, so nothing produced by the tool can be promoted.
   signed Phala overlap approval verified in JavaScript (and Python when
   `ANONROUTER_PYTHON` is set), and ten tuple refusals.
 - `scripts/test-gateway-qualification.mjs`: native-agreed known answers, CCEL
-  and UKI refusals, and non-signable candidates with a synthetic DCAP test
-  double (not Intel verification).
+  and UKI refusals, refused self-asserted bundle fields, CCEL/boot-key/release/
+  compose/UKI/XFAM substitutions, and non-signable candidates. Its DCAP engine
+  and native verifier are synthetic test doubles (not Intel verification), so
+  they also demonstrate that unreviewed helpers cannot satisfy P2 to P4.
 - `acceptance/retained-operation-node.test.mjs` and
   `acceptance/python-retained-tests.py`: a bounded approval cannot become
   unbounded through refresh; both fail without the fix.

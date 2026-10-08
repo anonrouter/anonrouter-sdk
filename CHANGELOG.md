@@ -31,6 +31,11 @@ environment on each CI run, so every published format is exercised.
   retained manifest set with a reviewer report, and writes only non-signable
   gcp-tdx-native qualification candidates that recompute quote, CCEL, UKI and
   binding evidence against an explicit promotion gate.
+- gcp-tdx-native tuples pin the exact XFAM, in JavaScript and Python. The GCP
+  qualification candidate refuses self-asserted bundle fields, uses the real
+  clock, runs the native cross-check itself, compares the DCAP engine's report on
+  every pinned TD field, and satisfies P2/P4 only for reviewed helper builds
+  (none yet).
 - A retained operation's policy refresh can no longer make a bounded approval
   unbounded by omitting its expiry (JavaScript and Python).
 
