@@ -241,6 +241,82 @@ had already completed, so their mailboxes were unreadable and no reply was
 possible. H1's first-heartbeat consequence should go to whoever owns bootstrap
 integration next.
 
+## Checkpoint review of the coordinator's fixes
+
+Snapshot of the coordinator's in-progress fixes:
+
+| Item | Value |
+|---|---|
+| Backend HEAD | `c3381767f15282bf8b9d46014fe914f20b92c3c8` |
+| Tracked diff SHA-256 | `bf758a01…a132` |
+| Untracked files | `migrations/143_content_node_rpc_heartbeat_guard.sql` (`9901a726…80bb`), `rpcClient.ts` (unchanged, `83640e1c…956b`), `tests/unit/content-node-rpc-client.test.ts` (`5c1ea4de…7d70`) |
+
+This was rebuilt in a second scratch copy. The unchanged probe file
+(`7798f3d5…845d`, now six probes) was re-run there. A probe that FAILS means its
+defect is closed, so each failure was checked for its actual cause.
+
+| Finding | Status at checkpoint | Evidence |
+|---|---|---|
+| H1 heartbeat forgery | **Fixed** by migration 143 | Probe fails with `content RPC heartbeat refused`. A post-fix check (`6f50f560…7164`, 1/1 passed) confirms that an RPC-role update with a valid next sequence has its lease canonicalized to now + 30 s or less, a sequence rollback is refused, and fabricating a first heartbeat for an admitted boot with none is refused. |
+| H2 missing routes | **Fixed** (routes added, provider-rejection authority-checked) | Probe fails: all three paths now return 401 to a non-mTLS caller instead of 404. `recordProviderRejection` runs `assertRequestAuthority` first, so the legacy bearer is refused for strict rows and the legacy route swallows that refusal. |
+| M3 legacy adoption | **Fixed** (`admitContentRequestTx(..., allowInsert=false)` in the idempotent branch) | Probe fails at the second `reserveBalance`, which is refused. |
+| M1 / M1b abort-before-origin | **Open** | Both probes still pass. M1b drives the real `BEGIN/COMPLETE/CANCEL_AUTHORIZATION_LUA` through ControlPlane. Legacy: abort during authorization makes completion fail `authorization_canceled`, and abort before start makes a later begin fail. Node: the abort is refused, `authz` stays `authorizing`, the strict reservation commits, completion succeeds (`authorized`), and an abort before start does not stop a later begin. |
+| M4 old-binary DB guard | **Open** | Probe still passes. |
+| M2 transport timing | **Open in source** | `rpcClient.ts` is unchanged at the snapshot. The coordinator reports that the idle-close fix and ambiguous dispatch-timeout handling are in progress. |
+
+The committed ownership suite with the coordinator's additions, plus the new
+client unit test, passes 21/21 in the checkpoint copy.
+
+### Residual notes on the fixes
+
+- **Migration 143 trusts a role name.** It constrains only
+  `current_user = 'anonrouter_rpc'`. Any other role that is granted `UPDATE` on
+  `providers.content_nodes` later, or a SECURITY DEFINER function owned by a
+  role other than the controller, would be unconstrained. Two improvements:
+  - invert it, so only the controller role (by name, or by membership checked
+    with `pg_has_role`) may perform unconstrained transitions;
+  - extend the grants.sql boundary DO-block to fail if
+    `content_node_rpc_heartbeat_guard` is absent. Then the column grant can
+    never be installed on a database without the guard.
+- **Sequence ceiling.** The guard allows a jump to the bigint maximum. That
+  stops all later heartbeats for that boot, which only harms its own
+  availability. Optionally cap it at `OLD + 1_000_000`.
+- **H2: global routes.** `/models` serves the global routing catalog and
+  `/attestation-redeem` is not presenter-bound, both by design until the
+  node-scoped catalog exists. `recordProviderRejection` now takes a reservation
+  row lock in a separate transaction on every report, including legacy reports.
+  This is acceptable for a best-effort path, but watch the lock contention.
+- **M1 proof the coordinator asked for.** M1b above is it. The remaining safety
+  net is `rpcServer.ts:72-83` compensation, which only fires when the same
+  authorize connection closes or times out. The recommended fix is unchanged: a
+  presenter abort for a request with no reservation should record a
+  node-scoped tombstone that `admitContentRequestTx` (or
+  `beginAuthorization`) refuses.
+
+### On M4: the coordinator's SECURITY DEFINER proposal
+
+Agreed: `SET LOCAL` alone is not authority, because the RPC role can set it.
+The review's original suggestion only aimed to make an *unmodified old binary*
+fail closed. A stronger design that also binds authority in SQL:
+
+1. Revoke the RPC role's direct `UPDATE` on the financial columns of
+   `billing.inference_reservations`, at least `status`, `finalized_at` and the
+   charge columns.
+2. Add a SECURITY DEFINER function such as
+   `billing.authorize_strict_effect(request_id, scope_id, kind)`. Under the
+   reservation row lock it rechecks origin, node, scope, lease and deadline
+   entirely in SQL, then records `(txid_current(), request_id, kind)` in a
+   table only the definer can write.
+3. Add a `BEFORE UPDATE` trigger on reservations. For rows with an origin, it
+   requires that same-transaction authorization row, or that `current_user` is
+   the separate trusted-controller recovery role.
+
+An old binary never calls the function, so it fails closed. A compromised RPC
+process can then finalize only requests whose node and scope are currently
+valid in the database, which is no more than the application check already
+allows. Trusted-controller recovery remains a distinct, auditable role. Moving
+the whole TypeScript finalizer into SQL is not required for this.
+
 ## Appendix: probe bodies
 
 Appended in the scratch copy after line 121 of
@@ -303,5 +379,11 @@ it.runIf(disposableRedisAvailable())("PROBE M1: node-mode abort before the reser
 });
 ```
 
-Result in the scratch copy: `review-probes.test.ts` 5/5 passed (2.4 s);
-`content-node-ownership.test.ts` 13/13 passed.
+M1b (added for the checkpoint) drives `beginAuthorization` and
+`completeAuthorization` on the real ControlPlane over disposable Redis; its body
+is summarized in the checkpoint table above.
+
+Result in the review copy at `eaed191e`: `review-probes.test.ts` 6/6 passed and
+`content-node-ownership.test.ts` 13/13 passed. Result in the checkpoint copy:
+H1, H2 and M3 probes fail for their fix reasons, M1, M1b and M4 still pass, and
+the ownership suite plus client unit test pass 21/21.
