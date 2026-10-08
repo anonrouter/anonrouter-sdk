@@ -63,9 +63,16 @@ tickets and immediately before content writes. Custom clients, proxies, redirect
 and per-call disabling are refused. A `threading.Event` supplied as `cancel_event`
 cancels only that operation; completing or closing it never replays inference.
 
+Before sending any HTTP bytes, an initial connection reset or handshake timeout
+may trigger one fresh preparation attempt. The failed socket and local watcher
+are closed/joined, and synchronous DNS has returned, before retry. The new attempt
+uses a fresh nonce and current policy; both attempts share one 180-second deadline
+starting before initial policy resolution. Certificate, quote, policy and
+verification failures are refused. Paid inference is never retried.
+
 Standalone `verify_gateway()` reports evidence and does not bind a later generic
 HTTP client. Ordinary mode remains unchanged. Required binding is sync only; DNS
-resolution and foreign verification/policy threads cannot be physically joined by
+resolution and foreign verification/policy threads cannot be forcibly interrupted by
 cancellation. Closing the client signals both preparing and active bound
 operations, preventing their late completion from admitting tickets or content;
 bytes already dispatched cannot be recalled. A final paid response that closes
@@ -75,8 +82,8 @@ read-only snapshots with attribute access and `as_dict()`, rather than original
 dataclass instances; default and standalone evidence reports retain their types.
 
 The retained connection removes the A-quote/B-new-connection race during a DNS
-switch. Paid dispatch has a maximum 180-second admission window from connection
-setup, shortened by approval/evidence expiry. Deployment retirement must retain
+switch. Paid dispatch has a maximum 180-second admission window from initial
+preparation, shortened by approval/evidence expiry. Deployment retirement must retain
 the old serving slot through routing convergence and that window, then let
 admitted streams finish. Platform bounds, native quote capacity and actual
 deployment continuity remain unaccepted. The candidate is unpublished.

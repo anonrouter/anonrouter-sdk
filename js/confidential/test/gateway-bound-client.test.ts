@@ -61,11 +61,12 @@ const syntheticNativeBoundary = {
 };
 
 async function topology(options: { start?: string; switchOnEvidence?: boolean; holdAttestationTickets?: boolean;
-  expireAfterProviderEvidence?: boolean; expireAfterPaidTicket?: boolean; paidExpiryAdvanceMs?: number; streamDelayMs?: number; dnsSwitch?: boolean; paidClose?: boolean } = {}) {
+  expireAfterProviderEvidence?: boolean; expireAfterPaidTicket?: boolean; paidExpiryAdvanceMs?: number; streamDelayMs?: number; dnsSwitch?: boolean; paidClose?: boolean;
+  initialResets?: number; onInitialConnection?: () => void } = {}) {
   let active = options.start ?? "a";
   const observed = { gateway: 0, nonces: [] as string[], attTickets: 0, paidTickets: 0,
     content: [] as Array<{ path: string; slot: string; body: string; authorization?: string }>,
-    bytes: { a: 0, b: 0 }, handshakes: { a: 0, b: 0 }, lookups: 0, controlBodies: [] as string[] };
+    bytes: { a: 0, b: 0 }, handshakes: { a: 0, b: 0 }, connections: 0, lookups: 0, controlBodies: [] as string[] };
   const enclave = createVeniceMockEnclave(MODEL);
   const sockets = new Set<import("node:net").Socket>();
   let contentOrigin = "";
@@ -129,6 +130,12 @@ async function topology(options: { start?: string; switchOnEvidence?: boolean; h
     } else { res.writeHead(404); res.end(); }
   };
   const content = httpsServer(keys[active], handler);
+  content.on("connection", socket => {
+    observed.connections++;
+    if (observed.connections <= (options.initialResets ?? 0)) {
+      socket.resetAndDestroy(); options.onInitialConnection?.();
+    }
+  });
   const spare = options.dnsSwitch ? httpsServer(keys.b, handler) : undefined;
   const trackContent = (server: ReturnType<typeof httpsServer>) => server.on("secureConnection", socket => {
     sockets.add(socket); socket.once("close", () => sockets.delete(socket));
@@ -174,6 +181,63 @@ async function topology(options: { start?: string; switchOnEvidence?: boolean; h
 const chat = (signal?: AbortSignal) => ({ model: MODEL, provider: "venice", messages: [{ role: "user" as const, content: "synthetic-content-canary" }], maxOutputTokens: 32, ...(signal ? { signal } : {}) });
 
 describe("required gateway content connection wiring — synthetic native port, real TLS", () => {
+  it("initial TLS reset retries one fresh preparation before any ticket or HTTP", async () => {
+    const t = await topology({ initialResets: 1 });
+    expect((await t.client.chat(chat())).content).toBe("Hello E2EE");
+    expect(t.observed.connections).toBe(2);
+    expect(t.observed.gateway).toBe(1);
+    expect(t.observed.attTickets).toBe(1); expect(t.observed.paidTickets).toBe(1);
+    expect(t.observed.handshakes.a).toBe(1); expect(t.observed.content).toHaveLength(2);
+  });
+  it("repeated initial reset stops after two sockets with zero tickets/content", async () => {
+    const t = await topology({ initialResets: 10 });
+    await expect(t.client.chat(chat())).rejects.toThrow();
+    expect(t.observed.connections).toBe(2); expect(t.observed.gateway).toBe(0);
+    expect(t.observed.attTickets).toBe(0); expect(t.observed.paidTickets).toBe(0);
+    expect(t.observed.content).toHaveLength(0); expect(t.observed.handshakes.a).toBe(0);
+  });
+  it("fresh preparation resolves policy again after the joined initial reset", async () => {
+    const t = await topology({ initialResets: 1 }); let resolutions = 0;
+    const issuedAtMs = Date.now();
+    const client = createClient({ ...t.clientOptions,
+      gatewayPolicyUpdates: { async resolve() {
+        const current = policy(t.contentOrigin); resolutions++;
+        if (resolutions === 1) current.composeHashes = ["ff".repeat(32)];
+        return { policy: current, sequence: resolutions, payloadSha256: "ab".repeat(32),
+          authority: "synthetic-source-NOT-signed", manifestSha256: "cd".repeat(32), issuedAtMs,
+          expiresAtMs: issuedAtMs + 10000, acceptedKeyIds: [] };
+      } }, gatewayConnectionBinding: { mode: "required", verification: { chainVerifier: syntheticNativeBoundary } } });
+    expect((await client.chat(chat())).content).toBe("Hello E2EE");
+    expect(resolutions).toBe(2); expect(t.observed.connections).toBe(2);
+    expect(t.observed.gateway).toBe(1); expect(t.observed.paidTickets).toBe(1);
+  });
+  it("cancellation during failed initial handshake forbids a second socket", async () => {
+    const abort = new AbortController();
+    const t = await topology({ initialResets: 1, onInitialConnection: () => abort.abort() });
+    await expect(t.client.chat(chat(abort.signal))).rejects.toThrow();
+    expect(t.observed.connections).toBe(1); expect(t.observed.gateway).toBe(0);
+    expect(t.observed.attTickets).toBe(0); expect(t.observed.content).toHaveLength(0);
+  });
+  it("untrusted certificate never grants a fresh preparation", async () => {
+    const t = await topology();
+    const foreign = httpsServer({ key: readFileSync(join(fixture, "ca.key")), cert: readFileSync(join(fixture, "ca.pem")) });
+    let attempts = 0;
+    foreign.on("connection", () => attempts++); foreign.on("tlsClientError", () => {});
+    await new Promise<void>(resolve => foreign.listen(0, "127.0.0.1", resolve));
+    cleanup.push(() => new Promise<void>(resolve => foreign.close(() => resolve())));
+    const origin = `https://127.0.0.1:${(foreign.address() as import("node:net").AddressInfo).port}`;
+    const client = createClient({ ...t.clientOptions, inferenceBaseUrl: origin,
+      gatewayConnectionBinding: { mode: "required", verification: { policy: policy(origin), chainVerifier: syntheticNativeBoundary } } });
+    await expect(client.chat(chat())).rejects.toThrow();
+    expect(attempts).toBe(1); expect(t.observed.attTickets).toBe(0); expect(t.observed.content).toHaveLength(0);
+  });
+  it("one absolute preparation deadline prevents a fresh attempt after initial reset", async () => {
+    const began = performance.now();
+    const t = await topology({ initialResets: 1, onInitialConnection: () => vi.spyOn(performance, "now").mockReturnValue(began + 180_001) });
+    await expect(t.client.chat(chat())).rejects.toThrow();
+    expect(t.observed.connections).toBe(1); expect(t.observed.gateway).toBe(0);
+    expect(t.observed.attTickets).toBe(0); expect(t.observed.content).toHaveLength(0);
+  });
   it("DNS switches A to B after quote but provider and paid bodies stay on one A socket", async () => {
     const t = await topology({ dnsSwitch: true });
     const result = await t.client.chat(chat());

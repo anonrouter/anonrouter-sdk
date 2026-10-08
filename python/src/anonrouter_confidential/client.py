@@ -54,6 +54,7 @@ from .gateway.retained_sync import (
     RetainedGatewayConnection as VerifiedGatewayConnection,
 )
 from .gateway.retained_sync import (
+    consume_initial_connection_refusal,
     freeze_gateway_report,
 )
 from .gateway.verify import (
@@ -400,27 +401,41 @@ class ConfidentialClient(MediaOwner):
                 raise ConfidentialError("the bound gateway operation was cancelled")
         try:
             verification = self._required_gateway_verification
-            guard()
-            resolved = self._resolve_gateway_policy(verification.get("policy"), verification.get("allow_candidate_policy", False))
-            guard()
-            if resolved is None:
-                raise ConfidentialError("no approved gateway policy for connection binding")
-            assert_gateway_policy_security_floor(resolved[0])
-            provenance = dict(resolved[1])
-            def refresh_policy() -> tuple[GatewayMeasurementPolicy, float | None]:
-                nonlocal provenance
+            preparation_deadline = time.monotonic() + 180.0
+            for attempt in range(2):
                 guard()
-                updated = self._resolve_gateway_policy(None, False, force_refresh=True)
+                resolved = self._resolve_gateway_policy(verification.get("policy"), verification.get("allow_candidate_policy", False))
                 guard()
-                if updated is None:
+                if resolved is None:
                     raise ConfidentialError("no approved gateway policy for connection binding")
-                assert_gateway_policy_security_floor(updated[0])
-                provenance = dict(updated[1])
-                return updated[0], provenance.get("expiresAtMs")
-            operation = VerifiedGatewayConnection(origin=self.origin, policy=resolved[0],
-                chain_verifier=verification["chain_verifier"], approval_expires_at_ms=provenance.get("expiresAtMs"),
-                cancel_event=cancellation, timeout=self._bound_timeout,
-                refresh_policy=refresh_policy if self._gateway_policy_source and verification.get("policy") is None else None)
+                assert_gateway_policy_security_floor(resolved[0])
+                provenance = dict(resolved[1])
+                def refresh_policy() -> tuple[GatewayMeasurementPolicy, float | None]:
+                    nonlocal provenance
+                    guard()
+                    updated = self._resolve_gateway_policy(None, False, force_refresh=True)
+                    guard()
+                    if updated is None:
+                        raise ConfidentialError("no approved gateway policy for connection binding")
+                    assert_gateway_policy_security_floor(updated[0])
+                    provenance = dict(updated[1])
+                    return updated[0], provenance.get("expiresAtMs")
+                remaining = preparation_deadline - time.monotonic()
+                if remaining <= 0:
+                    raise ConfidentialError("the bound gateway preparation deadline expired")
+                try:
+                    operation = VerifiedGatewayConnection(origin=self.origin, policy=resolved[0],
+                        chain_verifier=verification["chain_verifier"], approval_expires_at_ms=provenance.get("expiresAtMs"),
+                        cancel_event=cancellation, timeout=self._bound_timeout, pre_dispatch_budget=remaining,
+                        preparation_deadline=preparation_deadline,
+                        refresh_policy=refresh_policy if self._gateway_policy_source and verification.get("policy") is None else None)
+                    break
+                except Exception as error:
+                    if attempt == 0 and not cancellation.is_set() and time.monotonic() < preparation_deadline and consume_initial_connection_refusal(error):
+                        continue
+                    raise
+            if operation is None:
+                raise ConfidentialError("the gateway cannot establish a retained confidential connection")
             # The callback supplies policy metadata only. Verification remains
             # on the original quote/SPKI/socket. Public metadata is a snapshot.
             operation.report = {"origin": self.origin, "policy": provenance,

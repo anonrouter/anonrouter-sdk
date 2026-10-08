@@ -103,6 +103,13 @@ connection during draining is consumed through completion; an earlier close
 refuses further use before content. Signed-policy refresh rechecks the original
 quote and connection against the updated approved policy.
 
+Before any HTTP bytes are sent, an initial connection reset or handshake timeout
+may trigger one fresh preparation attempt. Failed local socket/request/DNS work
+finishes before retry; the new attempt uses a fresh nonce and current policy.
+Both attempts share one 180-second preparation/admission deadline beginning
+before initial policy resolution. Certificate, quote, policy and verification
+failures are refused, and inference is never retried.
+
 `verifyGateway()` by itself verifies evidence; it does not bind a later generic
 HTTP connection. The default transport, `@anonrouter/client` and external OpenAI
 clients do not inherit this Node option. Python has a separate synchronous
@@ -111,7 +118,7 @@ binding option described in its [README](../../python/README.md).
 Operational acceptance remains pending. Fresh quotes per operation can hit the
 current service limit of 20 requests per client address per minute (240 aggregate).
 The retained connection removes the A-quote/B-connect race during a DNS switch.
-The current operation allows at most 180 seconds from connection setup to paid
+The current operation allows at most 180 seconds from initial preparation to paid
 dispatch; approval or evidence expiry can shorten that. Deployment retirement
 must preserve the old serving instance through routing convergence and that
 admission window, then allow admitted streams to finish. Local TLS tests do not

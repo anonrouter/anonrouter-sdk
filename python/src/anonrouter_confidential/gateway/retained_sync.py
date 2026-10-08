@@ -6,6 +6,7 @@ cannot be physically interrupted; caller deadlines prevent later HTTP use.
 from __future__ import annotations
 
 import copy
+import errno
 import hashlib
 import inspect
 import json
@@ -16,6 +17,7 @@ import socket
 import ssl
 import threading
 import time
+import weakref
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, fields, is_dataclass
 from typing import Any, TypeVar, cast
@@ -38,6 +40,21 @@ _PAID_PATHS = {"/v1/chat/completions", "/v1/e2ee/chat/completions", "/v1/images/
 
 def _fail(code: str, dispatched: bool = False) -> BoundGatewayTransportError:
     return BoundGatewayTransportError(code, f"Retained gateway operation refused ({code}).", "may_have_dispatched" if dispatched else "before_http")
+
+
+_initial_connection_refusals: weakref.WeakSet[BoundGatewayTransportError] = weakref.WeakSet()
+_refusals_lock = threading.Lock()
+
+
+def consume_initial_connection_refusal(error: BaseException) -> bool:
+    """Private ownership capability; public code/dispatch phase grants nothing."""
+    if type(error) is not BoundGatewayTransportError:
+        return False
+    with _refusals_lock:
+        if error not in _initial_connection_refusals:
+            return False
+        _initial_connection_refusals.remove(error)
+        return True
 
 
 class _FrozenDict(dict[str, Any]):
@@ -108,21 +125,23 @@ class RetainedGatewayIdentity:
 
 
 class _Channel:
-    def __init__(self, cancel: threading.Event, budget: float, approval: float) -> None:
+    def __init__(self, cancel: threading.Event, budget: float, approval: float, deadline: float | None = None) -> None:
         self.cancel = cancel
-        self.pre_expires = time.monotonic() + budget
+        self.pre_expires = min(time.monotonic() + budget, deadline if deadline is not None else float("inf"))
         self.deadline = self.pre_expires
         self.approval = approval
         self.evidence_expiry = float("inf")
         self.opened = self.authorized = self.closed = self.retired = self.busy = False
         self.paid = self.dispatched = self.paid_attempted = self.challenge_attempted = False
+        self.handshake_complete = self.http_written = self.initial_retry = False
         self.pin: str | None = None
         self.sock: socket.socket | None = None
         self.failure: str | None = None
         self.lock = threading.Lock()
         self.done = threading.Event()
         self.pool: httpcore.ConnectionPool | None = None
-        threading.Thread(target=self._watch, daemon=True).start()
+        self.watcher = threading.Thread(target=self._watch, daemon=True)
+        self.watcher.start()
 
     def _watch(self) -> None:
         while not self.done.wait(.01):
@@ -200,6 +219,7 @@ class _Stream(httpcore.NetworkStream):
         # HTTPCore calls this immediately before headers/body, ALSO on reuse.
         # Returning a previously accepted socket never bypasses this guard.
         self.sock.settimeout(self.channel.remaining(timeout))
+        self.channel.http_written = True
         self.channel.dispatched = True
         try:
             self.sock.sendall(buffer)
@@ -231,6 +251,7 @@ class _Stream(httpcore.NetworkStream):
                 except ssl.SSLWantWriteError:
                     select.select([], [tls], [], min(.01, remaining))
             tls.setblocking(True)
+            self.channel.handshake_complete = True
             der = tls.getpeercert(binary_form=True)
             if not der:
                 raise _fail("tls_certificate")
@@ -238,6 +259,11 @@ class _Stream(httpcore.NetworkStream):
             self.channel.guard()
             return _Stream(tls, self.channel, self.host, True)
         except Exception as error:
+            if not self.channel.handshake_complete and not self.channel.http_written and (
+                isinstance(error, TimeoutError) or isinstance(error, OSError) and error.errno == errno.ECONNRESET
+                or isinstance(error, BoundGatewayTransportError) and error.code == "timeout"
+            ):
+                self.channel.initial_retry = True
             self.channel.stop()
             if isinstance(error, (BoundGatewayTransportError, ConfidentialError)):
                 raise
@@ -286,6 +312,10 @@ class _Backend(httpcore.NetworkBackend):
             self.channel.guard()
             return _Stream(sock, self.channel, host)
         except Exception as error:
+            if not self.channel.http_written and (
+                isinstance(error, TimeoutError) or isinstance(error, OSError) and error.errno == errno.ECONNRESET
+            ):
+                self.channel.initial_retry = True
             self.channel.stop()
             if isinstance(error, (BoundGatewayTransportError, ConfidentialError)):
                 raise
@@ -414,6 +444,7 @@ class RetainedGatewayConnection:
     def __init__(self, *, origin: str, policy: GatewayMeasurementPolicy, chain_verifier: Any,
                  approval_expires_at_ms: float | None = None, cancel_event: threading.Event | None = None,
                  timeout: float = 300.0, pre_dispatch_budget: float = 180.0, ca_pem: str | None = None,
+                 preparation_deadline: float | None = None,
                  refresh_policy: Callable[[], tuple[GatewayMeasurementPolicy, float | None]] | None = None) -> None:
         if httpx.__version__ != "0.28.1" or httpcore.__version__ != "1.0.9":
             raise _fail("configuration")
@@ -425,6 +456,8 @@ class RetainedGatewayConnection:
         origin = canonical_gateway_origin(origin)
         if any(type(v) not in {int, float} or not math.isfinite(v) or not 0 < v <= cap for v, cap in [(timeout, 900), (pre_dispatch_budget, 180)]):
             raise _fail("configuration")
+        if preparation_deadline is not None and (type(preparation_deadline) not in {int, float} or not math.isfinite(preparation_deadline)):
+            raise _fail("configuration")
         if approval_expires_at_ms is not None and (type(approval_expires_at_ms) not in {int, float} or not math.isfinite(approval_expires_at_ms) or approval_expires_at_ms <= 0):
             raise _fail("configuration")
         if cancel_event is not None and not isinstance(cancel_event, threading.Event):
@@ -433,7 +466,7 @@ class RetainedGatewayConnection:
             raise _fail("configuration")
         active = _policy(policy)
         self._cancel = cancel_event or threading.Event()
-        self._channel = _Channel(self._cancel, pre_dispatch_budget, approval_expires_at_ms if approval_expires_at_ms is not None else float("inf"))
+        self._channel = _Channel(self._cancel, pre_dispatch_budget, approval_expires_at_ms if approval_expires_at_ms is not None else float("inf"), preparation_deadline)
         self._report: dict[str, Any] = freeze_gateway_report({})
         nonce = secrets.token_hex(32)
         challenge = "/v1/gateway/attestation?nonce=" + nonce
@@ -484,8 +517,18 @@ class RetainedGatewayConnection:
             self._raw_evidence = freeze_gateway_report(evidence)
             self._identity = RetainedGatewayIdentity(origin, nonce, self._channel.pin or "", binding.app_id, binding.instance_id, binding.compose_hash, min(self._channel.evidence_expiry, self._channel.approval))
             self.assert_dispatch_allowed()
-        except Exception:
+        except Exception as error:
             self.close()
+            # No verifier/caller can mint this from a post-HTTP failure. All
+            # local synchronous connect/handshake work and DNS have returned.
+            self._channel.watcher.join()
+            if (self._channel.initial_retry and not self._channel.handshake_complete
+                    and not self._channel.http_written and isinstance(error, BoundGatewayTransportError)):
+                with _refusals_lock:
+                    _initial_connection_refusals.add(error)
+            elif isinstance(error, BoundGatewayTransportError):
+                with _refusals_lock:
+                    _initial_connection_refusals.discard(error)
             raise
 
     def _bounded(self, run: Callable[[], T]) -> T:

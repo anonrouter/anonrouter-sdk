@@ -4,6 +4,7 @@ import {test,before,after} from 'node:test';
 import assert from 'node:assert/strict';
 import {createServer,Agent} from 'node:https';
 import dns from 'node:dns';
+import {createServer as tcpServer} from 'node:net';
 import {mkdtemp,readFile,writeFile,chmod,readdir,rm} from 'node:fs/promises';
 import {execFileSync} from 'node:child_process';
 import {createHash,X509Certificate} from 'node:crypto';
@@ -14,7 +15,7 @@ import {pathToFileURL} from 'node:url';
 if (!process.env.SDK_RETAINED_TEST_BUILD) throw new Error('Run node acceptance/run-retained-operation-tests.mjs');
 const buildRoot=resolve(process.env.SDK_RETAINED_TEST_BUILD);
 const load=relative=>import(pathToFileURL(join(buildRoot,relative)).href);
-const {openRetainedGatewayOperation,RetainedGatewayError}=await load('src/gateway/retained-operation-node.js');
+const {openRetainedGatewayOperation,RetainedGatewayError,consumeInitialConnectionRefusal}=await load('src/gateway/retained-operation-node.js');
 const {loadGatewayPolicy}=await load('src/gateway/policy.js');
 const {gatewayBindingHash}=await load('src/gateway/binding.js');
 const {buildAppCompose,buildSyntheticEventLog,buildSyntheticTdxQuote,buildVmConfig,SYNTHETIC_MR_CONFIG_ID,SYNTHETIC_OS_IMAGE_HASH}=await load('test/helpers/gateway-fixtures.js');
@@ -35,6 +36,41 @@ async function open(target,options={}){const operation=await openRetainedGateway
 function switchableDns(){const original=dns.lookup;let target='127.0.0.1',lookups=0;dns.lookup=(name,options,cb)=>{if(typeof options==='function'){cb=options;options={};}if(name!=='localhost')return original(name,options,cb);lookups++;const family=target==='::1'?6:4;queueMicrotask(()=>options?.all?cb(null,[{address:target,family}]):cb(null,target,family));};return {switch(){target='::1';},get lookups(){return lookups;},restore(){dns.lookup=original;}};}
 async function pair(options={}){const route=switchableDns();try{const a=await server('a',{...options,afterQuote:(s,socket)=>{options.afterQuote?.(s,socket);route.switch();}});const b=await server('b',{host:'::1',port:a.port});return {a,b,route};}catch(error){route.restore();throw error;}}
 test('DNS target changes A→B after quote; provider and paid HTTP remain on the sole A socket',async()=>{const p=await pair();try{const op=await open(p.a);op.assertDispatchAllowed();await(await op.fetch(`${p.a.origin}/v1/tee/attestation`,{method:'POST',body:'synthetic-provider-nonce'})).text();let paidTickets=0;op.assertDispatchAllowed();paidTickets++;assert.deepEqual(await(await op.fetch(`${p.a.origin}/v1/chat/completions`,{method:'POST',body:'synthetic-paid-body'})).json(),{slot:'a',body:'synthetic-paid-body'});assert.equal(p.a.observed.handshakes,1);assert.equal(p.b.observed.handshakes,0);assert.equal(p.b.observed.httpBytes,0);assert.equal(p.route.lookups,1);assert.equal(paidTickets,1);assert.equal(p.a.observed.requests.length,3);}finally{p.route.restore();}});
+test('public error codes cannot manufacture initial connection retry ownership',()=>{
+  assert.equal(consumeInitialConnectionRefusal(new RetainedGatewayError('timeout')),false);
+  assert.equal(consumeInitialConnectionRefusal(new RetainedGatewayError('tls_certificate')),false);
+  assert.equal(consumeInitialConnectionRefusal({code:'timeout',dispatchPhase:'before_http'}),false);
+});
+test('failed initial preparation joins an admitted delayed DNS callback without later HTTP',async()=>{
+  const original=dns.lookup;let completed=false;
+  try{
+    const a=await server('a');
+    dns.lookup=(name,options,callback)=>{
+      if(name!=='localhost')return original(name,options,callback);
+      setTimeout(()=>{completed=true;callback(null,'127.0.0.1',4);},80);
+    };
+    const began=performance.now();
+    await assert.rejects(open(a,{preDispatchBudgetMs:15}));
+    assert.equal(completed,true);assert.ok(performance.now()-began>=70);
+    assert.equal(a.observed.httpBytes,0);assert.equal(a.observed.handshakes,0);
+  }finally{dns.lookup=original;}
+});
+test('initial TLS timeout mints one consumable refusal only after local cleanup joins',async()=>{
+  const route=switchableDns(),original=setTimeout;let connections=0;
+  const silent=tcpServer(socket=>{connections++;silent.sockets.add(socket);socket.once('close',()=>silent.sockets.delete(socket));});
+  silent.sockets=new Set();servers.add(silent);
+  await new Promise(resolve=>silent.listen(0,'127.0.0.1',resolve));
+  // Accelerate ONLY the existing 10-second initial-handshake timer; real TLS
+  // and local socket/request cleanup still execute. No verifier acceptance.
+  globalThis.setTimeout=(callback,delay,...args)=>original(callback,delay===10000?30:delay,...args);
+  try{
+    let refusal;
+    try{await open({origin:`https://localhost:${silent.address().port}`});}catch(error){refusal=error;}
+    assert.equal(consumeInitialConnectionRefusal(refusal),true);
+    assert.equal(consumeInitialConnectionRefusal(refusal),false);
+    assert.equal(connections,1);assert.equal(route.lookups,1);
+  }finally{globalThis.setTimeout=original;route.restore();}
+});
 test('new B operation and old A operation keep independent immutable sockets/pins',async()=>{const p=await pair();try{const a=await open(p.a);const b=await open(p.b);const replies=await Promise.all([a.fetch(`${p.a.origin}/v1/images/generations`,{method:'POST',body:'A'}),b.fetch(`${p.b.origin}/v1/images/generations`,{method:'POST',body:'B'})]);assert.deepEqual((await Promise.all(replies.map(r=>r.json()))).map(r=>r.slot),['a','b']);assert.equal(a.identity.tlsSpkiSha256,pins.a);assert.equal(b.identity.tlsSpkiSha256,pins.b);assert.equal(p.a.observed.handshakes,1);assert.equal(p.b.observed.handshakes,1);}finally{p.route.restore();}});
 for(const [name,changes] of [['stale',{evidence:{issued_at_ms:1}}],['wrong nonce',{binding:{nonce:'00'.repeat(32)}}],['mismatched SPKI',{binding:{tls_spki_sha256:'ff'.repeat(32)}}]])test(`${name} quote refuses before any provider/content HTTP`,async()=>{const route=switchableDns();try{const a=await server('a',{quoteChanges:changes});await assert.rejects(open(a),rejects('untrusted'));assert.equal(a.observed.requests.length,1);assert.equal(a.observed.handshakes,1);}finally{route.restore();}});
 test('unapproved compose refuses despite native test port pass',async()=>{const route=switchableDns();try{const a=await server('a');const approved=policy(a.origin);approved.composeHashes=['ff'.repeat(32)];await assert.rejects(open(a,{policy:approved}),rejects('untrusted'));assert.equal(a.observed.requests.length,1);}finally{route.restore();}});

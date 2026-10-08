@@ -689,35 +689,46 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
     }
     throwIfAborted(signal);
     const verification = requiredGatewayVerification!;
-    let resolved = await resolveGatewayPolicy(verification, signal);
-    if (!resolved) throw new ConfidentialError("measurement_untrusted", "No approved gateway policy for connection binding.");
-    assertGatewayPolicySecurityFloor(resolved.policy);
-    try {
-      const connection = await sessionModule.openRetainedGatewayOperation({ origin, policy: resolved.policy,
-        chainVerifier: verification.chainVerifier!,
-        ...(resolved.provenance.expiresAtMs !== undefined ? { approvalExpiresAtMs: resolved.provenance.expiresAtMs } : {}),
-        ...(signal ? { signal } : {}),
-        ...(gatewayPolicySource && !verification.policy ? { refreshPolicy: async (refreshSignal: AbortSignal) => {
-          const updated = await resolveGatewayPolicy(verification, refreshSignal, true);
-          if (!updated) throw new ConfidentialError("measurement_untrusted", "No approved gateway policy.");
-          assertGatewayPolicySecurityFloor(updated.policy);
-          resolved = updated;
-          return { policy: updated.policy,
-            ...(updated.provenance.expiresAtMs !== undefined ? { approvalExpiresAtMs: updated.provenance.expiresAtMs } : {}) };
-        } } : {}) });
-      // Policy refresh above supplies metadata only. The retained operation
-      // rechecks the SAME nonce/quote/observed socket with the built-in verifier.
-      const result = { origin, policy: Object.freeze({ ...resolved.provenance }),
-        verdict: connection.verdict, rawEvidence: connection.rawEvidence };
-      return { connection, result };
-    } catch (error) {
-      if (!(error instanceof sessionModule.RetainedGatewayError)) throw error;
-      if (error.code === "cancelled") throw new ConfidentialError("cancelled", "The bound gateway operation was cancelled.");
-      if (error.code === "expired") throw new ConfidentialError("measurement_untrusted", "The verified gateway approval or evidence expired before dispatch.");
-      if (error.code === "configuration") throw new ConfidentialError("unsupported_request", "Required gateway connection binding has an unsupported configuration.");
-      if (error.code === "untrusted") throw new ConfidentialError("attestation_untrusted", "A fully verified gateway identity is required for connection binding.");
-      throw new ConfidentialError("attestation_failed", "The gateway cannot establish a retained confidential connection.");
+    const preparationDeadline = performance.now() + 180_000;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      let resolved = await resolveGatewayPolicy(verification, signal);
+      if (!resolved) throw new ConfidentialError("measurement_untrusted", "No approved gateway policy for connection binding.");
+      assertGatewayPolicySecurityFloor(resolved.policy);
+      try {
+        throwIfAborted(signal);
+        const remaining = Math.floor(preparationDeadline - performance.now());
+        if (remaining <= 0) throw new sessionModule.RetainedGatewayError("expired");
+        const connection = await sessionModule.openRetainedGatewayOperation({ origin, policy: resolved.policy,
+          preDispatchBudgetMs: remaining,
+          preparationDeadlineMs: preparationDeadline,
+          chainVerifier: verification.chainVerifier!,
+          ...(resolved.provenance.expiresAtMs !== undefined ? { approvalExpiresAtMs: resolved.provenance.expiresAtMs } : {}),
+          ...(signal ? { signal } : {}),
+          ...(gatewayPolicySource && !verification.policy ? { refreshPolicy: async (refreshSignal: AbortSignal) => {
+            const updated = await resolveGatewayPolicy(verification, refreshSignal, true);
+            if (!updated) throw new ConfidentialError("measurement_untrusted", "No approved gateway policy.");
+            assertGatewayPolicySecurityFloor(updated.policy);
+            resolved = updated;
+            return { policy: updated.policy,
+              ...(updated.provenance.expiresAtMs !== undefined ? { approvalExpiresAtMs: updated.provenance.expiresAtMs } : {}) };
+          } } : {}) });
+        // Policy refresh above supplies metadata only. The retained operation
+        // rechecks the SAME nonce/quote/observed socket with the built-in verifier.
+        const result = { origin, policy: Object.freeze({ ...resolved.provenance }),
+          verdict: connection.verdict, rawEvidence: connection.rawEvidence };
+        return { connection, result };
+      } catch (error) {
+        if (attempt === 0 && !signal?.aborted && performance.now() < preparationDeadline
+            && sessionModule.consumeInitialConnectionRefusal(error)) continue;
+        if (!(error instanceof sessionModule.RetainedGatewayError)) throw error;
+        if (error.code === "cancelled") throw new ConfidentialError("cancelled", "The bound gateway operation was cancelled.");
+        if (error.code === "expired") throw new ConfidentialError("measurement_untrusted", "The verified gateway approval or evidence expired before dispatch.");
+        if (error.code === "configuration") throw new ConfidentialError("unsupported_request", "Required gateway connection binding has an unsupported configuration.");
+        if (error.code === "untrusted") throw new ConfidentialError("attestation_untrusted", "A fully verified gateway identity is required for connection binding.");
+        throw new ConfidentialError("attestation_failed", "The gateway cannot establish a retained confidential connection.");
+      }
     }
+    throw new ConfidentialError("attestation_failed", "The gateway cannot establish a retained confidential connection.");
   }
 
   async function withBoundOperation<T>(signal: AbortSignal | undefined, run: (operation: BoundOperation) => Promise<T>): Promise<T> {

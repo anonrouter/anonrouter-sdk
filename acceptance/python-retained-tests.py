@@ -23,6 +23,29 @@ from anonrouter_confidential.gateway import retained_sync as retained
 from anonrouter_confidential.gateway.transport_sync import BoundGatewayTransportError
 
 class RetainedTests(unittest.TestCase):
+    def test_public_error_codes_cannot_mint_initial_retry(self):
+        self.assertFalse(retained.consume_initial_connection_refusal(BoundGatewayTransportError('timeout','synthetic')))
+        self.assertFalse(retained.consume_initial_connection_refusal(BoundGatewayTransportError('tls_certificate','synthetic')))
+        class Forged(BoundGatewayTransportError):
+            __hash__=None
+        self.assertFalse(retained.consume_initial_connection_refusal(Forged('timeout','synthetic')))
+    def test_initial_dns_is_joined_before_failed_preparation_returns(self):
+        t=self.topology();original=socket.getaddrinfo;completed=threading.Event()
+        def slow(*args,**kwargs):
+            time.sleep(.06);result=original(*args,**kwargs);completed.set();return result
+        with patch.object(socket,'getaddrinfo',slow):
+            with self.assertRaises(Exception):self.open(t,pre_dispatch_budget=.02)
+        self.assertTrue(completed.is_set());self.assertEqual(t.content_server.connections,0)
+        self.assertEqual(t.gateway,0);self.assertEqual(t.att,0)
+    def test_initial_tls_timeout_mints_single_consumable_joined_refusal(self):
+        silent=helpers.LocalServer(lambda *args:self.fail('HTTP reached silent TLS fixture'))
+        self.addCleanup(silent.close)
+        origin=silent.origin.replace('http:','https:')
+        with self.assertRaises(BoundGatewayTransportError) as refused:
+            retained.RetainedGatewayConnection(origin=origin,policy=helpers.policy(origin),chain_verifier=helpers.NativeBoundary(),timeout=.04)
+        self.assertTrue(retained.consume_initial_connection_refusal(refused.exception))
+        self.assertFalse(retained.consume_initial_connection_refusal(refused.exception))
+        self.assertEqual(silent.connections,1)
     @classmethod
     def setUpClass(cls):
         helpers.BoundClientTests.setUpClass.__func__(cls)

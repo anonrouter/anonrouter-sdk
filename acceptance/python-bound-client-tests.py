@@ -10,6 +10,7 @@ from pathlib import Path
 import shutil
 import socket
 import ssl
+import struct
 import subprocess
 import sys
 import tempfile
@@ -58,7 +59,7 @@ class NativeBoundary:
         return Prepared()
 
 class LocalServer:
-    def __init__(self, handler, fixture=None, initial='a', host='127.0.0.1', port=0):
+    def __init__(self, handler, fixture=None, initial='a', host='127.0.0.1', port=0, initial_resets=0, on_initial_connection=None):
         self.handler,self.fixture,self.active=handler,fixture,initial
         self.contexts={}
         self.pins={}
@@ -74,17 +75,24 @@ class LocalServer:
         self.socket.bind((host,port));self.socket.listen();self.socket.settimeout(.05)
         self.origin=f'{"https" if fixture else "http"}://127.0.0.1:{self.socket.getsockname()[1]}'
         self.stop=threading.Event();self.sockets=set();self.threads=[];self.lock=threading.Lock();self.bytes={'a':0,'b':0};self.handshakes={'a':0,'b':0};self.errors=[]
+        self.initial_resets=initial_resets;self.on_initial_connection=on_initial_connection;self.connections=0
         self.thread=threading.Thread(target=self.accept,daemon=True);self.thread.start()
     def accept(self):
         while not self.stop.is_set():
             try:raw,_=self.socket.accept()
             except (TimeoutError,OSError):continue
             slot=self.active
-            with self.lock:self.sockets.add(raw)
-            worker=threading.Thread(target=self.serve,args=(raw,slot),daemon=True);self.threads.append(worker);worker.start()
-    def serve(self, raw, slot):
+            with self.lock:self.sockets.add(raw);self.connections+=1;reset=self.connections<=self.initial_resets
+            worker=threading.Thread(target=self.serve,args=(raw,slot,reset),daemon=True);self.threads.append(worker);worker.start()
+    def serve(self, raw, slot, reset=False):
         conn=raw
         try:
+            if self.fixture and reset:
+                # Consume only a TLS ClientHello, then RST before any HTTP.
+                raw.settimeout(1);raw.recv(4096)
+                raw.setsockopt(socket.SOL_SOCKET,socket.SO_LINGER,struct.pack('ii',1,0))
+                if self.on_initial_connection:self.on_initial_connection()
+                return
             if self.fixture:conn=self.contexts[slot].wrap_socket(raw,server_side=True)
             with self.lock:self.sockets.discard(raw);self.sockets.add(conn)
             if self.fixture:self.handshakes[slot]+=1
@@ -138,7 +146,7 @@ def evidence(origin,nonce,pin):
         'event_log':LOG.as_json(),'app_compose':MANIFEST,'vm_config':build_vm_config(),'issued_at_ms':int(time.time()*1000)}
 
 class Topology:
-    def __init__(self,fixture,*,start='a',switch=False,hold=False,stream=False,cancel=None,expiry_stage=None,expiry_advance=300001,media_delay=0,paid_close=False,quote_close=False,provider_close=False,dns_switch=False):
+    def __init__(self,fixture,*,start='a',switch=False,hold=False,stream=False,cancel=None,expiry_stage=None,expiry_advance=300001,media_delay=0,paid_close=False,quote_close=False,provider_close=False,dns_switch=False,initial_resets=0,on_initial_connection=None):
         self.gateway=0;self.nonces=[];self.att=0;self.paid=0;self.content=[];self.control=[];self.gate=threading.Event();self.gateway_seen=threading.Event();self.stream_seen=threading.Event()
         self.spare=None;self.dns_patch=None;self.lookups=0;self.dns_target='127.0.0.1'
         self.cancel=cancel;self.clock=[time.time()];self.clock_patch=patch('time.time',lambda:self.clock[0]) if expiry_stage else None
@@ -174,7 +182,7 @@ class Topology:
                 send(conn,{'created':1,'data':[{'b64_json':'aGVsbG8=','mime_type':'image/png'}]},close=paid_close)
             elif parsed.path=='/v1/audio/speech':send(conn,b'\x01\x02\x03','audio/mpeg',close=paid_close)
             else:send(conn,{},status=404)
-        self.content_server=LocalServer(content,fixture,start)
+        self.content_server=LocalServer(content,fixture,start,initial_resets=initial_resets,on_initial_connection=on_initial_connection)
         if dns_switch:
             port=self.content_server.socket.getsockname()[1]
             self.spare=LocalServer(content,fixture,'b',host='::1',port=port)
@@ -226,6 +234,49 @@ class BoundClientTests(unittest.TestCase):
     def tearDownClass(cls):cls.env.stop();shutil.rmtree(cls.fixture)
     def topology(self,**kwargs):
         t=Topology(self.fixture,**kwargs);self.addCleanup(t.close);return t
+    def test_initial_reset_fresh_preparation_once(self):
+        t=self.topology(initial_resets=1)
+        self.assertEqual(t.chat()['content'],'Hello E2EE')
+        self.assertEqual(t.content_server.connections,2);self.assertEqual(t.gateway,1)
+        self.assertEqual(t.att,1);self.assertEqual(t.paid,1);self.assertEqual(len(t.content),2)
+        self.assertEqual(t.content_server.handshakes['a'],1)
+    def test_repeated_initial_reset_two_sockets_zero_tickets(self):
+        t=self.topology(initial_resets=10)
+        with self.assertRaises(Exception):t.chat()
+        self.assertEqual(t.content_server.connections,2);self.assertEqual(t.gateway,0)
+        self.assertEqual(t.att,0);self.assertEqual(t.paid,0);self.assertEqual(t.content,[])
+    def test_retry_resolves_current_policy_again(self):
+        from dataclasses import replace
+        t=self.topology(initial_resets=1);calls=[]
+        class Source(SignedGatewayPolicySource):
+            def __init__(self):pass
+            def resolve(self,origin,*,force_refresh=False):
+                calls.append(force_refresh);current=policy(origin)
+                if len(calls)==1:current=replace(current,compose_hashes=['ff'*32])
+                return {'policy':current,'authority':'synthetic-NOT-signed','sequence':len(calls),'payloadSha256':'ab'*32,'expiresAtMs':time.time()*1000+10000}
+        client=create_client(**{**t.options,'gateway_policy_updates':Source(),'gateway_connection_binding':{'mode':'required','verification':{'chain_verifier':NativeBoundary()}}});self.addCleanup(client.close)
+        self.assertEqual(client.chat(MODEL,'venice',[{'role':'user','content':'synthetic-content-canary'}],32)['content'],'Hello E2EE')
+        self.assertEqual(calls,[False,False]);self.assertEqual(t.content_server.connections,2)
+        self.assertEqual(t.gateway,1);self.assertEqual(t.paid,1)
+    def test_cancel_during_initial_reset_no_second_socket(self):
+        event=threading.Event();t=self.topology(initial_resets=1,on_initial_connection=event.set)
+        with self.assertRaises(Exception):t.chat(cancel_event=event)
+        self.assertEqual(t.content_server.connections,1);self.assertEqual(t.gateway,0);self.assertEqual(t.att,0)
+    def test_one_absolute_preparation_deadline_no_second_socket(self):
+        began=time.monotonic();clock=patch('time.monotonic',lambda:began+181)
+        t=self.topology(initial_resets=1,on_initial_connection=clock.start);self.addCleanup(clock.stop)
+        with self.assertRaises(Exception):t.chat()
+        self.assertEqual(t.content_server.connections,1);self.assertEqual(t.gateway,0);self.assertEqual(t.att,0)
+    def test_certificate_failure_not_retried(self):
+        t=self.topology()
+        foreign=LocalServer(lambda *args:self.fail('HTTP after invalid certificate'),self.fixture)
+        self.addCleanup(foreign.close)
+        context=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(self.fixture/'ca.pem',self.fixture/'ca.key');foreign.contexts['a']=context
+        client=create_client(**{**t.options,'base_url':foreign.origin,'gateway_connection_binding':{'mode':'required','verification':{'policy':policy(foreign.origin),'chain_verifier':NativeBoundary()}}})
+        self.addCleanup(client.close)
+        with self.assertRaises(Exception):client.chat(MODEL,'venice',[{'role':'user','content':'synthetic'}],32)
+        self.assertEqual(foreign.connections,1);self.assertEqual(foreign.bytes['a'],0);self.assertEqual(t.att,0)
     def test_a_quote_b_socket_zero_http(self):
         t=self.topology(dns_switch=True)
         self.assertEqual(t.chat()['content'],'Hello E2EE')

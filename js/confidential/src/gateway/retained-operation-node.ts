@@ -7,6 +7,7 @@ import { connect, checkServerIdentity, type ConnectionOptions, type TLSSocket } 
 import { createHash, randomBytes, X509Certificate } from "node:crypto";
 import type { Duplex } from "node:stream";
 import { isIP } from "node:net";
+import dns from "node:dns";
 import { assertGatewayPolicySecurityFloor } from "./authority.js";
 import type { GatewayMeasurementPolicy } from "./policy.js";
 import { verifyGatewayAttestation, type TdxChainVerifier, type TdxChainVerifierFactory,
@@ -19,6 +20,16 @@ export class RetainedGatewayError extends Error {
     this.name = "RetainedGatewayError";
   }
 }
+// Ownership, not a public code/dispatchPhase, grants one fresh preparation.
+// Only this module's initial socket failure path can mint these capabilities.
+const initialConnectionRefusals = new WeakMap<RetainedGatewayError, State>();
+export function consumeInitialConnectionRefusal(error: unknown): boolean {
+  if (!(error instanceof RetainedGatewayError)) return false;
+  const owner = initialConnectionRefusals.get(error);
+  if (!owner?.closedJoined || owner.handshakeComplete || owner.httpWritten) return false;
+  initialConnectionRefusals.delete(error);
+  return true;
+}
 export interface RetainedGatewayOptions {
   origin: string;
   policy: GatewayMeasurementPolicy;
@@ -28,6 +39,8 @@ export interface RetainedGatewayOptions {
   /** Candidate cap, measured from before the initial handshake, NOT an
    * operationally accepted serving grace. Caller can only tighten 180 seconds. */
   preDispatchBudgetMs?: number;
+  /** Private orchestration deadline. Can only shorten the primitive's cap. */
+  preparationDeadlineMs?: number;
   requestTimeoutMs?: number;
   ca?: string;
   /** Only policy/approval metadata may change. The quote and socket never do. */
@@ -44,9 +57,11 @@ export interface RetainedGatewayOperation {
 interface State {
   socket?: TLSSocket; observedPin?: string; opened: boolean; authorized: boolean;
   closed: boolean; lost: boolean; busy: boolean; refusal?: RetainedGatewayError; guard(): void;
+  handshakeComplete?: boolean; httpWritten?: boolean;
+  closedJoined?: boolean;
 }
 const fail = (code: RetainedGatewayError["code"], phase: RetainedGatewayError["dispatchPhase"] = "before_http") => new RetainedGatewayError(code, phase);
-const optionKeys = new Set(["origin", "policy", "chainVerifier", "approvalExpiresAtMs", "signal", "preDispatchBudgetMs", "requestTimeoutMs", "ca", "refreshPolicy"]);
+const optionKeys = new Set(["origin", "policy", "chainVerifier", "approvalExpiresAtMs", "signal", "preDispatchBudgetMs", "preparationDeadlineMs", "requestTimeoutMs", "ca", "refreshPolicy"]);
 const initKeys = new Set(["method", "headers", "body", "signal", "credentials", "cache", "redirect"]);
 function exact(value: object, keys: Set<string>) {
   if (!value || ![Object.prototype, null].includes(Object.getPrototypeOf(value))
@@ -73,6 +88,15 @@ function deepFreeze<T>(value: T): T {
   return value;
 }
 class SoleSocketAgent extends Agent {
+  private socketJoined: Promise<void> = Promise.resolve();
+  private readonly lookupJoins: Promise<void>[] = [];
+  private readonly requestJoins: Promise<void>[] = [];
+  trackRequest(req: ClientRequest): void {
+    this.requestJoins.push(new Promise(resolve => req.once("close", resolve)));
+  }
+  async joinClosed(): Promise<void> {
+    await Promise.all([this.socketJoined, ...this.lookupJoins, ...this.requestJoins]);
+  }
   constructor(private readonly state: State, private readonly hostname: string, private readonly caPem?: string) {
     super({ keepAlive: true, maxSockets: 1, maxFreeSockets: 1, maxCachedSessions: 0 });
   }
@@ -92,19 +116,31 @@ class SoleSocketAgent extends Agent {
     const tlsOptions: ConnectionOptions & { autoSelectFamily: boolean } = { ...options,
       ca: this.caPem, rejectUnauthorized: true, session: undefined, autoSelectFamily: false,
       servername: isIP(this.hostname) ? undefined : this.hostname,
-      checkServerIdentity: (_host, certificate) => checkServerIdentity(this.hostname, certificate) };
+      checkServerIdentity: (_host, certificate) => checkServerIdentity(this.hostname, certificate),
+      lookup: (hostname, lookupOptions, callback) => {
+        let joined!: () => void;
+        this.lookupJoins.push(new Promise<void>(resolve => { joined = resolve; }));
+        try {
+          dns.lookup(hostname, lookupOptions, (error, address, family) => {
+            try { callback(error, address, family); } finally { joined(); }
+          });
+        } catch (error) { joined(); throw error; }
+      } };
     const socket = connect(tlsOptions);
     this.state.socket = socket;
+    this.socketJoined = new Promise(resolve => socket.once("close", resolve));
     let settled = false;
-    const finish = (error?: Error) => {
+    const finish = (error?: Error, initialRetry = false) => {
       if (settled) return; settled = true; clearTimeout(timer);
+      if (initialRetry && error instanceof RetainedGatewayError && !this.state.handshakeComplete && !this.state.httpWritten) initialConnectionRefusals.set(error, this.state);
       if (error) { this.state.lost = true; socket.destroy(); }
       callback(error ?? null, socket);
     };
-    const timer = setTimeout(() => finish(fail("timeout")), 10_000); timer.unref();
-    socket.once("error", () => finish(fail("tls_certificate")));
+    const timer = setTimeout(() => finish(fail("timeout"), true), 10_000); timer.unref();
+    socket.once("error", error => finish(fail("tls_certificate"), (error as NodeJS.ErrnoException).code === "ECONNRESET"));
     socket.once("close", () => { this.state.lost = true; finish(fail("connection_lost")); });
     socket.once("secureConnect", () => {
+      this.state.handshakeComplete = true;
       try {
         const certificate = socket.getPeerCertificate();
         if (!socket.authorized || !certificate.raw || checkServerIdentity(this.hostname, certificate)) throw fail("tls_certificate");
@@ -143,6 +179,7 @@ export async function openRetainedGatewayOperation(options: RetainedGatewayOptio
   if (typeof options.origin !== "string" || !options.chainVerifier
       || (options.ca !== undefined && (typeof options.ca !== "string" || !options.ca.trim()))
       || (options.refreshPolicy !== undefined && typeof options.refreshPolicy !== "function")
+      || (options.preparationDeadlineMs !== undefined && !Number.isFinite(options.preparationDeadlineMs))
       || (options.approvalExpiresAtMs !== undefined && (!Number.isSafeInteger(options.approvalExpiresAtMs) || options.approvalExpiresAtMs <= 0))) throw fail("configuration");
   let origin: URL;
   try { origin = new URL(options.origin); } catch { throw fail("configuration"); }
@@ -153,6 +190,7 @@ export async function openRetainedGatewayOperation(options: RetainedGatewayOptio
   const preDispatchBudget = limit(options.preDispatchBudgetMs, 180_000, 180_000);
   const requestTimeout = limit(options.requestTimeoutMs, 900_000, 900_000);
   const started = performance.now();
+  const preparationDeadline = Math.min(started + preDispatchBudget, options.preparationDeadlineMs ?? Infinity);
   let evidenceExpiry = Infinity;
   let approvalExpiry = options.approvalExpiresAtMs ?? Infinity;
   let activeCancel: ((error: RetainedGatewayError) => void) | undefined;
@@ -162,7 +200,7 @@ export async function openRetainedGatewayOperation(options: RetainedGatewayOptio
       if (state.closed || signal?.aborted) throw fail("cancelled");
       if (state.refusal) throw state.refusal;
       if (state.lost || state.socket?.destroyed || state.socket?.writableEnded) throw fail("connection_lost");
-      if (performance.now() - started >= preDispatchBudget || Date.now() >= Math.min(evidenceExpiry, approvalExpiry)) throw fail("expired");
+      if (performance.now() >= preparationDeadline || Date.now() >= Math.min(evidenceExpiry, approvalExpiry)) throw fail("expired");
     } };
   const hostname = origin.hostname.replace(/^\[|\]$/g, "");
   const agent = new SoleSocketAgent(state, hostname, options.ca);
@@ -176,7 +214,7 @@ export async function openRetainedGatewayOperation(options: RetainedGatewayOptio
 
   async function boundedPreparation<T>(run: (signal: AbortSignal) => Promise<T>): Promise<T> {
     state.guard();
-    const remaining = preDispatchBudget - (performance.now() - started);
+    const remaining = preparationDeadline - performance.now();
     const timeoutSignal = AbortSignal.timeout(Math.max(1, Math.floor(Math.min(10_000, remaining))));
     const prepareSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
     return await new Promise<T>((resolve, reject) => {
@@ -232,7 +270,7 @@ export async function openRetainedGatewayOperation(options: RetainedGatewayOptio
       const terminate = (error: RetainedGatewayError) => { if (done) return; req?.destroy(error); reject(error); finish(); state.lost = true; agent.destroy(); };
       const abort = () => terminate(fail("cancelled", wireDispatched ? "may_have_dispatched" : "before_http"));
       activeCancel = terminate;
-      const timeout = !paid ? Math.min(30_000, preDispatchBudget - (performance.now() - started)) : requestTimeout;
+      const timeout = !paid ? Math.min(30_000, preparationDeadline - performance.now()) : requestTimeout;
       const timer = setTimeout(() => terminate(fail("timeout", wireDispatched ? "may_have_dispatched" : "before_http")), Math.max(1, timeout)); timer.unref();
       try {
         req = request({ protocol: "https:", hostname, port: origin.port || 443,
@@ -271,6 +309,7 @@ export async function openRetainedGatewayOperation(options: RetainedGatewayOptio
           try { resolve(new Response(stream, { status: response.statusCode!, headers: responseHeaders })); }
           catch { terminate(fail("transport", "may_have_dispatched")); }
         });
+        agent.trackRequest(req);
         req.once("socket", socket => {
           try {
             if (socket !== state.socket) throw fail("connection_lost");
@@ -279,6 +318,7 @@ export async function openRetainedGatewayOperation(options: RetainedGatewayOptio
             state.guard();
             if (requestSignal?.aborted) throw fail("cancelled");
             wireDispatched = true;
+            state.httpWritten = true;
           } catch (error) { terminate(error instanceof RetainedGatewayError ? error : fail("transport")); }
         });
         req.once("error", error => terminate(state.refusal ?? (error instanceof RetainedGatewayError ? error : fail("transport", wireDispatched ? "may_have_dispatched" : "before_http"))));
@@ -331,5 +371,13 @@ export async function openRetainedGatewayOperation(options: RetainedGatewayOptio
       appId: verdict.binding.app_id, instanceId: verdict.binding.instance_id, composeHash: verdict.binding.compose_hash,
       expiresAtMs: Math.min(evidenceExpiry, approvalExpiry) });
     return Object.freeze({ identity, verdict: deepFreeze(verdict), rawEvidence: deepFreeze(evidence), assertDispatchAllowed: state.guard, fetch: (url: string, init?: RequestInit) => exchange(url, init), close });
-  } catch (error) { close(); throw error instanceof RetainedGatewayError ? error : fail("untrusted"); }
+  } catch (error) {
+    close();
+    // Failed preparation cannot start another socket before every local owner
+    // and admitted DNS callback has joined. This cannot interrupt OS DNS.
+    await agent.joinClosed();
+    state.closedJoined = true;
+    if (error instanceof RetainedGatewayError && initialConnectionRefusals.get(error) !== state) initialConnectionRefusals.delete(error);
+    throw error instanceof RetainedGatewayError ? error : fail("untrusted");
+  }
 }
