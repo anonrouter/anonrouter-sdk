@@ -3,18 +3,22 @@
 // DCAP "engine" below is a test double that is NOT Intel verification; it only
 // exercises the plumbing that a real engine run would go through.
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { verifySignedGatewayPolicy, packagedGatewayPolicyAuthority } from "../js/confidential/dist/gateway/authority.js";
 import { loadGatewayPolicy } from "../js/confidential/dist/gateway/policy.js";
 import {
-  authenticodeSha384Edk2, classifyCcel, cmdlineFindings, EV, inspectUki, parseCcel, replayCcel
+  authenticodeSha384Edk2, classifyCcel, cmdlineFindings, EV, inspectUki, parseCcel, replayCcel, sha
 } from "./gateway-qualification.mjs";
 import {
   bootEvents, buildUki, encodeCcel, GOOD_CMDLINE, selfDescribing, SYNTHETIC, writeReferenceBoot
 } from "./gateway-qualification-fixtures.mjs";
-import { prepareGatewayPolicyRelease, prepareTupleGatewayPolicyRelease, qualifyGcpPolicyCandidate } from "./gateway-policy-release.mjs";
+import {
+  evaluatePromotionGate, prepareGatewayPolicyRelease, prepareTupleGatewayPolicyRelease, qualifyGcpPolicyCandidate,
+  REVIEWED_DCAP_ENGINE_SHA256, REVIEWED_NATIVE_GUEST_VERIFIER_SHA256
+} from "./gateway-policy-release.mjs";
 
 const root = mkdtempSync(join(tmpdir(), "anonrouter-gcp-qualification-"));
 let passed = 0;
@@ -74,102 +78,158 @@ try {
   });
 
   // ---- qualify-gcp ------------------------------------------------------------
-  const engine = (mode) => {
-    const path = join(root, `synthetic-dcap-engine-${mode}.mjs`);
-    writeFileSync(path, `#!/usr/bin/env node
-// SYNTHETIC test double, NOT Intel DCAP verification.
-let input = ""; process.stdin.on("data", c => input += c).on("end", () => {
-  const q = Buffer.from(JSON.parse(input).quote, "hex"); const h = (o, n) => q.subarray(o, o + n).toString("hex");
-  const report = { mr_td: h(184, 48), mr_config_id: h(232, 48), rtmr0: h(376, 48), rtmr1: h(424, 48), rtmr2: h(472, 48),
-    rtmr3: h(520, 48), report_data: h(568, 64) };
-  if (${JSON.stringify(mode)} === "disagree") report.rtmr1 = "00".repeat(48);
-  const tcb = ${JSON.stringify(mode)} === "outofdate" ? "OutOfDate" : "UpToDate";
-  process.stdout.write(JSON.stringify({ verified: true, tcb_status: tcb, advisory_ids: [], report, engine: "synthetic-test-double" }));
-});\n`);
+  // Both helper programs below are SYNTHETIC test doubles: not Intel DCAP and not
+  // the guest's native verifier. Their digests are never reviewed, which is the point.
+  const script = (name, body) => {
+    const path = join(root, name);
+    writeFileSync(path, `#!/usr/bin/env node\n// SYNTHETIC test double.\n${body}\n`);
     chmodSync(path, 0o700);
     return path;
   };
-  const NOW = 1_791_327_000_000;
+  const engine = (mode) => script(`synthetic-dcap-engine-${mode}.mjs`, `
+let input = ""; process.stdin.on("data", c => input += c).on("end", () => {
+  const q = Buffer.from(JSON.parse(input).quote, "hex"); const h = (o, n) => q.subarray(o, o + n).toString("hex");
+  const report = { td_attributes: h(168, 8), xfam: h(176, 8), mr_td: h(184, 48), mr_config_id: h(232, 48), mr_owner: h(280, 48),
+    mr_owner_config: h(328, 48), rtmr0: h(376, 48), rtmr1: h(424, 48), rtmr2: h(472, 48), rtmr3: h(520, 48), report_data: h(568, 64) };
+  if (${JSON.stringify(mode)} === "disagree-rtmr1") report.rtmr1 = "00".repeat(48);
+  if (${JSON.stringify(mode)} === "disagree-xfam") report.xfam = "e71a060000000000";
+  const tcb = ${JSON.stringify(mode)} === "outofdate" ? "OutOfDate" : "UpToDate";
+  process.stdout.write(JSON.stringify({ verified: true, tcb_status: tcb, advisory_ids: [], report, engine: "synthetic-test-double" }));
+});`);
+  const lib = new URL("./gateway-qualification.mjs", import.meta.url).href;
+  const nativeVerifier = (mode) => script(`synthetic-native-${mode}.mjs`, `
+import { readFileSync } from "node:fs"; import { createHash } from "node:crypto";
+const { authenticodeSha384Edk2 } = await import(${JSON.stringify(lib)});
+const a = process.argv.slice(2); const flag = k => a[a.indexOf("--" + k) + 1];
+const q = readFileSync(flag("quote")); const h = (o, n) => q.subarray(o, o + n).toString("hex");
+const quoteSha = createHash("sha256").update(q).digest("hex");
+const uki = ${JSON.stringify(mode)} === "lying" ? "00".repeat(48) : authenticodeSha384Edk2(readFileSync(flag("uki")));
+process.stdout.write(JSON.stringify({ ok: true, result: { gate_n1_uki_in_rtmr1: true, quote_sha256: quoteSha,
+  uki_authenticode_sha384_edk2: uki, proposed_pin: { release_id: flag("release-id"), shape: flag("shape"), mrtd: h(184, 48),
+  rtmr0: h(376, 48), rtmr1: h(424, 48), rtmr2: h(472, 48), rtmr3: h(520, 48), reference_quote_sha256: quoteSha } } }));`);
   let caseIndex = 0;
   const qualify = async (mutate = {}, options = {}) => {
     const dir = mkdtempSync(join(root, `case-${caseIndex++}-`));
     const written = writeReferenceBoot(dir, mutate);
-    if (options.native !== false) {
-      writeFileSync(join(dir, "native.json"), JSON.stringify(options.native ?? native));
-      written.bundle.references[0].nativeReference = "native.json";
-    }
-    const candidate = await qualifyGcpPolicyCandidate(written.policy, written.bundle,
-      { unqualifiedPlatformPilot: true, baseDir: dir, nowMs: NOW, ...(options.engine ? { dcapBinary: engine(options.engine) } : {}) });
+    options.after?.(dir, written);
+    const candidate = await qualifyGcpPolicyCandidate(written.policy, written.bundle, { unqualifiedPlatformPilot: true, baseDir: dir,
+      dcapBinary: engine(options.engine ?? "ok"), nativeVerifier: nativeVerifier(options.native ?? "ok") });
     const check = name => candidate.references[0].checks.find(c => c.name === name);
-    const gate = id => candidate.promotionGate.find(g => g.id.startsWith(id)).status;
-    return { candidate, check, gate, written };
+    const gate = (id, gates = candidate.promotionGate) => gates.find(g => g.id.startsWith(id)).status;
+    return { candidate, check, gate, written, dir };
   };
+  const failed = candidate => candidate.references[0].checks.filter(c => !c.passed).map(c => c.name);
 
-  await test("a complete synthetic reference satisfies every tool-checkable gate and stays non-promotable", async () => {
-    const { candidate, gate } = await qualify({}, { engine: "ok" });
-    assert.deepEqual(candidate.references[0].checks.filter(c => !c.passed), []);
+  await test("tool-run checks pass, yet unreviewed helper programs can never satisfy P2-P4", async () => {
+    const { candidate, gate } = await qualify();
+    assert.deepEqual(failed(candidate), []);
     assert.equal(candidate.signable, false);
     assert.equal(candidate.platformQualified, false);
     assert.equal(candidate.promotable, false);
-    assert.deepEqual(["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8"].map(gate),
-      ["satisfied", "satisfied", "satisfied", "satisfied", "external", "external", "external", "unmet"]);
+    assert.deepEqual(["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8"].map(id => gate(id)),
+      ["satisfied", "unmet", "unmet", "unmet", "external", "external", "external", "unmet"]);
+    assert.match(candidate.promotionGate[1].evidence, /is not a reviewed build/);
     assert.equal(candidate.references[0].digests.ukiAuthenticodeSha384, native.uki_authenticode_sha384_edk2);
     assert.equal(candidate.references[0].digests.quoteSha256, native.quote_sha256);
+    // The gate logic itself, with the double's digests treated as reviewed: P2-P4
+    // then hold, and the candidate is still not promotable.
+    const policy = loadGatewayPolicy(candidate.policy);
+    const reviewed = { dcap: [candidate.engines.dcap], native: [candidate.engines.native] };
+    const gates = evaluatePromotionGate(policy, candidate.references, candidate.engines, reviewed);
+    assert.deepEqual(["P2", "P3", "P4", "P8"].map(id => gate(id, gates)), ["satisfied", "satisfied", "satisfied", "unmet"]);
+    assert.equal(evaluatePromotionGate(policy, candidate.references, candidate.engines, reviewed, true).every(g => g.status === "satisfied"), false);
+    assert.deepEqual([REVIEWED_DCAP_ENGINE_SHA256, REVIEWED_NATIVE_GUEST_VERIFIER_SHA256], [[], []]);
     // Nothing in a candidate is a gateway-policy payload or signing input.
     assert.equal(candidate.schema, "anonrouter.gateway-policy-qualification-candidate/v1");
     for (const forbidden of ["payload", "signingBytes", "signatures", "sequence", "manifestSha256"]) assert.equal(forbidden in candidate, false);
     const posing = { schema: "anonrouter.gateway-policy-envelope/v1", payload: JSON.stringify(candidate), signatures: [] };
-    assert.throws(() => verifySignedGatewayPolicy(posing, packagedGatewayPolicyAuthority(), SYNTHETIC.origin, NOW));
+    assert.throws(() => verifySignedGatewayPolicy(posing, packagedGatewayPolicyAuthority(), SYNTHETIC.origin, Date.now()));
   });
-  await test("a verdict file is never accepted in place of running native DCAP", async () => {
-    const { check, gate } = await qualify({ reference: { dcapVerdict: "anything.json" } });
-    assert.equal(check("native_dcap_verified").passed, false);
-    assert.match(check("native_dcap_verified").detail, /not run/);
-    assert.equal(gate("P1"), "satisfied"); assert.equal(gate("P2"), "unmet"); assert.equal(gate("P3"), "unmet");
+  await test("SELF-ASSERTED INPUTS: verdicts, digests, allowlists and pre-computed outputs are refused", async () => {
+    for (const field of ["dcapVerdict", "nativeReference", "allowedCodeDigests", "quoteSha256", "ukiAuthenticodeSha384", "verified"]) {
+      await assert.rejects(qualify({ reference: { [field]: field === "allowedCodeDigests" ? ["03".repeat(48)] : true } }), /not accepted as evidence/);
+    }
+    const dir = mkdtempSync(join(root, "bundle-"));
+    const { policy, bundle } = writeReferenceBoot(dir);
+    await assert.rejects(qualifyGcpPolicyCandidate(policy, { ...bundle, verdicts: [] }, { unqualifiedPlatformPilot: true, baseDir: dir }), /only schema and references/);
   });
-  await test("native DCAP refusals: out-of-date TCB and an engine that read a different TD", async () => {
-    assert.equal((await qualify({}, { engine: "outofdate" })).check("native_dcap_verified").passed, false);
-    const disagree = (await qualify({}, { engine: "disagree" })).check("native_dcap_verified");
-    assert.equal(disagree.passed, false); assert.match(disagree.detail, /disagree about rtmr1/);
+  await test("SUBSTITUTION: a CCEL from another boot", async () => {
+    const other = encodeCcel([selfDescribing(1, EV.EFI_ACTION, "another firmware"), ...bootEvents(uki)]);
+    const { candidate } = await qualify({}, { after: dir => writeFileSync(join(dir, "ccel.bin"), other) });
+    assert.deepEqual(failed(candidate), ["ccel_replays_quote"]);
   });
-  await test("firmware measured a different UKI than the release", async () => {
+  await test("SUBSTITUTION: extra firmware code with no reviewed allowlist", async () => {
+    const driver = { mr: 1, type: EV.EFI_BOOT_SERVICES_DRIVER, digest: Buffer.alloc(48, 3), data: Buffer.from("rom") };
+    const { candidate } = await qualify({ ccel: encodeCcel([...bootEvents(uki), driver]) });
+    assert.deepEqual(failed(candidate), ["ccel_events_classified"]);
+  });
+  await test("SUBSTITUTION: another boot key behind the same quote", async () => {
+    const key = "e8".repeat(32);
+    const { candidate } = await qualify({}, { after: (dir, written) => {
+      const swapped = { ...written.binding, public_key: key, instance_id: sha("sha256", Buffer.from(key, "hex")) };
+      writeFileSync(join(dir, "gateway-evidence.json"), JSON.stringify({ binding: swapped, quote: written.quote.toString("hex") }));
+    } });
+    assert.deepEqual(failed(candidate), ["report_data_binds_binding"]);
+    const foreign = await qualify({ binding: { instance_id: "ab".repeat(32) } });
+    assert.deepEqual(failed(foreign.candidate), ["instance_id_derives_from_boot_key"]);
+  });
+  await test("SUBSTITUTION: release A's boot presented as release B's tuple", async () => {
+    const { candidate } = await qualify({}, { after: (_dir, written) => {
+      const b = { ...written.tuple, tupleId: "synthetic-b@c4-standard-2", releaseId: "content@synthetic-b", appId: "6b".repeat(32),
+        composeHash: "cd".repeat(32), rtmr1: "77".repeat(48) };
+      written.policy.releaseTuples.push(b);
+      written.bundle.references[0].tupleId = b.tupleId;
+    } });
+    assert.deepEqual(failed(candidate), ["binding_correlates_with_tuple", "quote_registers_match_tuple",
+      "uki_cmdline_names_verity_root", "compose_digest_matches_tuple"]);
+    assert.equal(candidate.promotionGate[0].status, "unmet");
+  });
+  await test("SUBSTITUTION: hashed inputs are recomputed, never read", async () => {
+    const compose = await qualify({ compose: Buffer.from("{}\n") });
+    assert.deepEqual(failed(compose.candidate), ["compose_digest_matches_tuple"]);
     const other = buildUki(GOOD_CMDLINE(SYNTHETIC.verityRoot).replace("panic=1", "panic=1 quiet"));
-    const { check, gate } = await qualify({ ccel: encodeCcel(bootEvents(other)) }, { native: false });
-    assert.equal(check("rtmr1_boot_application_is_uki").passed, false);
-    assert.equal(check("ccel_events_classified").passed, false);
-    assert.equal(gate("P1"), "unmet");
+    const firmwareSawOther = await qualify({ ccel: encodeCcel(bootEvents(other)) });
+    assert.deepEqual(failed(firmwareSawOther.candidate), ["rtmr1_boot_application_is_uki", "ccel_events_classified"]);
+    const root2 = await qualify({ uki: buildUki(GOOD_CMDLINE("6b".repeat(32))) });
+    assert.ok(failed(root2.candidate).includes("uki_cmdline_names_verity_root"));
   });
-  await test("the measured command line names another verity root", async () => {
-    const { check } = await qualify({ uki: buildUki(GOOD_CMDLINE("6b".repeat(32))) }, { native: false });
-    assert.equal(check("uki_cmdline_names_verity_root").passed, false);
+  await test("XFAM: a different feature set, and an engine that read a different XFAM", async () => {
+    assert.deepEqual(failed((await qualify({ quote: { xfam: "e71a060000000000" } })).candidate), ["quote_registers_match_tuple"]);
+    const engineXfam = (await qualify({}, { engine: "disagree-xfam" })).check("native_dcap_verified");
+    assert.equal(engineXfam.passed, false); assert.match(engineXfam.detail, /disagree about xfam/);
   });
-  await test("RTMR3 extended, owner register set, foreign boot key and wrong compose bytes", async () => {
+  await test("native DCAP refusals: out-of-date TCB and an engine that read different registers", async () => {
+    assert.equal((await qualify({}, { engine: "outofdate" })).check("native_dcap_verified").passed, false);
+    assert.match((await qualify({}, { engine: "disagree-rtmr1" })).check("native_dcap_verified").detail, /disagree about rtmr1/);
+  });
+  await test("RTMR3 extended and owner registers set", async () => {
     const extended = encodeCcel([...bootEvents(uki), selfDescribing(4, EV.EFI_ACTION, "runtime event")]);
-    assert.equal((await qualify({ ccel: extended }, { native: false })).check("rtmr3_unextended").passed, false);
-    assert.equal((await qualify({ quote: { mrOwner: "02".repeat(48) } }, { native: false })).check("owner_config_registers_zero").passed, false);
-    assert.equal((await qualify({ binding: { instance_id: "ab".repeat(32) } }, { native: false })).check("instance_id_derives_from_boot_key").passed, false);
-    const compose = await qualify({ compose: Buffer.from("{}\n"), tuple: {} }, { native: false });
-    assert.equal(compose.check("compose_digest_matches_tuple").passed, false);
+    assert.ok(failed((await qualify({ ccel: extended })).candidate).includes("rtmr3_unextended"));
+    assert.deepEqual(failed((await qualify({ quote: { mrOwner: "02".repeat(48) } })).candidate), ["owner_config_registers_zero"]);
   });
-  await test("the native cross-check compares digests, not its own verdict booleans", async () => {
-    const lying = { ...native, gate_n1_uki_in_rtmr1: true, uki_authenticode_sha384_edk2: "00".repeat(48) };
-    assert.equal((await qualify({}, { native: lying })).check("native_reference_digests_agree").passed, false);
+  await test("the native cross-check compares digests the tool ran it for", async () => {
+    assert.deepEqual(failed((await qualify({}, { native: "lying" })).candidate), ["native_reference_digests_agree"]);
   });
-  await test("qualify-gcp refuses without the pilot acknowledgement or for another platform", async () => {
+  await test("qualify-gcp refuses without the pilot acknowledgement, for another platform, and any clock override", async () => {
     const dir = mkdtempSync(join(root, "refusals-"));
     const { policy, bundle } = writeReferenceBoot(dir);
-    await assert.rejects(qualifyGcpPolicyCandidate(policy, bundle, { baseDir: dir, nowMs: NOW }), /pilot/);
+    await assert.rejects(qualifyGcpPolicyCandidate(policy, bundle, { baseDir: dir }), /pilot/);
     await assert.rejects(qualifyGcpPolicyCandidate(policy, { ...bundle, references: [{ ...bundle.references[0], tupleId: "nope" }] },
-      { unqualifiedPlatformPilot: true, baseDir: dir, nowMs: NOW }), /unknown tuple/);
+      { unqualifiedPlatformPilot: true, baseDir: dir }), /unknown tuple/);
     const phala = JSON.parse(readFileSync(new URL("../shared/vectors/gateway-release-tuples.json", import.meta.url), "utf8"))
       .loadCases.find(c => c.name === "phala tuple form").policy;
-    await assert.rejects(qualifyGcpPolicyCandidate(phala, bundle, { unqualifiedPlatformPilot: true, baseDir: dir, nowMs: NOW }), /only gcp-tdx-native/);
-    // And the signable preparation paths refuse the GCP policy outright.
-    assert.throws(() => prepareGatewayPolicyRelease(Buffer.from("{}"), policy, 1, NOW, NOW + 1000));
-    assert.throws(() => prepareTupleGatewayPolicyRelease([Buffer.from("{}")], policy, 1, NOW, NOW + 1000), /never signable/);
-    assert.equal(loadGatewayPolicy(policy).platformKind, "gcp-tdx-native");
+    await assert.rejects(qualifyGcpPolicyCandidate(phala, bundle, { unqualifiedPlatformPilot: true, baseDir: dir }), /only gcp-tdx-native/);
+    assert.throws(() => prepareGatewayPolicyRelease(Buffer.from("{}"), policy, 1, Date.now(), Date.now() + 1000));
+    assert.throws(() => prepareTupleGatewayPolicyRelease([Buffer.from("{}")], policy, 1, Date.now(), Date.now() + 1000), /never signable/);
+    writeFileSync(join(dir, "policy.json"), JSON.stringify(policy));
+    const cli = args => spawnSync(process.execPath, [new URL("./gateway-policy-release.mjs", import.meta.url).pathname, "qualify-gcp",
+      "--policy", join(dir, "policy.json"), "--evidence", join(dir, "evidence.json"), "--unqualified-platform-pilot", "acknowledged",
+      "--out", join(dir, `candidate-${args.length}.json`), ...args], { encoding: "utf8" }).status;
+    // Collateral validity is judged at the real time of the run, never a supplied one.
+    assert.equal(cli(["--now-ms", "1"]), 1);
+    assert.equal(cli([]), 0);
   });
-  process.stdout.write(`GCP qualification tooling: ${passed} native-agreed KAT, CCEL/UKI and non-signable candidate groups passed.\n`);
+  process.stdout.write(`GCP qualification tooling: ${passed} native-agreed KAT, CCEL/UKI, substitution and non-signable candidate groups passed.\n`);
 } finally {
   rmSync(root, { recursive: true, force: true });
 }

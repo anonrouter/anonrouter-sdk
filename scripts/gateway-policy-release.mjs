@@ -6,8 +6,10 @@
 //   qualify-gcp   gcp-tdx-native pilot policy + reference boots   -> NON-SIGNABLE candidate
 //   assemble / verify                                             -> production roots only
 import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { execFile } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   canonicalGatewayPolicyJson, packagedGatewayPolicyAuthority, GATEWAY_POLICY_DOMAIN,
@@ -144,24 +146,78 @@ export function prepareTupleGatewayPolicyRelease(manifestBytesList, policyDocume
 
 const CANDIDATE_SCHEMA = "anonrouter.gateway-policy-qualification-candidate/v1";
 
+/**
+ * SHA-256 digests of reviewed, reproducibly built verifier binaries. A gate that
+ * depends on running an external program is satisfied only when the program
+ * that ran is one of these: otherwise any script that prints "verified" would be
+ * a self-asserted verdict with extra steps. No build is reviewed for this use
+ * yet, so both lists are empty and P2/P4 cannot be satisfied by this release.
+ * Adding a digest is a reviewed SDK change, never a command-line option.
+ */
+export const REVIEWED_DCAP_ENGINE_SHA256 = Object.freeze([]);
+export const REVIEWED_NATIVE_GUEST_VERIFIER_SHA256 = Object.freeze([]);
+
+/** The only fields a reference may name. Verdicts, digests, allowlists and
+ * pre-computed outputs are refused rather than ignored, so a bundle cannot carry
+ * a claim that looks as if something checked it. */
+const REFERENCE_FIELDS = ["tupleId", "shape", "gatewayEvidence", "ccel", "uki", "compose", "collateral"];
+
 function readArtifact(base, path, label) {
   if (typeof path !== "string" || path.length === 0) throw new Error(`reference ${label} path is required`);
   return readFileSync(resolve(base, path));
 }
 
-async function nativeDcap(quoteHex, collateralBytes, options) {
+function runJson(binary, args, timeoutMs) {
+  return new Promise(resolveRun => {
+    execFile(binary, args, { maxBuffer: 8 * 1024 * 1024, encoding: "utf8", timeout: timeoutMs, killSignal: "SIGKILL" },
+      (_error, stdout) => { try { resolveRun(JSON.parse(String(stdout))); } catch { resolveRun(null); } });
+  });
+}
+
+const ENGINE_FIELDS = [["mr_config_id", "mrConfigId"], ["mr_owner", "mrOwner"], ["mr_owner_config", "mrOwnerConfig"],
+  ["td_attributes", "tdAttributes"], ["xfam", "xfam"]];
+
+async function nativeDcap(quoteHex, quote, collateralBytes, options) {
   if (!options.dcapBinary) return { passed: false, detail: "not run: pass --dcap-binary with retained collateral; a verdict file is not accepted" };
   let collateral;
   try { const parsed = JSON.parse(collateralBytes.toString("utf8")); collateral = parsed.collateral ?? parsed; }
   catch { return { passed: false, detail: "collateral is not JSON" }; }
+  // Collateral validity is judged at the real time of the run; it is never an input.
   const verdict = await runDcapEngine(options.dcapBinary,
-    buildDcapEngineRequest(quoteHex, collateral, Math.floor(options.nowMs / 1000), ["UpToDate"]), 30_000);
-  const disagreement = engineReportDisagreement(quoteHex, verdict.report);
+    buildDcapEngineRequest(quoteHex, collateral, Math.floor(Date.now() / 1000), ["UpToDate"]), 30_000);
+  // The shared adapter compares MRTD, MRCONFIGID, RTMRs and report_data. A
+  // qualification also pins TD attributes, XFAM and the owner registers, so the
+  // engine must have read those same bytes too.
+  const disagreement = engineReportDisagreement(quoteHex, verdict.report)
+    ?? (verdict.report && quote ? ENGINE_FIELDS.filter(([wire, ours]) =>
+      typeof verdict.report[wire] !== "string" || verdict.report[wire].toLowerCase() !== quote[ours])
+      .map(([wire]) => `engine and SDK disagree about ${wire}`)[0] ?? null : null);
   const passed = verdict.verified === true && verdict.tcbStatus === "UpToDate" && verdict.advisoryIds.length === 0
     && verdict.report !== null && disagreement === null;
   return { passed, detail: passed ? `engine=${verdict.engine} tcb=UpToDate`
-    : disagreement ?? verdict.error ?? `tcb=${verdict.tcbStatus} advisories=${verdict.advisoryIds.join(",") || "none"}`,
-    engine: verdict.engine };
+    : disagreement ?? verdict.error ?? `tcb=${verdict.tcbStatus} advisories=${verdict.advisoryIds.join(",") || "none"}` };
+}
+
+/**
+ * Run the guest's native `ar-guest-verify reference` on the SAME artifacts and
+ * compare only the digests it recomputes. Its DCAP input is this tool's own
+ * engine result, and its booleans are never read.
+ */
+async function nativeCrossCheck(artifacts, tuple, shape, dcapPassed, options) {
+  if (!options.nativeVerifier) return { passed: false, detail: "not run: pass --native-verifier; a pre-computed output file is not accepted" };
+  const dir = mkdtempSync(join(tmpdir(), "anonrouter-native-reference-"));
+  try {
+    const quotePath = join(dir, "quote.bin"), dcapPath = join(dir, "dcap.json"), ccelPath = join(dir, "ccel.bin"), ukiPath = join(dir, "uki.efi");
+    writeFileSync(quotePath, artifacts.quote); writeFileSync(ccelPath, artifacts.ccel); writeFileSync(ukiPath, artifacts.uki);
+    writeFileSync(dcapPath, JSON.stringify({ quoteSha256: artifacts.quoteSha256, verdict: { verified: dcapPassed, tcbStatus: "UpToDate", advisoryIds: [] } }));
+    const out = await runJson(options.nativeVerifier, ["reference", "--quote", quotePath, "--dcap", dcapPath, "--ccel", ccelPath,
+      "--uki", ukiPath, "--release-id", tuple.releaseId, "--shape", shape ?? ""], 60_000);
+    const r = out?.result, pin = r?.proposed_pin, q = artifacts.parsed;
+    const passed = out?.ok === true && r?.quote_sha256 === artifacts.quoteSha256 && r?.uki_authenticode_sha384_edk2 === artifacts.ukiSha384
+      && pin?.reference_quote_sha256 === artifacts.quoteSha256 && pin?.release_id === tuple.releaseId && pin?.shape === (shape ?? "")
+      && pin?.mrtd === q.mrTd && pin?.rtmr0 === q.rtmr0 && pin?.rtmr1 === q.rtmr1 && pin?.rtmr2 === q.rtmr2 && pin?.rtmr3 === q.rtmr3;
+    return { passed, detail: passed ? undefined : out === null ? "native verifier produced no JSON" : "native digests differ or no pin was proposed" };
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 }
 
 /** Re-check one reference boot against its tuple. Every check is recomputed here. */
@@ -173,16 +229,17 @@ async function qualifyReference(policy, tuple, reference, base, options) {
   const ukiBytes = readArtifact(base, reference.uki, "uki");
   const composeBytes = readArtifact(base, reference.compose, "compose");
   const collateralBytes = readArtifact(base, reference.collateral, "collateral");
+  const shape = reference.shape;
   const digests = { gatewayEvidenceSha256: sha("sha256", gatewayBytes), ccelSha256: sha("sha256", ccelBytes),
     ukiFileSha256: sha("sha256", ukiBytes), composeSha256: sha("sha256", composeBytes),
     collateralSha256: sha("sha256", collateralBytes) };
 
   // The reference boot's own gateway_attest output: binding plus quote.
-  let evidence, binding = null, quoteHex = null, quote = null;
+  let evidence, binding = null;
   try { evidence = JSON.parse(gatewayBytes.toString("utf8")); } catch { evidence = null; }
   try { binding = normalizeGatewayBinding(evidence?.binding); } catch { binding = null; }
-  quoteHex = normalizeQuoteHex(evidence?.quote);
-  quote = quoteHex ? parseTdxQuote(quoteHex) : null;
+  const quoteHex = normalizeQuoteHex(evidence?.quote);
+  const quote = quoteHex ? parseTdxQuote(quoteHex) : null;
   if (quoteHex) digests.quoteSha256 = sha("sha256", Buffer.from(quoteHex, "hex"));
   add("quote_parsed", quote !== null && quote.teeType === 0x81);
   add("quote_not_debug", quote !== null && !quote.debugEnabled);
@@ -192,10 +249,11 @@ async function qualifyReference(policy, tuple, reference, base, options) {
   add("instance_id_derives_from_boot_key", binding !== null && binding.key_alg === "ed25519" && /^[0-9a-f]{64}$/.test(binding.public_key)
     && sha("sha256", Buffer.from(binding.public_key, "hex")) === binding.instance_id);
   add("quote_registers_match_tuple", quote !== null && quote.mrTd === tuple.mrTd && quote.rtmr0 === tuple.rtmr0
-    && quote.rtmr1 === tuple.rtmr1 && quote.rtmr2 === tuple.rtmr2 && quote.tdAttributes === tuple.tdAttributes);
+    && quote.rtmr1 === tuple.rtmr1 && quote.rtmr2 === tuple.rtmr2 && quote.tdAttributes === tuple.tdAttributes
+    && quote.xfam === tuple.xfam);
   add("rtmr3_unextended", quote !== null && quote.rtmr3 === ZERO_REGISTER);
   add("owner_config_registers_zero", quote !== null && [quote.mrConfigId, quote.mrOwner, quote.mrOwnerConfig].every(v => v === ZERO_REGISTER));
-  const dcap = quoteHex ? await nativeDcap(quoteHex, collateralBytes, options) : { passed: false, detail: "no quote" };
+  const dcap = quoteHex ? await nativeDcap(quoteHex, quote, collateralBytes, options) : { passed: false, detail: "no quote" };
   add("native_dcap_verified", dcap.passed, dcap.detail);
 
   let uki = null;
@@ -211,8 +269,9 @@ async function qualifyReference(policy, tuple, reference, base, options) {
     const replayed = replayCcel(log);
     add("ccel_replays_quote", quote !== null && replayed[0] === quote.rtmr0 && replayed[1] === quote.rtmr1
       && replayed[2] === quote.rtmr2 && replayed[3] === quote.rtmr3);
-    const allowed = Array.isArray(reference.allowedCodeDigests) ? reference.allowedCodeDigests : [];
-    const classified = classifyCcel(log, uki?.authenticodeSha384 ?? null, allowed);
+    // No extra code digests are accepted from an evidence bundle: an option ROM
+    // or firmware volume a real boot shows must be added to a REVIEWED policy.
+    const classified = classifyCcel(log, uki?.authenticodeSha384 ?? null, []);
     // Hardware gate N1: firmware measured exactly this UKI, and nothing else, as RTMR1's boot application.
     add("rtmr1_boot_application_is_uki", uki !== null && classified.rtmr1BootApplications.length === 1
       && classified.rtmr1BootApplications[0] === uki.authenticodeSha384);
@@ -224,22 +283,54 @@ async function qualifyReference(policy, tuple, reference, base, options) {
     add("ccel_events_classified", false, error.message);
   }
   add("compose_digest_matches_tuple", digests.composeSha256 === tuple.composeHash);
-
-  // Optional independent cross-check: the guest's native ar-guest-verify output
-  // for the same artifacts. Only its DIGESTS are compared; its booleans are not read.
-  if (reference.nativeReference) {
-    let native = null;
-    try { native = JSON.parse(readArtifact(base, reference.nativeReference, "nativeReference").toString("utf8")); } catch { native = null; }
-    const pin = native?.proposed_pin;
-    add("native_reference_digests_agree", native !== null && uki !== null && quote !== null
-      && native.quote_sha256 === digests.quoteSha256 && native.uki_authenticode_sha384_edk2 === uki.authenticodeSha384
-      && pin?.mrtd === quote.mrTd && pin?.rtmr0 === quote.rtmr0 && pin?.rtmr1 === quote.rtmr1 && pin?.rtmr2 === quote.rtmr2
-      && pin?.rtmr3 === quote.rtmr3 && pin?.reference_quote_sha256 === digests.quoteSha256);
-  } else add("native_reference_digests_agree", false, "not supplied");
+  const native = quote && uki
+    ? await nativeCrossCheck({ quote: Buffer.from(quoteHex, "hex"), quoteSha256: digests.quoteSha256, ccel: ccelBytes, uki: ukiBytes,
+      ukiSha384: uki.authenticodeSha384, parsed: quote }, tuple, shape, dcap.passed, options)
+    : { passed: false, detail: "quote or UKI unusable" };
+  add("native_reference_digests_agree", native.passed, native.detail);
   // P2 and P4 are judged separately; every other check is recomputed here from bytes.
   const local = checks.filter(c => !["native_dcap_verified", "native_reference_digests_agree"].includes(c.name));
-  return { tupleId: tuple.tupleId, shape: typeof reference.shape === "string" ? reference.shape : null, digests, checks,
+  return { tupleId: tuple.tupleId, shape: typeof shape === "string" ? shape : null, digests, checks,
     localChecksPassed: local.every(c => c.passed), allChecksPassed: checks.every(c => c.passed) };
+}
+
+/**
+ * The promotion gate, as a pure function of the per-reference results and the
+ * digests of the programs that produced P2 and P4. Exported for review and tests.
+ */
+export function evaluatePromotionGate(policy, references, engines, reviewed = {
+  dcap: REVIEWED_DCAP_ENGINE_SHA256, native: REVIEWED_NATIVE_GUEST_VERIFIER_SHA256 }, qualified = GATEWAY_PLATFORM_QUALIFIED["gcp-tdx-native"]) {
+  const covered = new Set(references.filter(r => r.localChecksPassed).map(r => r.tupleId));
+  const uncovered = policy.releaseTuples.map(t => t.tupleId).filter(id => !covered.has(id));
+  const all = name => references.length > 0 && references.every(r => r.checks.find(c => c.name === name)?.passed);
+  const status = ok => ok ? "satisfied" : "unmet";
+  const dcapReviewed = engines.dcap !== null && reviewed.dcap.includes(engines.dcap);
+  const nativeReviewed = engines.native !== null && reviewed.native.includes(engines.native);
+  const p2 = all("native_dcap_verified") && dcapReviewed;
+  return [
+    { id: "P1-reference-boot-per-tuple", status: status(uncovered.length === 0),
+      requirement: "Every tuple has a reference boot whose quote, CCEL, UKI, gateway binding and compose were re-checked here.",
+      evidence: uncovered.length ? `tuples without a passing reference: ${uncovered.join(", ")}` : "all tuples covered" },
+    { id: "P2-native-dcap", status: status(p2),
+      requirement: "A REVIEWED native DCAP engine build, run by this tool on each reference quote with retained Intel-signed collateral at the real time of the run: verified, UpToDate, no advisories, engine and SDK agree on every pinned TD field.",
+      evidence: engines.dcap === null ? "engine not run" : `engine sha256 ${engines.dcap}${dcapReviewed ? " (reviewed)" : " is not a reviewed build"}` },
+    { id: "P3-gate-n1-uki-in-rtmr1", status: status(p2 && all("rtmr1_boot_application_is_uki") && all("ccel_replays_quote")),
+      requirement: "Hardware gate N1, derived (never asserted): on a quote verified under P2, the replayed CCEL shows exactly one RTMR1 boot application equal to the UKI's EDK2 Authenticode SHA-384." },
+    { id: "P4-independent-native-cross-check", status: status(all("native_reference_digests_agree") && nativeReviewed),
+      requirement: "A REVIEWED build of ar-guest-verify, run by this tool on the same artifacts, proposes identical quote, UKI Authenticode and register digests.",
+      evidence: engines.native === null ? "native verifier not run" : `native verifier sha256 ${engines.native}${nativeReviewed ? " (reviewed)" : " is not a reviewed build"}` },
+    { id: "P5-rootfs-and-application-content", status: "external",
+      requirement: "ar-guest-verify release-check accepts the exact UKI, rootfs, app manifest, compose and image layout; the verity root it recomputes equals each tuple appId.",
+      evidence: references.map(r => `${r.tupleId}: verity=${policy.releaseTuples.find(t => t.tupleId === r.tupleId).appId} compose=${r.digests.composeSha256}`).join("; ") },
+    { id: "P6-firmware-endorsement", status: "external",
+      requirement: "A Google-signed launch endorsement (gce-tcb-verifier) for every tuple MRTD, retained beside the candidate.",
+      evidence: [...new Set(policy.releaseTuples.map(t => t.mrTd))].join(", ") },
+    { id: "P7-reproducible-uki", status: "external",
+      requirement: "An independent rebuild of each release UKI reproduces the same EDK2 Authenticode SHA-384.",
+      evidence: references.map(r => `${r.tupleId}: ${r.digests.ukiAuthenticodeSha384 ?? "unparsed"}`).join("; ") },
+    { id: "P8-sdk-qualification-release", status: qualified ? "satisfied" : "unmet",
+      requirement: "A separately reviewed SDK release sets GATEWAY_PLATFORM_QUALIFIED[gcp-tdx-native] = true and defines tuple-form signed approval for this kind." }
+  ];
 }
 
 /**
@@ -251,54 +342,35 @@ async function qualifyReference(policy, tuple, reference, base, options) {
  */
 export async function qualifyGcpPolicyCandidate(policyDocument, evidenceBundle, options) {
   if (options?.unqualifiedPlatformPilot !== true) throw new Error("qualify-gcp requires an explicit unqualified-platform pilot acknowledgement");
-  if (!Number.isSafeInteger(options.nowMs) || options.nowMs <= 0) throw new Error("nowMs is required");
   const policy = loadGatewayPolicy(policyDocument);
   assertGatewayPolicySecurityFloor(policy);
   if (policy.platformKind !== "gcp-tdx-native") throw new Error("qualify-gcp accepts only gcp-tdx-native policies");
-  if (evidenceBundle?.schema !== "anonrouter.gcp-qualification-evidence/v1" || !Array.isArray(evidenceBundle.references)) {
-    throw new Error("evidence bundle schema anonrouter.gcp-qualification-evidence/v1 is required");
+  if (evidenceBundle?.schema !== "anonrouter.gcp-qualification-evidence/v1" || !Array.isArray(evidenceBundle.references)
+    || Object.keys(evidenceBundle).some(k => !["schema", "references"].includes(k))) {
+    throw new Error("evidence bundle schema anonrouter.gcp-qualification-evidence/v1 with only schema and references is required");
   }
   const base = options.baseDir ?? process.cwd();
   const references = [];
   for (const reference of evidenceBundle.references) {
-    const tuple = policy.releaseTuples.find(t => t.tupleId === reference?.tupleId);
-    if (!tuple) throw new Error(`reference names unknown tuple ${String(reference?.tupleId)}`);
+    if (!reference || typeof reference !== "object" || Array.isArray(reference)) throw new Error("reference must be an object");
+    const extra = Object.keys(reference).filter(k => !REFERENCE_FIELDS.includes(k));
+    if (extra.length) throw new Error(`reference fields are not accepted as evidence: ${extra.join(", ")}`);
+    if (typeof reference.shape !== "string" || !/^[a-z0-9-]{1,63}$/.test(reference.shape)) throw new Error("reference shape is required");
+    const tuple = policy.releaseTuples.find(t => t.tupleId === reference.tupleId);
+    if (!tuple) throw new Error(`reference names unknown tuple ${String(reference.tupleId)}`);
     references.push(await qualifyReference(policy, tuple, reference, base, options));
   }
-  const covered = new Set(references.filter(r => r.localChecksPassed).map(r => r.tupleId));
-  const uncovered = policy.releaseTuples.map(t => t.tupleId).filter(id => !covered.has(id));
-  const all = name => references.length > 0 && references.every(r => r.checks.find(c => c.name === name)?.passed);
-  const status = ok => ok ? "satisfied" : "unmet";
-  const gate = [
-    { id: "P1-reference-boot-per-tuple", status: status(uncovered.length === 0),
-      requirement: "Every tuple has a reference boot whose quote, CCEL, UKI, gateway binding and compose were re-checked here.",
-      evidence: uncovered.length ? `tuples without a passing reference: ${uncovered.join(", ")}` : "all tuples covered" },
-    { id: "P2-native-dcap", status: status(all("native_dcap_verified")),
-      requirement: "This tool ran the reviewed native DCAP engine on each reference quote with retained Intel-signed collateral: verified, UpToDate, no advisories, engine and SDK agree on the TD report." },
-    { id: "P3-gate-n1-uki-in-rtmr1", status: status(all("native_dcap_verified") && all("rtmr1_boot_application_is_uki") && all("ccel_replays_quote")),
-      requirement: "Hardware gate N1, derived (never asserted): on a DCAP-verified quote, the replayed CCEL shows exactly one RTMR1 boot application equal to the UKI's EDK2 Authenticode SHA-384." },
-    { id: "P4-independent-native-cross-check", status: status(all("native_reference_digests_agree")),
-      requirement: "ar-guest-verify reference over the same artifacts proposes identical quote, UKI Authenticode and register digests." },
-    { id: "P5-rootfs-and-application-content", status: "external",
-      requirement: "ar-guest-verify release-check accepts the exact UKI, rootfs, app manifest, compose and image layout; the verity root it recomputes equals each tuple appId.",
-      evidence: references.map(r => `${r.tupleId}: verity=${policy.releaseTuples.find(t => t.tupleId === r.tupleId).appId} compose=${r.digests.composeSha256}`).join("; ") },
-    { id: "P6-firmware-endorsement", status: "external",
-      requirement: "A Google-signed launch endorsement (gce-tcb-verifier) for every tuple MRTD, retained beside the candidate.",
-      evidence: [...new Set(policy.releaseTuples.map(t => t.mrTd))].join(", ") },
-    { id: "P7-reproducible-uki", status: "external",
-      requirement: "An independent rebuild of each release UKI reproduces the same EDK2 Authenticode SHA-384.",
-      evidence: references.map(r => `${r.tupleId}: ${r.digests.ukiAuthenticodeSha384 ?? "unparsed"}`).join("; ") },
-    { id: "P8-sdk-qualification-release", status: GATEWAY_PLATFORM_QUALIFIED["gcp-tdx-native"] ? "satisfied" : "unmet",
-      requirement: "A separately reviewed SDK release sets GATEWAY_PLATFORM_QUALIFIED[gcp-tdx-native] = true and defines tuple-form signed approval for this kind." }
-  ];
+  const engines = { dcap: options.dcapBinary ? fileSha256(options.dcapBinary) : null,
+    native: options.nativeVerifier ? fileSha256(options.nativeVerifier) : null };
+  const gate = evaluatePromotionGate(policy, references, engines);
   return {
     schema: CANDIDATE_SCHEMA,
     signable: false,
     notice: "QUALIFICATION CANDIDATE ONLY. Not a gateway-policy payload, carries no signing bytes, and is refused by the packaged registry, the signed feed and every client until gcp-tdx-native is qualified.",
     platformKind: policy.platformKind,
     platformQualified: GATEWAY_PLATFORM_QUALIFIED["gcp-tdx-native"],
-    checkedAtMs: options.nowMs,
-    dcapBinarySha256: options.dcapBinary ? fileSha256(options.dcapBinary) : null,
+    checkedAtMs: Date.now(),
+    engines,
     policySha256: sha("sha256", Buffer.from(canonicalGatewayPolicyJson(policyDocument), "utf8")),
     policy: policyDocument,
     references,
@@ -324,7 +396,7 @@ async function main(args) {
   const required = name => { if (!options.has(name)) throw new Error(`${name} is required`); return options.get(name); };
   const allowed = command === "prepare"
     ? ["--manifest","--manifests","--policy","--sequence","--issued-at-ms","--expires-at-ms","--out"]
-    : command === "qualify-gcp" ? ["--policy","--evidence","--unqualified-platform-pilot","--dcap-binary","--now-ms","--out"]
+    : command === "qualify-gcp" ? ["--policy","--evidence","--unqualified-platform-pilot","--dcap-binary","--native-verifier","--out"]
     : command === "assemble" ? ["--payload","--signatures","--out"] : ["--envelope"];
   if ([...options.keys()].some(k=>!allowed.includes(k))) throw new Error("unknown option");
   if (command === "prepare") {
@@ -347,8 +419,8 @@ async function main(args) {
     const evidencePath = resolve(required("--evidence"));
     const candidate = await qualifyGcpPolicyCandidate(JSON.parse(readFileSync(required("--policy"),"utf8")),
       JSON.parse(readFileSync(evidencePath,"utf8")), { unqualifiedPlatformPilot: true, baseDir: dirname(evidencePath),
-        nowMs: options.has("--now-ms") ? Number(options.get("--now-ms")) : Date.now(),
-        ...(options.has("--dcap-binary") ? { dcapBinary: resolve(options.get("--dcap-binary")) } : {}) });
+        ...(options.has("--dcap-binary") ? { dcapBinary: resolve(options.get("--dcap-binary")) } : {}),
+        ...(options.has("--native-verifier") ? { nativeVerifier: resolve(options.get("--native-verifier")) } : {}) });
     writeFileSync(required("--out"), JSON.stringify(candidate,null,2)+"\n", {flag:"wx",mode:0o644});
     process.stdout.write(`Wrote NON-SIGNABLE gcp-tdx-native qualification candidate; promotable=${candidate.promotable}. Nothing signed or published.\n`);
   } else if (command === "assemble") {
