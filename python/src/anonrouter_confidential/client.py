@@ -30,7 +30,6 @@ import threading
 import time
 from collections.abc import Iterable, Iterator, Sequence
 from contextlib import contextmanager
-from dataclasses import replace
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -50,8 +49,13 @@ from .gateway.authority import (
     packaged_gateway_policy_authority,
 )
 from .gateway.binding import GATEWAY_NONCE_HEX_LENGTH
-from .gateway.connection_session import VerifiedGatewayConnection
 from .gateway.policy import GatewayMeasurementPolicy, pinned_gateway_policy_for
+from .gateway.retained_sync import (
+    RetainedGatewayConnection as VerifiedGatewayConnection,
+)
+from .gateway.retained_sync import (
+    freeze_gateway_report,
+)
 from .gateway.verify import (
     GatewayVerificationResult,
     TdxChainVerifier,
@@ -223,6 +227,16 @@ def create_client(
     return ConfidentialClient(base_url=base_url, api_key=api_key, **kwargs)
 
 
+class _BoundCancellation(threading.Event):
+    """Client-owned cancellation, composed with (never setting) caller state."""
+    def __init__(self, caller: threading.Event | None) -> None:
+        super().__init__()
+        self._caller = caller
+
+    def is_set(self) -> bool:
+        return super().is_set() or self._caller is not None and self._caller.is_set()
+
+
 class ConfidentialClient(MediaOwner):
     def __init__(
         self,
@@ -319,6 +333,7 @@ class ConfidentialClient(MediaOwner):
                 self._required_gateway_verification["policy"] = copy.deepcopy(verification["policy"])
         self._bound_lock = threading.Lock()
         self._bound_connections: set[VerifiedGatewayConnection] = set()
+        self._bound_cancellations: set[_BoundCancellation] = set()
         self._closed = False
         self._bound_timeout = timeout
         self.api_key = api_key
@@ -341,9 +356,17 @@ class ConfidentialClient(MediaOwner):
 
     # -- lifecycle ---------------------------------------------------------
     def close(self) -> None:
+        """Signal preparing/active bound operations and close owned sockets.
+
+        This does not join uninterruptible DNS or foreign verifier/policy
+        workers. Their late completion cannot admit tickets or content.
+        """
         with self._bound_lock:
             self._closed = True
             active = list(self._bound_connections)
+            preparing = list(self._bound_cancellations)
+        for cancellation in preparing:
+            cancellation.set()
         for operation in active:
             operation.close()
         if self._owns_gateway_policy_source and self._gateway_policy_source:
@@ -364,36 +387,57 @@ class ConfidentialClient(MediaOwner):
             return
         if cancel_event is not None and not isinstance(cancel_event, threading.Event):
             raise ConfidentialError("sync binding cancellation must be a threading.Event")
-        if self._closed or (cancel_event is not None and cancel_event.is_set()):
-            raise ConfidentialError("the bound gateway operation was cancelled")
-        verification = self._required_gateway_verification
-        resolved = self._resolve_gateway_policy(verification.get("policy"), verification.get("allow_candidate_policy", False))
-        if resolved is None:
-            raise ConfidentialError("no approved gateway policy for connection binding")
-        assert_gateway_policy_security_floor(resolved[0])
-        report = self.verify_gateway(**verification)
-        # Rotation can change policy while verifying; enforce the refreshed floor.
-        # Take the smaller age bound conservatively if the source moves again.
-        latest = self._resolve_gateway_policy(verification.get("policy"), verification.get("allow_candidate_policy", False))
-        if latest is None:
-            raise ConfidentialError("no approved gateway policy for connection binding")
-        assert_gateway_policy_security_floor(latest[0])
-        operation_policy = replace(latest[0], max_evidence_age_ms=min(resolved[0].max_evidence_age_ms, latest[0].max_evidence_age_ms))
-        operation = VerifiedGatewayConnection(origin=self.origin, verdict=report["verdict"], policy=operation_policy,
-            evidence_issued_at_ms=report["raw_evidence"].get("issued_at_ms"),
-            approval_expires_at_ms=report["policy"].get("expiresAtMs"), cancel_event=cancel_event, timeout=self._bound_timeout)
-        operation.report = report
+        cancellation = _BoundCancellation(cancel_event)
         with self._bound_lock:
-            if self._closed:
-                operation.close()
+            if self._closed or cancellation.is_set():
                 raise ConfidentialError("the bound gateway operation was cancelled")
-            self._bound_connections.add(operation)
+            # Register BEFORE policy resolution, socket creation and native
+            # preparation. close() can signal even an unfinished constructor.
+            self._bound_cancellations.add(cancellation)
+        operation: VerifiedGatewayConnection | None = None
+        def guard() -> None:
+            if cancellation.is_set():
+                raise ConfidentialError("the bound gateway operation was cancelled")
         try:
+            verification = self._required_gateway_verification
+            guard()
+            resolved = self._resolve_gateway_policy(verification.get("policy"), verification.get("allow_candidate_policy", False))
+            guard()
+            if resolved is None:
+                raise ConfidentialError("no approved gateway policy for connection binding")
+            assert_gateway_policy_security_floor(resolved[0])
+            provenance = dict(resolved[1])
+            def refresh_policy() -> tuple[GatewayMeasurementPolicy, float | None]:
+                nonlocal provenance
+                guard()
+                updated = self._resolve_gateway_policy(None, False, force_refresh=True)
+                guard()
+                if updated is None:
+                    raise ConfidentialError("no approved gateway policy for connection binding")
+                assert_gateway_policy_security_floor(updated[0])
+                provenance = dict(updated[1])
+                return updated[0], provenance.get("expiresAtMs")
+            operation = VerifiedGatewayConnection(origin=self.origin, policy=resolved[0],
+                chain_verifier=verification["chain_verifier"], approval_expires_at_ms=provenance.get("expiresAtMs"),
+                cancel_event=cancellation, timeout=self._bound_timeout,
+                refresh_policy=refresh_policy if self._gateway_policy_source and verification.get("policy") is None else None)
+            # The callback supplies policy metadata only. Verification remains
+            # on the original quote/SPKI/socket. Public metadata is a snapshot.
+            operation.report = {"origin": self.origin, "policy": provenance,
+                "verdict": operation.verdict, "raw_evidence": operation.raw_evidence}
+            with self._bound_lock:
+                if self._closed or cancellation.is_set():
+                    raise ConfidentialError("the bound gateway operation was cancelled")
+                self._bound_connections.add(operation)
             yield operation
         finally:
-            operation.close()
+            cancellation.set()
+            if operation is not None:
+                operation.close()
             with self._bound_lock:
-                self._bound_connections.discard(operation)
+                self._bound_cancellations.discard(cancellation)
+                if operation is not None:
+                    self._bound_connections.discard(operation)
 
     def _refuse_gateway_replacement(self, value: Any) -> None:
         if self._required_gateway_verification is not None and value is not None and value is not True:
@@ -754,7 +798,7 @@ class ConfidentialClient(MediaOwner):
         arguments :meth:`verify_gateway` accepts.
         """
         gateway_options = _gateway_option_to_kwargs(gateway)
-        gateway_report = ({"requested": True, "status": "ok", "verification_level": _operation.report["verdict"].verification_level, "reason": None, **_operation.report} if _operation else (
+        gateway_report = (freeze_gateway_report({"requested": True, "status": "ok", "verification_level": _operation.report["verdict"].verification_level, "reason": None, **_operation.report}) if _operation else (
             {"requested": False, "status": "not-requested", "verification_level": None, "reason": None}
             if gateway_options is None
             else self._gateway_hop(gateway_options)

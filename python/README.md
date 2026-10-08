@@ -55,20 +55,31 @@ with create_client(
     result = client.verify_route(model="venice-uncensored", provider="venice")
 ```
 
-Each operation verifies a fresh nonce-bound gateway quote before minting tickets.
-Its private content client checks normal certificate trust, hostname and the
-attested TLS key before HTTP dispatch. Provider evidence, encrypted chat and
-image/speech use that transport; control remains separate. Expiry is checked
-before tickets and again after TLS. Custom clients, proxies, redirect overrides
+Each operation opens one normally validated TLS connection and verifies a fresh
+nonce-bound gateway quote on that connection before minting tickets. Provider
+evidence, encrypted chat and image/speech keep that same connection; control
+remains separate. Approval/evidence expiry and cancellation are checked before
+tickets and immediately before content writes. Custom clients, proxies, redirect overrides
 and per-call disabling are refused. A `threading.Event` supplied as `cancel_event`
 cancels only that operation; completing or closing it never replays inference.
 
 Standalone `verify_gateway()` reports evidence and does not bind a later generic
 HTTP client. Ordinary mode remains unchanged. Required binding is sync only; DNS
-resolution cannot be interrupted and ordinary control/evidence I/O still obeys
-HTTPX timeouts. Per-operation quote capacity and deployment switching remain
-unaccepted: a quote from A followed by a socket routed to B safely refuses, which
-can visibly fail a request during cache convergence. The candidate is unpublished.
+resolution and foreign verification/policy threads cannot be physically joined by
+cancellation. Closing the client signals both preparing and active bound
+operations, preventing their late completion from admitting tickets or content;
+bytes already dispatched cannot be recalled. A final paid response that closes
+its connection can finish through the complete body or streaming DONE marker.
+Earlier quote/provider close responses refuse reuse. Reports use private
+read-only snapshots with attribute access and `as_dict()`, rather than original
+dataclass instances; default and standalone evidence reports retain their types.
+
+The retained connection removes the A-quote/B-new-connection race during a DNS
+switch. Paid dispatch has a maximum 180-second admission window from connection
+setup, shortened by approval/evidence expiry. Deployment retirement must retain
+the old serving slot through routing convergence and that window, then let
+admitted streams finish. Platform bounds, native quote capacity and actual
+deployment continuity remain unaccepted. The candidate is unpublished.
 
 ## Provider crypto (protocols)
 

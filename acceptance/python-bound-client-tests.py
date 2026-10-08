@@ -58,7 +58,7 @@ class NativeBoundary:
         return Prepared()
 
 class LocalServer:
-    def __init__(self, handler, fixture=None, initial='a'):
+    def __init__(self, handler, fixture=None, initial='a', host='127.0.0.1', port=0):
         self.handler,self.fixture,self.active=handler,fixture,initial
         self.contexts={}
         self.pins={}
@@ -69,9 +69,11 @@ class LocalServer:
                 self.contexts[name]=context
                 cert=x509.load_pem_x509_certificate((fixture/f'{name}.pem').read_bytes())
                 self.pins[name]=hashlib.sha256(cert.public_key().public_bytes(Encoding.DER,PublicFormat.SubjectPublicKeyInfo)).hexdigest()
-        self.socket=socket.socket();self.socket.bind(('127.0.0.1',0));self.socket.listen();self.socket.settimeout(.05)
+        self.socket=socket.socket(socket.AF_INET6 if ':' in host else socket.AF_INET);
+        if ':' in host:self.socket.setsockopt(socket.IPPROTO_IPV6,socket.IPV6_V6ONLY,1)
+        self.socket.bind((host,port));self.socket.listen();self.socket.settimeout(.05)
         self.origin=f'{"https" if fixture else "http"}://127.0.0.1:{self.socket.getsockname()[1]}'
-        self.stop=threading.Event();self.sockets=set();self.threads=[];self.lock=threading.Lock();self.bytes={'a':0,'b':0};self.errors=[]
+        self.stop=threading.Event();self.sockets=set();self.threads=[];self.lock=threading.Lock();self.bytes={'a':0,'b':0};self.handshakes={'a':0,'b':0};self.errors=[]
         self.thread=threading.Thread(target=self.accept,daemon=True);self.thread.start()
     def accept(self):
         while not self.stop.is_set():
@@ -85,21 +87,25 @@ class LocalServer:
         try:
             if self.fixture:conn=self.contexts[slot].wrap_socket(raw,server_side=True)
             with self.lock:self.sockets.discard(raw);self.sockets.add(conn)
+            if self.fixture:self.handshakes[slot]+=1
             data=b''
-            while b'\r\n\r\n' not in data:
-                chunk=conn.recv(4096)
-                if not chunk:return
-                data+=chunk
-                if self.fixture:self.bytes[slot]+=len(chunk)
-            head,body=data.split(b'\r\n\r\n',1)
-            lines=head.decode().split('\r\n');method,path,_=lines[0].split(' ')
-            headers=dict(line.lower().split(': ',1) for line in lines[1:]);length=int(headers.get('content-length','0'))
-            while len(body)<length:
-                chunk=conn.recv(4096)
-                if not chunk:return
-                body+=chunk
-                if self.fixture:self.bytes[slot]+=len(chunk)
-            self.handler(self,conn,slot,method,path,headers,body)
+            while not self.stop.is_set():
+                while b'\r\n\r\n' not in data:
+                    chunk=conn.recv(4096)
+                    if not chunk:return
+                    data+=chunk
+                    if self.fixture:self.bytes[slot]+=len(chunk)
+                head,data=data.split(b'\r\n\r\n',1)
+                lines=head.decode().split('\r\n');method,path,_=lines[0].split(' ')
+                headers=dict(line.lower().split(': ',1) for line in lines[1:]);length=int(headers.get('content-length','0'))
+                while len(data)<length:
+                    chunk=conn.recv(4096)
+                    if not chunk:return
+                    data+=chunk
+                    if self.fixture:self.bytes[slot]+=len(chunk)
+                body,data=data[:length],data[length:]
+                self.handler(self,conn,slot,method,path,headers,body)
+                if headers.get('connection','').lower()=='close':return
         except (OSError,ssl.SSLError):pass
         except Exception as exc:
             self.errors.append(type(exc).__name__)
@@ -116,10 +122,10 @@ class LocalServer:
         self.thread.join(1)
         for t in self.threads:t.join(1)
 
-def send(conn, body, content_type='application/json', status=200):
+def send(conn, body, content_type='application/json', status=200, close=False):
     if isinstance(body,(dict,list)):body=json.dumps(body).encode()
     if isinstance(body,str):body=body.encode()
-    conn.sendall(f'HTTP/1.1 {status} OK\r\nContent-Type: {content_type}\r\nConnection: close\r\nContent-Length: {len(body)}\r\n\r\n'.encode()+body)
+    conn.sendall(f'HTTP/1.1 {status} OK\r\nContent-Type: {content_type}\r\nConnection: {'close' if close else 'keep-alive'}\r\nContent-Length: {len(body)}\r\n\r\n'.encode()+body)
 
 def policy(origin):
     return load_gateway_policy({'source':'synthetic-client-policy','version':'1','origins':[origin],'appIds':[APP],'composeHashes':[COMPOSE],'releaseIds':[RELEASE],'keyProviderId':KMS,
@@ -132,8 +138,9 @@ def evidence(origin,nonce,pin):
         'event_log':LOG.as_json(),'app_compose':MANIFEST,'vm_config':build_vm_config(),'issued_at_ms':int(time.time()*1000)}
 
 class Topology:
-    def __init__(self,fixture,*,start='a',switch=False,hold=False,stream=False,cancel=None,expiry_stage=None,expiry_advance=300001,media_delay=0):
+    def __init__(self,fixture,*,start='a',switch=False,hold=False,stream=False,cancel=None,expiry_stage=None,expiry_advance=300001,media_delay=0,paid_close=False,quote_close=False,provider_close=False,dns_switch=False):
         self.gateway=0;self.nonces=[];self.att=0;self.paid=0;self.content=[];self.control=[];self.gate=threading.Event();self.gateway_seen=threading.Event();self.stream_seen=threading.Event()
+        self.spare=None;self.dns_patch=None;self.lookups=0;self.dns_target='127.0.0.1'
         self.cancel=cancel;self.clock=[time.time()];self.clock_patch=patch('time.time',lambda:self.clock[0]) if expiry_stage else None
         if self.clock_patch:self.clock_patch.start()
         def content(server,conn,slot,method,path,headers,raw):
@@ -142,12 +149,12 @@ class Topology:
                 self.gateway+=1;nonce=parse_qs(parsed.query)['nonce'][0];self.nonces.append(nonce)
                 doc=evidence(server.origin,nonce,server.pins[slot])
                 if switch:server.active='b'
-                send(conn,doc);self.gateway_seen.set();return
+                send(conn,doc,close=quote_close);self.dns_target='::1' if dns_switch else self.dns_target;self.gateway_seen.set();return
             self.content.append((parsed.path,slot,headers,raw))
             if parsed.path=='/v1/tee/attestation':
                 nonce=json.loads(raw)['nonce'];doc={'provider':'venice','model':MODEL,'upstream_model':MODEL,'privacy_class':'e2ee','protocol':'venice-legacy','evidence':venice_evidence(nonce,MODEL)}
                 if expiry_stage=='provider':self.clock[0]+=expiry_advance/1000
-                send(conn,doc)
+                send(conn,doc,close=provider_close)
             elif parsed.path=='/v1/chat/completions':
                 request=json.loads(raw)
                 for m in request['messages']:assert venice.decrypt(m['content'],ENCLAVE_PRIV)=='synthetic-content-canary'
@@ -155,19 +162,30 @@ class Topology:
                 wire=''.join('data: '+json.dumps({'choices':[{'delta':{'content':venice.encrypt_field(delta,ENCLAVE_PRIV,pub)}}]})+'\n\n' for delta in ['Hello ','E2EE'])
                 wire+='data: '+json.dumps({'choices':[{'delta':{},'finish_reason':'stop'}],'usage':{'prompt_tokens':5,'completion_tokens':2,'total_tokens':7}})+'\n\ndata: [DONE]\n\n'
                 if stream:
-                    conn.sendall(f'HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {len(wire.encode())}\r\nConnection: close\r\n\r\n'.encode())
+                    conn.sendall(f'HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {len(wire.encode())}\r\nConnection: {'close' if paid_close else 'keep-alive'}\r\n\r\n'.encode())
                     for i,frame in enumerate(wire.split('\n\n')):
                         if not frame:continue
                         conn.sendall((frame+'\n\n').encode())
                         if i==0:self.stream_seen.set()
                         time.sleep(.04)
-                else:send(conn,wire,'text/event-stream')
+                else:send(conn,wire,'text/event-stream',close=paid_close)
             elif parsed.path=='/v1/images/generations':
                 if media_delay:time.sleep(media_delay)
-                send(conn,{'created':1,'data':[{'b64_json':'aGVsbG8=','mime_type':'image/png'}]})
-            elif parsed.path=='/v1/audio/speech':send(conn,b'\x01\x02\x03','audio/mpeg')
+                send(conn,{'created':1,'data':[{'b64_json':'aGVsbG8=','mime_type':'image/png'}]},close=paid_close)
+            elif parsed.path=='/v1/audio/speech':send(conn,b'\x01\x02\x03','audio/mpeg',close=paid_close)
             else:send(conn,{},status=404)
         self.content_server=LocalServer(content,fixture,start)
+        if dns_switch:
+            port=self.content_server.socket.getsockname()[1]
+            self.spare=LocalServer(content,fixture,'b',host='::1',port=port)
+            self.content_server.origin=self.spare.origin=f'https://localhost:{port}'
+            original=socket.getaddrinfo
+            def resolve(host,port,*args,**kwargs):
+                if host=='localhost':
+                    self.lookups+=1
+                    return original(self.dns_target,port,*args,**kwargs)
+                return original(host,port,*args,**kwargs)
+            self.dns_patch=patch('socket.getaddrinfo',resolve);self.dns_patch.start()
         def control(server,conn,slot,method,path,headers,raw):
             self.control.append((path,headers,raw));payload=json.loads(raw)
             if path=='/v1/inference/attestation-tickets':
@@ -187,6 +205,8 @@ class Topology:
         self.client=create_client(**self.options)
     def close(self):
         self.gate.set();self.client.close();self.content_server.close();self.control_server.close()
+        if self.spare:self.spare.close()
+        if self.dns_patch:self.dns_patch.stop()
         if self.clock_patch:self.clock_patch.stop()
     def chat(self, **kwargs):return self.client.chat(MODEL,'venice',[{'role':'user','content':'synthetic-content-canary'}],32,**kwargs)
 
@@ -207,9 +227,11 @@ class BoundClientTests(unittest.TestCase):
     def topology(self,**kwargs):
         t=Topology(self.fixture,**kwargs);self.addCleanup(t.close);return t
     def test_a_quote_b_socket_zero_http(self):
-        t=self.topology(switch=True)
-        with self.assertRaises(Exception):t.chat()
-        self.assertEqual(t.content_server.bytes['b'],0);self.assertEqual(t.content,[]);self.assertEqual(t.paid,0)
+        t=self.topology(dns_switch=True)
+        self.assertEqual(t.chat()['content'],'Hello E2EE')
+        self.assertEqual(t.spare.bytes['b'],0);self.assertEqual(t.spare.handshakes['b'],0)
+        self.assertEqual(t.content_server.handshakes['a'],1);self.assertEqual(t.lookups,1)
+        self.assertEqual([x[1] for x in t.content],['a','a']);self.assertEqual(t.paid,1)
     def test_approved_b_encrypted_chat(self):
         t=self.topology(start='b');result=t.chat()
         self.assertEqual(result['content'],'Hello E2EE');self.assertEqual(t.paid,1)
@@ -225,16 +247,17 @@ class BoundClientTests(unittest.TestCase):
             for f in [first,second]:
                 try:results.append(f.result())
                 except Exception:results.append(None)
-        self.assertEqual(sum(x is not None for x in results),1);self.assertEqual(t.paid,1);self.assertEqual(len(set(t.nonces)),2)
+        self.assertEqual(sum(x is not None for x in results),2);self.assertEqual(t.paid,2);self.assertEqual(len(set(t.nonces)),2)
     def test_bound_image_speech(self):
         t=self.topology(start='b');image=t.client.images.generate(model='synthetic-image',prompt='synthetic-image-canary');audio=t.client.audio.speech.create(model='synthetic-speech',input='synthetic-speech-canary')
         self.assertEqual(audio.audio,b'\x01\x02\x03');self.assertEqual(t.paid,2);self.assertEqual(len(set(t.nonces)),2)
         self.assertEqual([x[0] for x in t.content],['/v1/images/generations','/v1/audio/speech'])
         self.assertNotIn(b'canary',b''.join(x[2] for x in t.control))
     def test_media_replaced_key_no_paid_replay(self):
-        t=self.topology(switch=True)
-        with self.assertRaises(Exception):t.client.images.generate(model='synthetic-image',prompt='must-not-arrive')
-        self.assertEqual(t.content_server.bytes['b'],0);self.assertEqual(t.paid,1);self.assertEqual(t.content,[])
+        t=self.topology(dns_switch=True)
+        t.client.images.generate(model='synthetic-image',prompt='synthetic-image')
+        self.assertEqual(t.spare.bytes['b'],0);self.assertEqual(t.paid,1);self.assertEqual([x[1] for x in t.content],['a'])
+        self.assertEqual(t.lookups,1);self.assertEqual(t.content_server.handshakes['a'],1)
     def test_required_cannot_disable(self):
         t=self.topology()
         with self.assertRaisesRegex(Exception,'cannot disable'):t.chat(require_gateway=False)
@@ -343,6 +366,72 @@ class BoundClientTests(unittest.TestCase):
             operation=pool.submit(t.chat);self.assertTrue(t.stream_seen.wait(2));t.client.close()
             with self.assertRaises(Exception):operation.result(2)
         self.assertEqual(t.paid,1)
+    def test_client_close_during_initial_policy_blocks_even_quote_http(self):
+        t=self.topology();entered=threading.Event();release=threading.Event();original=t.client._resolve_gateway_policy
+        def pending(*args,**kwargs):
+            entered.set();release.wait(2);return original(*args,**kwargs)
+        t.client._resolve_gateway_policy=pending
+        with concurrent.futures.ThreadPoolExecutor(1) as pool:
+            result=pool.submit(t.chat)
+            try:
+                self.assertTrue(entered.wait(1));t.client.close()
+                self.assertFalse(result.done())  # close does not join foreign policy work.
+            finally:release.set()
+            with self.assertRaises(Exception):result.result(2)
+        self.assertEqual(t.gateway,0);self.assertEqual(t.att,0);self.assertEqual(t.paid,0);self.assertEqual(t.content,[])
+        self.assertEqual(t.content_server.handshakes['a'],0)
+    def test_client_close_during_native_prepare_signals_private_operation(self):
+        t=self.topology();entered=threading.Event();release=threading.Event();finished=threading.Event();caller=threading.Event()
+        class Native(NativeBoundary):
+            def prepare(self,quote,**kwargs):
+                entered.set();release.wait(2)
+                try:return super().prepare(quote,**kwargs)
+                finally:finished.set()
+        client=create_client(**{**t.options,'gateway_connection_binding':{'mode':'required','verification':{'policy':policy(t.content_server.origin),'chain_verifier':Native()}}});self.addCleanup(client.close)
+        with concurrent.futures.ThreadPoolExecutor(1) as pool:
+            result=pool.submit(client.chat,MODEL,'venice',[{'role':'user','content':'synthetic-content-canary'}],32,cancel_event=caller)
+            try:
+                self.assertTrue(entered.wait(1));before=t.content_server.bytes['a'];client.close()
+                with self.assertRaises(Exception):result.result(1)
+                self.assertFalse(caller.is_set());self.assertFalse(finished.is_set())
+                self.assertEqual(t.content_server.bytes['a'],before)
+            finally:release.set()
+            self.assertTrue(finished.wait(1))
+        self.assertEqual(t.gateway,1);self.assertEqual(t.att,0);self.assertEqual(t.paid,0);self.assertEqual(t.content,[])
+    def test_client_close_during_quote_body_stops_owned_socket(self):
+        t=self.topology();entered=threading.Event();release=threading.Event();original=t.content_server.handler
+        def pending(server,conn,slot,method,path,headers,raw):
+            if urlsplit(path).path=='/v1/gateway/attestation':entered.set();release.wait(2)
+            return original(server,conn,slot,method,path,headers,raw)
+        t.content_server.handler=pending
+        with concurrent.futures.ThreadPoolExecutor(1) as pool:
+            result=pool.submit(t.chat)
+            try:
+                self.assertTrue(entered.wait(1));before=t.content_server.bytes['a'];t.client.close()
+                with self.assertRaises(Exception):result.result(1)
+                self.assertEqual(t.content_server.bytes['a'],before)
+            finally:release.set()
+        self.assertEqual(t.att,0);self.assertEqual(t.paid,0);self.assertEqual(t.content,[])
+    def test_client_close_during_policy_refresh_cannot_admit_late_result(self):
+        from dataclasses import replace
+        t=self.topology();entered=threading.Event();release=threading.Event();finished=threading.Event()
+        class Source(SignedGatewayPolicySource):
+            def __init__(self):pass
+            def resolve(self,origin,force_refresh=False,**kwargs):
+                if force_refresh:
+                    entered.set();release.wait(2);finished.set()
+                current=policy(origin) if force_refresh else replace(policy(origin),compose_hashes=['ff'*32])
+                return {'policy':current,'authority':'synthetic-NOT-signed','sequence':2 if force_refresh else 1,'payloadSha256':'ab'*32,'expiresAtMs':time.time()*1000+10000}
+        client=create_client(**{**t.options,'gateway_policy_updates':Source(),'gateway_connection_binding':{'mode':'required','verification':{'chain_verifier':NativeBoundary()}}});self.addCleanup(client.close)
+        with concurrent.futures.ThreadPoolExecutor(1) as pool:
+            result=pool.submit(client.chat,MODEL,'venice',[{'role':'user','content':'synthetic-content-canary'}],32)
+            try:
+                self.assertTrue(entered.wait(1));before=t.content_server.bytes['a'];client.close()
+                with self.assertRaises(Exception):result.result(1)
+                self.assertFalse(finished.is_set());self.assertEqual(t.content_server.bytes['a'],before)
+            finally:release.set()
+            self.assertTrue(finished.wait(1))
+        self.assertEqual(t.gateway,1);self.assertEqual(t.att,0);self.assertEqual(t.paid,0);self.assertEqual(t.content,[])
     def test_stream_deadline_remains_active_without_retry(self):
         t=self.topology(start='b',stream=True)
         client=create_client(**{**t.options,'timeout':.07});self.addCleanup(client.close)
@@ -361,5 +450,56 @@ class BoundClientTests(unittest.TestCase):
         with httpx.Client(transport=transport,trust_env=False) as client:
             with self.assertRaises(BoundGatewayTransportError) as result:client.post(t.content_server.origin+'/inference',content=b'must-not-arrive')
         self.assertEqual(result.exception.code,'authorization');self.assertEqual(result.exception.dispatch_phase,'before_http');self.assertEqual(t.content_server.bytes['b'],0)
+
+    def test_final_paid_close_wholebody_and_stream(self):
+        image=self.topology(dns_switch=True,paid_close=True)
+        image.client.images.generate(model='synthetic-image',prompt='synthetic-image')
+        self.assertEqual(image.paid,1);self.assertEqual(image.content_server.handshakes['a'],1);self.assertEqual(image.spare.bytes['b'],0)
+        stream=self.topology(dns_switch=True,paid_close=True,stream=True)
+        self.assertEqual(stream.chat()['content'],'Hello E2EE')
+        self.assertEqual(stream.paid,1);self.assertEqual(stream.content_server.handshakes['a'],1);self.assertEqual(stream.spare.bytes['b'],0)
+        self.assertEqual([x[1] for x in stream.content],['a','a'])
+    def test_refresh_original_quote_preserves_provenance_and_immutable_raw_report(self):
+        from dataclasses import replace
+        t=self.topology(dns_switch=True);origin=t.content_server.origin;issued=time.time()*1000;calls=[];prepared=[]
+        class Native(NativeBoundary):
+            def prepare(self,quote,**kwargs):prepared.append(quote);return super().prepare(quote,**kwargs)
+        class Source(SignedGatewayPolicySource):
+            def __init__(self):pass
+            def resolve(self,origin,force_refresh=False,**kwargs):
+                calls.append(force_refresh)
+                current=policy(origin) if force_refresh else replace(policy(origin),compose_hashes=['ff'*32])
+                return {'policy':current,'authority':'synthetic-NOT-signed','sequence':2 if force_refresh else 1,'payloadSha256':('aa' if force_refresh else 'ab')*32,'expiresAtMs':issued+10000}
+        client=create_client(**{**t.options,'gateway_policy_updates':Source(),'gateway_connection_binding':{'mode':'required','verification':{'chain_verifier':Native()}}});self.addCleanup(client.close)
+        report=client.verify(MODEL,'venice')
+        self.assertTrue(report['trusted']);self.assertEqual(report['gateway']['policy']['sequence'],2);self.assertEqual(report['gateway']['policy']['expiresAtMs'],issued+10000)
+        self.assertEqual(calls,[False,True]);self.assertEqual(len(prepared),1);self.assertEqual(t.gateway,1);self.assertEqual(t.lookups,1)
+        self.assertEqual(t.content_server.handshakes['a'],1);self.assertEqual(t.spare.bytes['b'],0)
+        with self.assertRaises(TypeError):report['gateway']['raw_evidence']['binding']['nonce']='wrong'
+        gateway=report['gateway'];verdict=gateway['verdict']
+        for mutate in [lambda:gateway.__setitem__('status','failed'),lambda:gateway['policy'].__setitem__('sequence',99),
+                       lambda:setattr(verdict,'status','failed'),lambda:setattr(verdict.binding,'nonce','wrong'),
+                       lambda:setattr(verdict.checks[0],'passed',False),lambda:verdict.measurements.__setitem__('mrTd','wrong'),
+                       lambda:verdict.as_dict()['binding'].__setitem__('nonce','wrong'),
+                       lambda:verdict.as_dict()['checks'][0].__setitem__('passed',False)]:
+            with self.assertRaises(TypeError):mutate()
+        self.assertIsInstance(verdict.checks,tuple)
+        self.assertEqual(json.loads(json.dumps(verdict.as_dict()))['status'],'ok')
+        self.assertEqual(json.loads(json.dumps(gateway['raw_evidence']))['binding']['nonce'],verdict.binding.nonce)
+        self.assertEqual(verdict.status,'ok');self.assertEqual(gateway['policy']['sequence'],2)
+        self.assertEqual(t.paid,0)
+    def test_refreshed_downgrade_or_expiry_before_tickets(self):
+        from dataclasses import replace
+        for mode in ['downgrade','expiry']:
+            with self.subTest(mode=mode):
+                t=self.topology();issued=time.time()*1000
+                class Source(SignedGatewayPolicySource):
+                    def __init__(self):pass
+                    def resolve(self,origin,force_refresh=False,**kwargs):
+                        current=replace(policy(origin),compose_hashes=['ff'*32]) if not force_refresh else replace(policy(origin),require_hardware_verified=mode!='downgrade')
+                        return {'policy':current,'authority':'synthetic-NOT-signed','sequence':2 if force_refresh else 1,'payloadSha256':'ab'*32,'expiresAtMs':issued-1 if force_refresh and mode=='expiry' else issued+10000}
+                client=create_client(**{**t.options,'gateway_policy_updates':Source(),'gateway_connection_binding':{'mode':'required','verification':{'chain_verifier':NativeBoundary()}}});self.addCleanup(client.close)
+                with self.assertRaises(Exception):client.chat(MODEL,'venice',[{'role':'user','content':'synthetic-content-canary'}],32)
+                self.assertEqual(t.gateway,1);self.assertEqual(t.att,0);self.assertEqual(t.paid,0);self.assertEqual(t.content,[])
 
 if __name__=='__main__':unittest.main(verbosity=2)
