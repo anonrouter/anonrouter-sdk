@@ -138,9 +138,97 @@ hardware-qualified), relayed by the coordinator on 2026-10-08:
    digest and verity root beside each tuple.
 4. Evidence may later add an advisory `gcp_boot.ccel_base64`; the SDK ignores it.
 
-SDK assumption to confirm with that worker: `instance_id` is SHA-256 over the
-raw 32-byte Ed25519 public key (the hex-decoded `public_key`). A different
-encoding fails closed.
+`instance_id` is SHA-256 over the raw 32-byte Ed25519 public key (the
+hex-decoded `public_key`). The coordinator confirmed this against the guest:
+`broker.rs` hashes `self.boot_key()`, which returns those 32 bytes.
+
+## Signed approval preparation (`scripts/gateway-policy-release.mjs`)
+
+Preparation never reads a key, signs or publishes. The signed payload schema is
+unchanged (`anonrouter.gateway-policy/v1`), so existing production legacy
+approvals and verifiers are untouched.
+
+- **Legacy policy:** `prepare --manifest <m> ...` behaves exactly as before. It
+  refuses any tuple-form document.
+- **phala-dstack-kms overlap tuples:** `prepare --manifests <m1>,<m2> ...`.
+  Each release-manifest/v2 must be a finalized, clean, in-TEE-TLS hardware
+  manifest whose `app_compose` hashes to its measured compose hash. Every tuple
+  must match exactly one manifest on release id, app id, compose hash, OS image
+  and `MRCONFIGID = 01 || compose hash || 00*15`, and every manifest must back
+  at least one tuple. The approval's `manifestSha256` is the SHA-256 of a
+  canonical `anonrouter.release-manifest-set/v1` document listing the manifest
+  digests, and `policy.source` must name it. Tuples already expired at issue
+  time are refused. Besides the payload and signing bytes, the tool writes
+  `<out>.manifest-set.json` and `<out>.review.json`. The review lists MRTD,
+  RTMR0..RTMR2 and the KMS key-provider payload as **unbound**:
+  release-manifest/v2 does not record them, so a reviewer must compare them with
+  retained, natively DCAP-verified quotes before anyone signs.
+- **gcp-tdx-native:** `prepare` refuses it. `qualify-gcp --policy <p>
+  --evidence <bundle> --unqualified-platform-pilot acknowledged [--dcap-binary
+  <engine>] --out <candidate>` writes a **non-signable** qualification
+  candidate (`anonrouter.gateway-policy-qualification-candidate/v1`,
+  `signable: false`). It has no payload, sequence or signing bytes, and the feed,
+  the packaged registry and every client refuse the platform kind regardless.
+
+### GCP qualification candidate: what the tool recomputes
+
+For each reference boot in an `anonrouter.gcp-qualification-evidence/v1` bundle
+(the reference boot's gateway_attest JSON, its CCEL, its UKI, the baked compose,
+retained Intel collateral and, optionally, `ar-guest-verify reference` output),
+the tool recomputes from bytes:
+
+| Check | Meaning |
+|---|---|
+| `quote_parsed`, `quote_not_debug` | A TDX v4 quote, debug bit clear |
+| `report_data_binds_binding` | SHA-512 of the binding equals the quote's report_data |
+| `binding_correlates_with_tuple` | release id, verity-root app id and compose hash equal the tuple; in-TEE TLS; authorized origin |
+| `instance_id_derives_from_boot_key` | SHA-256 of the 32-byte Ed25519 boot key |
+| `quote_registers_match_tuple` | MRTD, RTMR0..RTMR2 and td_attributes exactly |
+| `rtmr3_unextended`, `owner_config_registers_zero` | RTMR3, MRCONFIGID, MROWNER, MROWNERCONFIG are zero |
+| `native_dcap_verified` | The tool ran the native DCAP engine on retained collateral: verified, UpToDate, no advisories, engine and SDK agree on the TD report. A verdict file is never accepted. |
+| `uki_parsed`, `uki_cmdline_names_verity_root`, `uki_cmdline_hardened` | `.linux`, `.initrd`, `.cmdline` present; one `dstack.rootfs_hash` equal to the tuple app id; no override, debug or rescue token; nothing after the NUL |
+| `ccel_replays_quote` | Strict TCG crypto-agile parse; replay equals RTMR0..RTMR3 |
+| `rtmr1_boot_application_is_uki` | Exactly one RTMR1 boot application, equal to the UKI's EDK2 Authenticode SHA-384 (hardware gate N1) |
+| `ccel_events_classified` | Self-describing events hash to their data; no unknown types; no unlisted code |
+| `compose_digest_matches_tuple` | SHA-256 of the compose bytes equals the tuple compose hash |
+| `native_reference_digests_agree` | `ar-guest-verify reference` names the same quote, UKI Authenticode and register digests; its booleans are not read |
+
+The CCEL, Authenticode and UKI code is an independent JavaScript
+implementation (`scripts/gateway-qualification.mjs`). On deterministic synthetic
+artifacts it reproduces the native Rust verifier's Authenticode digest
+(including a certificate-table variant), replay, classification and proposed
+pin exactly; `scripts/fixtures/gcp-qualification/native-reference.json` records
+that agreement and its provenance.
+
+### Promotion gate
+
+A candidate is `promotable` only when every gate is `satisfied`. Today P8 is
+unmet by construction, so nothing produced by the tool can be promoted.
+
+| Gate | Status source |
+|---|---|
+| P1 every tuple has a reference boot whose locally recomputed checks all pass | tool |
+| P2 native DCAP run by the tool on every reference quote | tool (needs `--dcap-binary` and retained collateral) |
+| P3 hardware gate N1, derived from P2 plus CCEL replay and the single-UKI RTMR1 check | tool, never asserted |
+| P4 `ar-guest-verify reference` digests agree | tool (needs the native output) |
+| P5 `ar-guest-verify release-check` accepts the exact UKI, rootfs, app manifest, compose and images, and its verity root equals each app id | external; the candidate lists the verity root and compose digest it must name |
+| P6 a Google-signed launch endorsement for every MRTD | external; the candidate lists the MRTDs |
+| P7 an independent rebuild reproduces each UKI Authenticode digest | external; the candidate lists the digests |
+| P8 a reviewed SDK release sets `GATEWAY_PLATFORM_QUALIFIED["gcp-tdx-native"]` and defines tuple-form signed approval for GCP | unmet |
+
+## Same-socket streaming review
+
+- An admitted paid request streams on the retained socket until its own request
+  deadline: Node 900 seconds by default, Python the client `timeout` (300 seconds
+  by default) as a whole-request deadline. Evidence or approval expiry gates
+  only dispatch and never cuts an admitted stream. No path reconnects, replays a
+  paid request or retries a fetch after HTTP was written; the only retry is one
+  fresh preparation after a joined initial-connection failure before any HTTP.
+- Policy refresh happens at most once per operation, inside the bounded
+  preparation, and re-verifies the same nonce-bound evidence on the same socket.
+- **Fixed:** in both languages a refresh that returned no approval expiry turned
+  a bounded approval into an unbounded one. A bounded approval now stays
+  bounded; the refresh is refused instead (`configuration`).
 
 ## Gaps and gates
 
@@ -148,10 +236,12 @@ encoding fails closed.
   quote on stock Ubuntu, not the AnonRouter guest. Hardware gate N1 (Google
   firmware measures the UKI Authenticode digest into RTMR1 with the vTPM
   present) is still open, so no GCP tuple can be written yet.
-- Qualifying the platform requires a reviewed SDK release that flips
-  `GATEWAY_PLATFORM_QUALIFIED`, with real tuples, and a reviewed procedure for
-  preparing tuple-form signed approvals. `scripts/gateway-policy-release.mjs`
-  refuses tuple-form policies until then.
+- Qualifying the platform requires promotion gates P2 to P8 on real hardware
+  artifacts, then a reviewed SDK release that flips `GATEWAY_PLATFORM_QUALIFIED`
+  and defines GCP tuple-form signed approval. Until then GCP preparation yields
+  only a non-signable candidate.
+- Phala overlap approvals bind MRTD, RTMR0..RTMR2 and the key-provider payload
+  only through human review; release-manifest/v2 does not record them.
 - TCB remains exactly `UpToDate`. A lag between an Intel TCB recovery and
   Google's firmware rollout will fail closed; any widening is a separate reviewed
   decision.
@@ -172,6 +262,15 @@ encoding fails closed.
   `acceptance/python-bound-client-tests.py`: pilot success on the retained
   socket; another node's key, and an unapproved firmware register, both refused
   with zero tickets and zero content; no pilot refused before any connection.
+- `scripts/test-gateway-policy-release.mjs`: legacy preparation, a 2-of-2
+  signed Phala overlap approval verified in JavaScript (and Python when
+  `ANONROUTER_PYTHON` is set), and ten tuple refusals.
+- `scripts/test-gateway-qualification.mjs`: native-agreed known answers, CCEL
+  and UKI refusals, and non-signable candidates with a synthetic DCAP test
+  double (not Intel verification).
+- `acceptance/retained-operation-node.test.mjs` and
+  `acceptance/python-retained-tests.py`: a bounded approval cannot become
+  unbounded through refresh; both fail without the fix.
 - `scripts/smoke-artifacts.mjs` checks that installed npm, wheel and sdist
   artifacts keep gcp-tdx-native unqualified and the shipped pin legacy-form.
 

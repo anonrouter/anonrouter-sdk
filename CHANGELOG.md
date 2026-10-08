@@ -27,6 +27,12 @@ environment on each CI run, so every published format is exercised.
   boot-key-derived instance id and mandatory same-socket TLS key binding. It is not
   qualified: the packaged registry and signed feed refuse it, and a caller policy
   needs an explicit pilot opt-in. See `docs/gateway-platform-tuples.md`.
+- Release tooling prepares signable phala-dstack-kms overlap approvals from a
+  retained manifest set with a reviewer report, and writes only non-signable
+  gcp-tdx-native qualification candidates that recompute quote, CCEL, UKI and
+  binding evidence against an explicit promotion gate.
+- A retained operation's policy refresh can no longer make a bounded approval
+  unbounded by omitting its expiry (JavaScript and Python).
 
 ## [0.1.2] - 2026-09-12
 

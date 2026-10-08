@@ -111,6 +111,10 @@ sequences or a changed payload at the same sequence. Results report
 
 ## Release tooling and activation gates
 
+Tuple-form preparation (Phala overlap approvals through a retained manifest set,
+and the non-signable GCP qualification candidate) is described in
+[gateway-platform-tuples.md](gateway-platform-tuples.md#signed-approval-preparation-scriptsgateway-policy-releasemjs).
+
 Build the SDK, then prepare from the independently retained accepted manifest
 and its generated strict gateway policy:
 
