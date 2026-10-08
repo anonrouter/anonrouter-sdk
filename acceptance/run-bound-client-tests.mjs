@@ -14,7 +14,7 @@ if (process.argv[3]) {
   packageRoot = await realpath(resolve(process.argv[3]));
   const metadata = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8'));
   if (metadata.name !== '@anonrouter/confidential' || metadata.version !== '0.1.3') throw new Error('Unexpected confidential artifact identity');
-  for (const name of ['client.js', 'gateway/connection-session.js', 'gateway/transport-node.js']) await readFile(join(packageRoot, 'dist', name));
+  for (const name of ['client.js', 'gateway/connection-session.js', 'gateway/transport-node.js', 'gateway/retained-operation-node.js']) await readFile(join(packageRoot, 'dist', name));
 }
 const fixture = await mkdtemp(join(root, '.bound-client-tls-'));
 const openssl = args => execFileSync('openssl', args, { cwd: fixture, stdio: 'ignore' });

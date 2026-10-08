@@ -87,9 +87,9 @@ console.log(reply.content);
 ## Required gateway connection binding in Node
 
 `gatewayConnectionBinding` is an opt-in Node mode. It verifies a fresh gateway
-quote for each operation and uses the verified quote's TLS key to check every
-connection carrying provider evidence, encrypted chat, image prompts or speech
-text. Normal certificate and hostname checks still apply. Control requests use
+quote for each operation on a normally validated TLS connection, checks that
+connection's key against the quote, and keeps the same connection for provider
+evidence, encrypted chat, image prompts or speech text. Control requests use
 the separate control origin. Approval and evidence expiry are checked before
 tickets and immediately before content dispatch.
 
@@ -97,20 +97,25 @@ This mode requires a hardware chain verifier, HTTPS and distinct control/content
 origins. It refuses custom `fetch`, browsers and per-call options that disable or
 replace the required verification. `gateway: true` and `requireGateway: true`
 retain the configured requirement. Streams keep their operation's checked
-identity until they finish or are cancelled. There is no automatic inference
-retry, ticket re-mint or replay.
+identity until they finish or are cancelled. An operation never reconnects to a
+replacement gateway or retries inference. A final response that closes its
+connection during draining is consumed through completion; an earlier close
+refuses further use before content. Signed-policy refresh rechecks the original
+quote and connection against the updated approved policy.
 
 `verifyGateway()` by itself verifies evidence; it does not bind a later generic
-HTTP connection. The default transport, Python clients, `@anonrouter/client` and
-external OpenAI clients do not inherit this Node option. Python transport work
-is still preparation, pending client integration.
+HTTP connection. The default transport, `@anonrouter/client` and external OpenAI
+clients do not inherit this Node option. Python has a separate synchronous
+binding option described in its [README](../../python/README.md).
 
 Operational acceptance remains pending. Fresh quotes per operation can hit the
 current service limit of 20 requests per client address per minute (240 aggregate).
-During a deployment switch, evidence from A followed by a connection to B is
-safely refused; that can still produce a visible failure. Local TLS tests do not
-prove deployment continuity or native quote capacity. Use this candidate mode
-only with the matching reviewed policy and operational capacity.
+The retained connection removes the A-quote/B-connect race during a DNS switch.
+The current operation allows at most 180 seconds from connection setup to paid
+dispatch; approval or evidence expiry can shorten that. Deployment retirement
+must preserve the old serving instance through routing convergence and that
+admission window, then allow admitted streams to finish. Local TLS tests do not
+establish the platform's routing bound, socket lifetime or native quote capacity.
 
 ## Images and speech
 

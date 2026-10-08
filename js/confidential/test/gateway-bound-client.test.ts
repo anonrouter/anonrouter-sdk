@@ -4,6 +4,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createServer as httpsServer } from "node:https";
 import { createServer as httpServer } from "node:http";
+import dns from "node:dns";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -60,11 +61,11 @@ const syntheticNativeBoundary = {
 };
 
 async function topology(options: { start?: string; switchOnEvidence?: boolean; holdAttestationTickets?: boolean;
-  expireAfterProviderEvidence?: boolean; expireAfterPaidTicket?: boolean; paidExpiryAdvanceMs?: number; streamDelayMs?: number } = {}) {
+  expireAfterProviderEvidence?: boolean; expireAfterPaidTicket?: boolean; paidExpiryAdvanceMs?: number; streamDelayMs?: number; dnsSwitch?: boolean; paidClose?: boolean } = {}) {
   let active = options.start ?? "a";
   const observed = { gateway: 0, nonces: [] as string[], attTickets: 0, paidTickets: 0,
     content: [] as Array<{ path: string; slot: string; body: string; authorization?: string }>,
-    bytes: { a: 0, b: 0 }, controlBodies: [] as string[] };
+    bytes: { a: 0, b: 0 }, handshakes: { a: 0, b: 0 }, lookups: 0, controlBodies: [] as string[] };
   const enclave = createVeniceMockEnclave(MODEL);
   const sockets = new Set<import("node:net").Socket>();
   let contentOrigin = "";
@@ -73,7 +74,19 @@ async function topology(options: { start?: string; switchOnEvidence?: boolean; h
   const clock = options.expireAfterProviderEvidence || options.expireAfterPaidTicket ? vi.spyOn(Date, "now") : null;
   const initial = Date.now();
   if (clock) clock.mockReturnValue(initial);
-  const content = httpsServer(keys[active], async (req, res) => {
+  let dnsTarget = "127.0.0.1";
+  if (options.dnsSwitch) {
+    const originalLookup = dns.lookup;
+    vi.spyOn(dns, "lookup").mockImplementation(((name: string, lookupOptions: unknown, callback?: unknown) => {
+      if (name !== "localhost") return (originalLookup as (...args: unknown[]) => unknown)(name, lookupOptions, callback);
+      observed.lookups++;
+      const cb = (typeof lookupOptions === "function" ? lookupOptions : callback) as (error: null, address: unknown, family?: number) => void;
+      const family = dnsTarget === "::1" ? 6 : 4;
+      const all = typeof lookupOptions === "object" && lookupOptions !== null && "all" in lookupOptions && lookupOptions.all;
+      queueMicrotask(() => all ? cb(null, [{ address: dnsTarget, family }]) : cb(null, dnsTarget, family));
+    }) as typeof dns.lookup);
+  }
+  const handler: import("node:http").RequestListener = async (req, res) => {
     const slot = fingerprint((req.socket as import("node:tls").TLSSocket).getCertificate().raw!) === pins.a ? "a" : "b";
     const url = new URL(req.url!, contentOrigin);
     let body = "";
@@ -83,10 +96,12 @@ async function topology(options: { start?: string; switchOnEvidence?: boolean; h
       const nonce = url.searchParams.get("nonce")!;
       observed.nonces.push(nonce);
       res.setHeader("content-type", "application/json");
-      res.end(JSON.stringify(evidence(contentOrigin, nonce, active)));
-      if (options.switchOnEvidence) { active = "b"; content.setSecureContext(keys.b); }
+      res.end(JSON.stringify(evidence(contentOrigin, nonce, slot)));
+      if (options.dnsSwitch) dnsTarget = "::1";
+      else if (options.switchOnEvidence) { active = "b"; content.setSecureContext(keys.b); }
       return;
     }
+    if (options.paidClose && url.pathname !== "/v1/tee/attestation") res.setHeader("connection", "close");
     observed.content.push({ path: url.pathname, slot, body,
       ...(req.headers.authorization ? { authorization: req.headers.authorization } : {}) });
     if (url.pathname === "/v1/tee/attestation") {
@@ -112,13 +127,18 @@ async function topology(options: { start?: string; switchOnEvidence?: boolean; h
       res.setHeader("content-type", "audio/mpeg");
       res.end(Buffer.from([1, 2, 3]));
     } else { res.writeHead(404); res.end(); }
-  });
-  content.on("secureConnection", socket => {
+  };
+  const content = httpsServer(keys[active], handler);
+  const spare = options.dnsSwitch ? httpsServer(keys.b, handler) : undefined;
+  const trackContent = (server: ReturnType<typeof httpsServer>) => server.on("secureConnection", socket => {
     sockets.add(socket); socket.once("close", () => sockets.delete(socket));
     const slot = fingerprint(socket.getCertificate().raw!) === pins.a ? "a" : "b";
+    observed.handshakes[slot]++;
     socket.on("data", chunk => { observed.bytes[slot] += chunk.length; });
   });
-  content.on("tlsClientError", () => {});
+  trackContent(content); if (spare) trackContent(spare);
+  content.keepAliveTimeout = 600_000; if (spare) spare.keepAliveTimeout = 600_000;
+  content.on("tlsClientError", () => {}); spare?.on("tlsClientError", () => {});
   const control = httpServer(async (req, res) => {
     let body = ""; for await (const chunk of req) body += chunk;
     observed.controlBodies.push(body);
@@ -138,12 +158,13 @@ async function topology(options: { start?: string; switchOnEvidence?: boolean; h
   });
   control.on("connection", socket => { sockets.add(socket); socket.once("close", () => sockets.delete(socket)); });
   await new Promise<void>(resolve => content.listen(0, "127.0.0.1", resolve));
+  if (spare) await new Promise<void>(resolve => spare.listen({ host: "::1", port: (content.address() as import("node:net").AddressInfo).port, ipv6Only: true }, resolve));
   await new Promise<void>(resolve => control.listen(0, "127.0.0.1", resolve));
-  contentOrigin = `https://127.0.0.1:${(content.address() as import("node:net").AddressInfo).port}`;
+  contentOrigin = `https://${options.dnsSwitch ? "localhost" : "127.0.0.1"}:${(content.address() as import("node:net").AddressInfo).port}`;
   const controlOrigin = `http://127.0.0.1:${(control.address() as import("node:net").AddressInfo).port}`;
   cleanup.push(async () => {
     for (const socket of sockets) socket.destroy();
-    await Promise.all([new Promise<void>(resolve => content.close(() => resolve())), new Promise<void>(resolve => control.close(() => resolve()))]);
+    await Promise.all([new Promise<void>(resolve => content.close(() => resolve())), new Promise<void>(resolve => control.close(() => resolve())), ...(spare ? [new Promise<void>(resolve => spare.close(() => resolve()))] : [])]);
   });
   const clientOptions: CreateClientOptions = { inferenceBaseUrl: contentOrigin, controlBaseUrl: controlOrigin,
     apiKey: "synthetic-control-only-key", allowInsecureHttp: true,
@@ -153,13 +174,16 @@ async function topology(options: { start?: string; switchOnEvidence?: boolean; h
 const chat = (signal?: AbortSignal) => ({ model: MODEL, provider: "venice", messages: [{ role: "user" as const, content: "synthetic-content-canary" }], maxOutputTokens: 32, ...(signal ? { signal } : {}) });
 
 describe("required gateway content connection wiring — synthetic native port, real TLS", () => {
-  it("A evidence then B socket sends zero HTTP bytes or provider/paid bodies to B", async () => {
-    const t = await topology({ switchOnEvidence: true });
-    await expect(t.client.chat(chat())).rejects.toThrow();
+  it("DNS switches A to B after quote but provider and paid bodies stay on one A socket", async () => {
+    const t = await topology({ dnsSwitch: true });
+    const result = await t.client.chat(chat());
+    expect(result.content).toBe("Hello E2EE");
     expect(t.observed.gateway).toBe(1);
     expect(t.observed.bytes.b).toBe(0);
-    expect(t.observed.content).toEqual([]);
-    expect(t.observed.paidTickets).toBe(0);
+    expect(t.observed.content.map(item => item.slot)).toEqual(["a", "a"]);
+    expect(t.observed.paidTickets).toBe(1);
+    expect(t.observed.handshakes).toEqual({ a: 1, b: 0 });
+    expect(t.observed.lookups).toBe(1);
   });
   it("verified B key binds provider evidence and one encrypted inference dispatch", async () => {
     const t = await topology({ start: "b" });
@@ -192,11 +216,11 @@ describe("required gateway content connection wiring — synthetic native port, 
   it("concurrent sessions on one client cannot replace A's pin with B's", async () => {
     const t = await topology({ switchOnEvidence: true, holdAttestationTickets: true });
     const outcomes = await Promise.allSettled([t.client.chat(chat()), t.client.chat(chat())]);
-    expect(outcomes.filter(item => item.status === "fulfilled")).toHaveLength(1);
-    expect(outcomes.filter(item => item.status === "rejected")).toHaveLength(1);
-    expect(t.observed.paidTickets).toBe(1);
+    expect(outcomes.filter(item => item.status === "fulfilled")).toHaveLength(2);
+    expect(outcomes.filter(item => item.status === "rejected")).toHaveLength(0);
+    expect(t.observed.paidTickets).toBe(2);
     expect(new Set(t.observed.nonces).size).toBe(2);
-    expect(t.observed.content).toHaveLength(2);
+    expect(t.observed.content).toHaveLength(4);
   });
   it("binds image and speech bodies with separate control transports and one paid POST each", async () => {
     const t = await topology({ start: "b" });
@@ -209,12 +233,14 @@ describe("required gateway content connection wiring — synthetic native port, 
     expect(t.observed.controlBodies.join("")).not.toContain("canary");
     expect(new Set(t.observed.nonces).size).toBe(2);
   });
-  it("media rejects a replaced B key before its body and never repeats the paid ticket", async () => {
-    const t = await topology({ switchOnEvidence: true });
-    await expect(t.client.images.generate({ model: "synthetic-image", prompt: "must-not-arrive" })).rejects.toThrow();
+  it("media retains A despite DNS switch and never repeats the paid ticket", async () => {
+    const t = await topology({ dnsSwitch: true });
+    await t.client.images.generate({ model: "synthetic-image", prompt: "synthetic-image" });
     expect(t.observed.bytes.b).toBe(0);
-    expect(t.observed.content).toEqual([]);
+    expect(t.observed.content.map(item => item.slot)).toEqual(["a"]);
     expect(t.observed.paidTickets).toBe(1);
+    expect(t.observed.handshakes).toEqual({ a: 1, b: 0 });
+    expect(t.observed.lookups).toBe(1);
   });
   it("required mode cannot be disabled by per-chat options", async () => {
     const t = await topology();
@@ -304,4 +330,80 @@ it("refuses invalid expiry bounds and noncanonical pins before constructing a tr
     { verdict: { ...input.verdict, binding: { ...input.verdict.binding, tls_spki_sha256: pins.a + "\n" } } }
   ];
   for (const change of changes) expect(() => createVerifiedGatewayConnection({ ...input, ...change } as Parameters<typeof createVerifiedGatewayConnection>[0])).toThrow();
+});
+
+it("retained paid image response survives drain Connection: close without replay", async () => {
+  const t = await topology({ dnsSwitch: true, paidClose: true });
+  const result = await t.client.images.generate({ model: "synthetic-image", prompt: "synthetic-image" });
+  expect(result).toBeDefined();
+  expect(t.observed.paidTickets).toBe(1);
+  expect(t.observed.content.map(item => item.slot)).toEqual(["a"]);
+  expect(t.observed.handshakes).toEqual({ a: 1, b: 0 });
+  expect(t.observed.bytes.b).toBe(0);
+});
+it("retained encrypted paid stream completes through DONE with drain Connection: close", async () => {
+  const t = await topology({ dnsSwitch: true, paidClose: true, streamDelayMs: 30 });
+  const deltas: string[] = [];
+  const result = await t.client.chat({ ...chat(), onDelta: delta => { if (delta.content) deltas.push(delta.content); } });
+  expect(result.content).toBe("Hello E2EE");
+  expect(deltas.join("")).toBe("Hello E2EE");
+  expect(t.observed.paidTickets).toBe(1);
+  expect(t.observed.content.map(item => item.slot)).toEqual(["a", "a"]);
+  expect(t.observed.handshakes).toEqual({ a: 1, b: 0 });
+  expect(t.observed.bytes.b).toBe(0);
+});
+it("signed-policy source refresh rechecks the same quote/socket and preserves provenance and immutable raw evidence", async () => {
+  const t = await topology({ dnsSwitch: true });
+  const issuedAtMs = Date.now();
+  const forces: boolean[] = []; let prepared = 0;
+  const client = createClient({ ...t.clientOptions,
+    gatewayPolicyUpdates: { async resolve(_origin, _signal, force = false) {
+      forces.push(force); const current = policy(t.contentOrigin);
+      if (!force) current.composeHashes = ["ff".repeat(32)];
+      return { policy: current, sequence: force ? 2 : 1,
+        payloadSha256: (force ? "aa" : "ab").repeat(32), authority: "synthetic-source-NOT-signed",
+        manifestSha256: "cd".repeat(32), issuedAtMs, expiresAtMs: issuedAtMs + 10000, acceptedKeyIds: [] };
+    } }, gatewayConnectionBinding: { mode: "required", verification: { chainVerifier: {
+      async prepare(quote, options) { prepared++; return syntheticNativeBoundary.prepare(quote); }
+    } } } });
+  const report = await client.verify({ model: MODEL, provider: "venice" });
+  expect(report.trusted).toBe(true);
+  expect(report.gateway.policy).toMatchObject({ origin: "signed-release-authority", sequence: 2,
+    payloadSha256: "aa".repeat(32), expiresAtMs: issuedAtMs + 10000 });
+  expect(forces).toEqual([false, true]); expect(prepared).toBe(1);
+  expect(t.observed.gateway).toBe(1); expect(t.observed.lookups).toBe(1);
+  expect(t.observed.handshakes).toEqual({ a: 1, b: 0 }); expect(t.observed.bytes.b).toBe(0);
+  expect(Object.isFrozen(report.gateway.rawEvidence)).toBe(true);
+  expect(Object.isFrozen(report.gateway.rawEvidence!.binding)).toBe(true);
+  expect(() => { report.gateway.rawEvidence!.binding!.nonce = "00".repeat(32); }).toThrow();
+  expect(t.observed.paidTickets).toBe(0);
+});
+it("a refreshed policy cannot weaken required transport verification before tickets", async () => {
+  const t = await topology(); let refreshes = 0; const issuedAtMs = Date.now();
+  const client = createClient({ ...t.clientOptions,
+    gatewayPolicyUpdates: { async resolve(_origin, _signal, force = false) {
+      const current = policy(t.contentOrigin);
+      if (!force) current.composeHashes = ["ff".repeat(32)];
+      else { refreshes++; current.requireHardwareVerified = false; }
+      return { policy: current, sequence: force ? 2 : 1, payloadSha256: "ab".repeat(32),
+        authority: "synthetic-source-NOT-signed", manifestSha256: "cd".repeat(32), issuedAtMs,
+        expiresAtMs: issuedAtMs + 10000, acceptedKeyIds: [] };
+    } }, gatewayConnectionBinding: { mode: "required", verification: { chainVerifier: syntheticNativeBoundary } } });
+  await expect(client.chat(chat())).rejects.toThrow();
+  expect(refreshes).toBe(1); expect(t.observed.gateway).toBe(1);
+  expect(t.observed.attTickets).toBe(0); expect(t.observed.paidTickets).toBe(0);
+  expect(t.observed.content).toEqual([]);
+});
+it("an expired refreshed approval cannot authorize the retained socket", async () => {
+  const t = await topology(); const issuedAtMs = Date.now();
+  const client = createClient({ ...t.clientOptions,
+    gatewayPolicyUpdates: { async resolve(_origin, _signal, force = false) {
+      const current = policy(t.contentOrigin); if (!force) current.composeHashes = ["ff".repeat(32)];
+      return { policy: current, sequence: force ? 2 : 1, payloadSha256: "ab".repeat(32),
+        authority: "synthetic-source-NOT-signed", manifestSha256: "cd".repeat(32), issuedAtMs,
+        expiresAtMs: force ? issuedAtMs - 1 : issuedAtMs + 10000, acceptedKeyIds: [] };
+    } }, gatewayConnectionBinding: { mode: "required", verification: { chainVerifier: syntheticNativeBoundary } } });
+  await expect(client.chat(chat())).rejects.toThrow(/expired/);
+  expect(t.observed.gateway).toBe(1); expect(t.observed.attTickets).toBe(0);
+  expect(t.observed.paidTickets).toBe(0); expect(t.observed.content).toEqual([]);
 });
