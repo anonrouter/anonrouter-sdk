@@ -60,6 +60,9 @@ def build_synthetic_tdx_quote(
     rtmr3: str = _ZERO_48,
     mr_td: str = _ZERO_48,
     mr_config_id: str = SYNTHETIC_MR_CONFIG_ID,
+    mr_owner: str = _ZERO_48,
+    mr_owner_config: str = _ZERO_48,
+    td_attributes: str | None = None,
     tee_type: int = TEE_TYPE_TDX,
     debug: bool = False,
 ) -> str:
@@ -68,8 +71,6 @@ def build_synthetic_tdx_quote(
     struct.pack_into("<H", buf, 0, 4)  # version
     struct.pack_into("<H", buf, 2, 2)  # att_key_type (ECDSA-P256)
     struct.pack_into("<I", buf, 4, tee_type)
-    if debug:
-        buf[OFF_TD_ATTRIBUTES] |= 0x01
 
     def write(offset: int, hex_value: str, size: int) -> None:
         value = bytes.fromhex(hex_value)
@@ -77,8 +78,15 @@ def build_synthetic_tdx_quote(
             raise ValueError(f"expected {size} bytes at offset {offset}")
         buf[offset : offset + size] = value
 
+    if td_attributes is not None:
+        write(OFF_TD_ATTRIBUTES, td_attributes, 8)
+    if debug:
+        buf[OFF_TD_ATTRIBUTES] |= 0x01
+
     write(OFF_MR_TD, mr_td, 48)
     write(OFF_MR_CONFIG_ID, mr_config_id, 48)
+    write(OFF_MR_CONFIG_ID + 48, mr_owner, 48)
+    write(OFF_MR_CONFIG_ID + 96, mr_owner_config, 48)
     write(OFF_RTMR0, rtmr0, 48)
     write(OFF_RTMR0 + 48, rtmr1, 48)
     write(OFF_RTMR0 + 96, rtmr2, 48)
@@ -256,37 +264,29 @@ def build_app_compose(**overrides: Any) -> tuple[str, str]:
     return manifest, hashlib.sha256(manifest.encode("utf-8")).hexdigest()
 
 
-#: The key-provider payload a synthetic gcp-tdx-native guest measures: the
-#: ephemeral per-boot ``none`` provider. SYNTHETIC: the real adapter's exact bytes
-#: are an open protocol item, and nothing here is a production pin.
-SYNTHETIC_EPHEMERAL_KEY_PROVIDER = json.dumps({"name": "none", "id": ""}, separators=(",", ":")).encode().hex()
-
-#: Synthetic GCP hardware registers. Never Google firmware values.
+#: Synthetic gcp-tdx-native identity. NEVER Google firmware values or a real
+#: AnonRouter release: registers, verity root and boot key are invented. RTMR3
+#: and the owner registers are zero, app_id is the dm-verity root, and
+#: instance_id is SHA-256 of the per-boot Ed25519 boot key (the binding's
+#: public_key). Mirrors the JavaScript fixture.
 SYNTHETIC_GCP_REGISTERS = {
     "mrTd": "1a" * 48,
-    "mrConfigId": "00" * 48,
     "rtmr0": "2b" * 48,
     "rtmr1": "3c" * 48,
     "rtmr2": "4d" * 48,
+    "tdAttributes": "0000001000000000",
 }
+SYNTHETIC_GCP_VERITY_ROOT = "5a" * 32
+SYNTHETIC_GCP_BOOT_KEY = "e7" * 32
+SYNTHETIC_GCP_INSTANCE_ID = hashlib.sha256(bytes.fromhex(SYNTHETIC_GCP_BOOT_KEY)).hexdigest()
 
 
-def build_synthetic_gcp_event_log(
-    *, app_id: str, compose_hash: str, instance_id: str, key_provider_payload: str | None = None
-) -> SyntheticEventLog:
-    """A gcp-tdx-native event log: RTMR3 application events only. RTMR0..RTMR2
-    are the synthetic hardware registers, pinned directly from the quote."""
-    events = [
-        rtmr3_event("system-preparing", ""),
-        rtmr3_event("app-id", app_id),
-        rtmr3_event("compose-hash", compose_hash),
-        rtmr3_event("instance-id", instance_id),
-        rtmr3_event("key-provider", key_provider_payload or SYNTHETIC_EPHEMERAL_KEY_PROVIDER),
-    ]
-    return SyntheticEventLog(
-        events=events,
-        rtmr0=SYNTHETIC_GCP_REGISTERS["rtmr0"],
-        rtmr1=SYNTHETIC_GCP_REGISTERS["rtmr1"],
-        rtmr2=SYNTHETIC_GCP_REGISTERS["rtmr2"],
-        rtmr3=replay_register([rtmr3_event_digest(e) or "ff" * 48 for e in events]),
+def build_synthetic_gcp_quote(report_data_hex: str, **registers: str) -> str:
+    """A structurally valid gcp-tdx-native quote: zero RTMR3 and owner registers."""
+    regs = {**SYNTHETIC_GCP_REGISTERS, **registers}
+    return build_synthetic_tdx_quote(
+        report_data_hex=report_data_hex, mr_td=regs["mrTd"], rtmr0=regs["rtmr0"],
+        rtmr1=regs["rtmr1"], rtmr2=regs["rtmr2"], td_attributes=regs["tdAttributes"],
+        mr_config_id=regs.get("mrConfigId", _ZERO_48), mr_owner=regs.get("mrOwner", _ZERO_48),
+        mr_owner_config=regs.get("mrOwnerConfig", _ZERO_48), rtmr3=regs.get("rtmr3", _ZERO_48),
     )

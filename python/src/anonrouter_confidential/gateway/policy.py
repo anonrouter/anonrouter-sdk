@@ -56,9 +56,11 @@ class GatewayPlatformMeasurements:
 #: Which kind of confidential platform a policy describes. Each kind has its own
 #: security floor and evidence rules. A document WITHOUT ``platformKind`` is the
 #: legacy phala-dstack-kms form and parses exactly as it always has.
-#: ``gcp-tdx-native`` is a Google Cloud Intel TDX content node with guest-only,
-#: per-boot keys (ephemeral key provider, no KMS) pinned through the hardware
-#: registers in the quote; never vTPM evidence.
+#: ``gcp-tdx-native`` is a Google Cloud Intel TDX content node whose application
+#: is baked into a dm-verity root named on the UKI command line (measured into
+#: RTMR1). It has per-boot guest keys, no KMS, no dstack application events
+#: (RTMR3 stays zero) and is pinned only through the quote's hardware registers;
+#: never vTPM evidence.
 GatewayPlatformKind = Literal["phala-dstack-kms", "gcp-tdx-native"]
 
 GATEWAY_PLATFORM_KINDS: tuple[str, ...] = ("phala-dstack-kms", "gcp-tdx-native")
@@ -66,8 +68,8 @@ GATEWAY_PLATFORM_KINDS: tuple[str, ...] = ("phala-dstack-kms", "gcp-tdx-native")
 #: Whether a platform kind's boot chain has been qualified for this SDK release.
 #: gcp-tdx-native is NOT: a small C4 TDX VM produced a genuine natively verified
 #: quote, but no AnonRouter guest has yet proved that Google's firmware measures
-#: its UKI, command line and verity root into RTMR1/RTMR2, nor that RTMR3 covers
-#: the code that runs. Until a reviewed SDK release flips this, the packaged
+#: its UKI (whose command line names the verity root holding the application)
+#: into RTMR1 on this platform. Until a reviewed SDK release flips this, the packaged
 #: registry and the signed feed refuse the kind and the verifier fails it unless
 #: the caller explicitly opted into an unqualified pilot.
 GATEWAY_PLATFORM_QUALIFIED: dict[str, bool] = {
@@ -93,19 +95,23 @@ class GatewayReleaseTuple:
 
     tuple_id: str
     release_id: str
+    #: Measured in RTMR3 on Phala; on GCP the 32-byte dm-verity root hash.
     app_id: str
     compose_hash: str
     mr_td: str
-    mr_config_id: str
     rtmr0: str
     rtmr1: str
     rtmr2: str
-    #: Exact payload (lowercase hex) of the measured RTMR3 key-provider event.
-    key_provider_payload: str
     not_before_ms: int
     expires_at_ms: int
+    #: phala-dstack-kms only: MRCONFIGID (GCP requires it to be zero).
+    mr_config_id: str | None = None
     #: phala-dstack-kms only: the measured dstack os-image-hash event.
     os_image_hash: str | None = None
+    #: phala-dstack-kms only: exact payload of the RTMR3 key-provider event.
+    key_provider_payload: str | None = None
+    #: gcp-tdx-native only: the quote's exact td_attributes, 16 lowercase hex.
+    td_attributes: str | None = None
 
 
 @dataclass(frozen=True)
@@ -214,11 +220,16 @@ _TUPLE_POLICY_FIELDS = frozenset({
     "requirePrivateLogs", "requireDigestPinnedImages", "requireHardwareVerified",
     "acceptableTcbStatuses", "requireEvidenceExpiry", "maxEvidenceAgeMs",
 })
-_TUPLE_FIELDS = (
-    "tupleId", "releaseId", "appId", "composeHash", "mrTd", "mrConfigId", "rtmr0", "rtmr1",
-    "rtmr2", "keyProviderPayload", "notBeforeMs", "expiresAtMs",
+_COMMON_TUPLE_FIELDS = (
+    "tupleId", "releaseId", "appId", "composeHash", "mrTd", "rtmr0", "rtmr1", "rtmr2",
+    "notBeforeMs", "expiresAtMs",
 )
-_KEY_PROVIDER_NAME = {"phala-dstack-kms": "kms", "gcp-tdx-native": "none"}
+# GCP has no MRCONFIGID (required zero), OS image or key provider: the application
+# is the verity root in RTMR1, and the node has no KMS and no RTMR3 events.
+_KIND_TUPLE_FIELDS = {
+    "phala-dstack-kms": ("mrConfigId", "osImageHash", "keyProviderPayload"),
+    "gcp-tdx-native": ("tdAttributes",),
+}
 _LOWER_HEX = re.compile(r"^[0-9a-f]+$")
 
 
@@ -262,13 +273,16 @@ def _tuple_document(value: Any) -> Any:
     if isinstance(value, GatewayReleaseTuple):
         doc: dict[str, Any] = {
             "tupleId": value.tuple_id, "releaseId": value.release_id, "appId": value.app_id,
-            "composeHash": value.compose_hash, "mrTd": value.mr_td,
-            "mrConfigId": value.mr_config_id, "rtmr0": value.rtmr0, "rtmr1": value.rtmr1,
-            "rtmr2": value.rtmr2, "keyProviderPayload": value.key_provider_payload,
+            "composeHash": value.compose_hash, "mrTd": value.mr_td, "rtmr0": value.rtmr0,
+            "rtmr1": value.rtmr1, "rtmr2": value.rtmr2,
             "notBeforeMs": value.not_before_ms, "expiresAtMs": value.expires_at_ms,
         }
-        if value.os_image_hash is not None:
-            doc["osImageHash"] = value.os_image_hash
+        for key, field_value in (
+            ("mrConfigId", value.mr_config_id), ("osImageHash", value.os_image_hash),
+            ("keyProviderPayload", value.key_provider_payload), ("tdAttributes", value.td_attributes),
+        ):
+            if field_value is not None:
+                doc[key] = field_value
         return doc
     return value
 
@@ -280,34 +294,46 @@ def validate_gateway_release_tuple(kind: str, raw: Any, index: int) -> GatewayRe
     raw = _tuple_document(raw)
     if not isinstance(raw, dict):
         raise GatewayPolicyError(f"{at} must be an object")
-    expected = [*_TUPLE_FIELDS, "osImageHash"] if kind == "phala-dstack-kms" else list(_TUPLE_FIELDS)
+    expected = [*_COMMON_TUPLE_FIELDS, *_KIND_TUPLE_FIELDS[kind]]
     keys = list(raw)
     if len(keys) != len(expected) or any(key not in expected for key in keys):
-        # gcp-tdx-native has no osImageHash (its OS is RTMR1/RTMR2) and no
-        # vTPM/PCR field of any kind: an unknown field is refused, never ignored.
+        # A field of the other kind, or any vTPM/PCR field, is refused, never ignored.
         raise GatewayPolicyError(f"{at} must have exactly the fields {', '.join(expected)}")
     for name in ("tupleId", "releaseId"):
         if not isinstance(raw[name], str) or not _RELEASE_LABEL.match(raw[name]):
             raise GatewayPolicyError(f"{at}.{name} must be 1..128 chars of [A-Za-z0-9._:@+-]")
     app_id = raw["appId"]
-    if not isinstance(app_id, str) or not re.fullmatch(r"[0-9a-f]{1,512}", app_id):
+    if kind == "gcp-tdx-native":
+        app_id = _exact_hex(f"{at}.appId", app_id, 64)
+    elif not isinstance(app_id, str) or not re.fullmatch(r"[0-9a-f]{1,512}", app_id):
         raise GatewayPolicyError(f"{at}.appId must be lowercase hex")
-    payload = raw["keyProviderPayload"]
-    if (
-        not isinstance(payload, str)
-        or not 2 <= len(payload) <= 2048
-        or len(payload) % 2 != 0
-        or not _LOWER_HEX.match(payload)
-    ):
-        raise GatewayPolicyError(f"{at}.keyProviderPayload must be 2..2048 lowercase hex characters")
-    try:
-        provider = json.loads(bytes.fromhex(payload).decode("utf-8"))
-    except (ValueError, UnicodeDecodeError) as exc:
-        raise GatewayPolicyError(f"{at}.keyProviderPayload must decode to a UTF-8 JSON object") from exc
-    if not isinstance(provider, dict) or provider.get("name") != _KEY_PROVIDER_NAME[kind]:
-        raise GatewayPolicyError(
-            f"{at}.keyProviderPayload must name the {_KEY_PROVIDER_NAME[kind]} key provider for {kind}"
-        )
+    kind_fields: dict[str, Any]
+    if kind == "phala-dstack-kms":
+        payload = raw["keyProviderPayload"]
+        if (
+            not isinstance(payload, str)
+            or not 2 <= len(payload) <= 2048
+            or len(payload) % 2 != 0
+            or not _LOWER_HEX.match(payload)
+        ):
+            raise GatewayPolicyError(f"{at}.keyProviderPayload must be 2..2048 lowercase hex characters")
+        try:
+            provider = json.loads(bytes.fromhex(payload).decode("utf-8"))
+        except (ValueError, UnicodeDecodeError) as exc:
+            raise GatewayPolicyError(f"{at}.keyProviderPayload must decode to a UTF-8 JSON object") from exc
+        if not isinstance(provider, dict) or provider.get("name") != "kms":
+            raise GatewayPolicyError(f"{at}.keyProviderPayload must name the kms key provider for {kind}")
+        kind_fields = {
+            "mr_config_id": _exact_hex(f"{at}.mrConfigId", raw["mrConfigId"], 96),
+            "os_image_hash": _exact_hex(f"{at}.osImageHash", raw["osImageHash"], 64),
+            "key_provider_payload": payload,
+        }
+    else:
+        td_attributes = _exact_hex(f"{at}.tdAttributes", raw["tdAttributes"], 16)
+        # TUD.DEBUG is bit 0 of the first byte. A debug TD is never approvable.
+        if int(td_attributes[:2], 16) & 0x01:
+            raise GatewayPolicyError(f"{at}.tdAttributes must not enable debug")
+        kind_fields = {"td_attributes": td_attributes}
     not_before = _tuple_time(f"{at}.notBeforeMs", raw["notBeforeMs"])
     expires_at = _tuple_time(f"{at}.expiresAtMs", raw["expiresAtMs"])
     if expires_at <= not_before or expires_at - not_before > MAX_RELEASE_TUPLE_LIFETIME_MS:
@@ -320,16 +346,12 @@ def validate_gateway_release_tuple(kind: str, raw: Any, index: int) -> GatewayRe
         app_id=app_id,
         compose_hash=_exact_hex(f"{at}.composeHash", raw["composeHash"], 64),
         mr_td=_exact_hex(f"{at}.mrTd", raw["mrTd"], 96),
-        mr_config_id=_exact_hex(f"{at}.mrConfigId", raw["mrConfigId"], 96),
         rtmr0=_exact_hex(f"{at}.rtmr0", raw["rtmr0"], 96),
         rtmr1=_exact_hex(f"{at}.rtmr1", raw["rtmr1"], 96),
         rtmr2=_exact_hex(f"{at}.rtmr2", raw["rtmr2"], 96),
-        key_provider_payload=payload,
         not_before_ms=not_before,
         expires_at_ms=expires_at,
-        os_image_hash=_exact_hex(f"{at}.osImageHash", raw["osImageHash"], 64)
-        if kind == "phala-dstack-kms"
-        else None,
+        **kind_fields,
     )
 
 

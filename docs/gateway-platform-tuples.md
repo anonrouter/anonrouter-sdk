@@ -32,10 +32,10 @@ A policy document **with** `platformKind` is the tuple form:
   "platformKind": "gcp-tdx-native",
   "source": "...", "version": "...", "origins": ["https://..."],
   "releaseTuples": [{
-    "tupleId": "release-a@fw1", "releaseId": "...", "appId": "<hex>",
-    "composeHash": "<64 hex>", "mrTd": "<96 hex>", "mrConfigId": "<96 hex>",
-    "rtmr0": "<96 hex>", "rtmr1": "<96 hex>", "rtmr2": "<96 hex>",
-    "keyProviderPayload": "<hex of the measured key-provider event>",
+    "tupleId": "release-a@c4-standard-2@fw1", "releaseId": "...",
+    "appId": "<64 hex dm-verity root>", "composeHash": "<64 hex>",
+    "mrTd": "<96 hex>", "rtmr0": "<96 hex>", "rtmr1": "<96 hex>",
+    "rtmr2": "<96 hex>", "tdAttributes": "<16 hex>",
     "notBeforeMs": 0, "expiresAtMs": 0
   }],
   "requireInTeeTls": true, "requirePrivateLogs": true,
@@ -56,10 +56,13 @@ A policy document **with** `platformKind` is the tuple form:
   `releaseTuples` without `platformKind`. Unknown fields at either level are
   refused, so a vTPM/PCR allowlist cannot be added or silently ignored.
 - Register and digest values must already be lowercase hex of exact length.
-- `phala-dstack-kms` tuples also pin `osImageHash` and their key-provider payload
-  must name `kms`. `gcp-tdx-native` tuples have no `osImageHash` (the OS is what
-  RTMR1/RTMR2 measure) and their key-provider payload must name the ephemeral
-  `none` provider. The pinned payload is compared byte for byte.
+- Every tuple pins `tupleId`, `releaseId`, `appId`, `composeHash`, `mrTd`,
+  `rtmr0`, `rtmr1`, `rtmr2` and its validity window. `phala-dstack-kms` tuples
+  add `mrConfigId`, `osImageHash` and the exact `keyProviderPayload` (compared
+  byte for byte; it must decode to JSON naming `kms`). `gcp-tdx-native` tuples
+  add only `tdAttributes` (exact, debug bit refused) and their `appId` must be
+  the 32-byte dm-verity root; they cannot carry MRCONFIGID, an OS image or a key
+  provider, because that guest has none of them.
 - The parsed policy also carries `appIds`/`composeHashes`/`releaseIds` as unions
   of the tuples for display. They are never a second source of acceptance, and
   the floor refuses an object whose unions disagree with its tuples.
@@ -73,11 +76,19 @@ and TCB exactly `UpToDate`. The verifier re-checks it on every call
 
 - **Native DCAP only.** `quote_signature_chain` and `tcb_status_acceptable` are
   required. No vTPM quote, PCR or Google attestation token substitutes for them.
-- **Hardware registers pinned directly.** MRTD, MRCONFIGID and RTMR0..RTMR2 come
-  from the quote and must equal the tuple. Google firmware does not emit a dstack
-  boot log, so only RTMR3 application events are replayed
-  (`event_log_replays_rtmr3`). `firmware_event_log_replayed` is recorded as an
-  unmet advisory until the native CCEL/UKI proof is integrated.
+- **Hardware registers are the measurements.** MRTD, RTMR0..RTMR2 and
+  td_attributes come from the quote and must equal one tuple. The application
+  (compose and images) is baked into the dm-verity root named on the UKI command
+  line, which firmware measures into RTMR1, so RTMR1 pins it and `appId` names
+  it. RTMR3 must be zero (`rtmr3_unextended`) and MRCONFIGID, MROWNER and
+  MROWNERCONFIG must be zero (`owner_config_registers_zero`). No event log,
+  key-provider event or app-compose is consulted, even if a document carries
+  one. `firmware_event_log_replayed` stays an unmet advisory: the SDK does not
+  replay Google's CCEL, so a tuple's UKI Authenticode and verity-root provenance
+  rest on its release review.
+- **Per-boot identity.** `instance_id` must equal SHA-256 of the per-boot
+  Ed25519 boot key carried as the binding's `public_key`
+  (`instance_id_derives_from_boot_key`); it is never pinned.
 - **Mandatory real-connection key binding.** `tls_certificate_bound_to_quote`
   is required even when no certificate was observed, and
   `tls_observed_on_retained_connection` passes only when the SPKI was read from
@@ -104,26 +115,39 @@ Refusals happen during policy resolution, before evidence, tickets or content:
 | Required binding without pilot opt-in | `unsupported_request` before any connection |
 | Required binding, caller policy, pilot opt-in | Verified on the retained socket; wrong key, platform or tuple refuses before any ticket |
 
-## Evidence protocol assumptions
+## Evidence protocol
 
-The coordinator accepted these as the SDK side of the interface; the GCP guest
-adapter is being built separately and the native boot protocol integration will
-follow:
+From the GCP content-guest worker (`native/gcp-content-guest`, not yet
+hardware-qualified), relayed by the coordinator on 2026-10-08:
 
-1. Gateway binding v1 is unchanged: `report_data` is SHA-512 of the canonical
-   binding including per-boot `instance_id`, `public_key` and `tls_spki_sha256`.
-2. `event_log` carries RTMR3 application events in dstack JSON form: `app-id`,
-   `compose-hash`, `instance-id` and `key-provider`, replaying to the quote's
-   RTMR3. Entries for imr 0..2, if present, are not consulted.
-3. The exact ephemeral-none key-provider payload bytes are an open item. Tests use
-   a synthetic `{"name":"none","id":""}`; it is not a pin.
+1. Gateway binding v1 is unchanged (canonical JSON, SHA-512 into report_data).
+   The in-TD broker fills `app_id` = dm-verity root hex (stable per release),
+   `instance_id` = SHA-256 of the per-boot Ed25519 boot key, `compose_hash` =
+   baked compose SHA-256, `release_id` from the baked manifest,
+   `key_alg` = `ed25519`, `public_key` = the boot key, `transport` =
+   `in-tee-tls`, and `tls_spki_sha256` = SHA-256 of the DER SPKI of the TLS key
+   it generated in TD memory. Callers supply only the nonce and one measured
+   origin; there is no arbitrary report_data API.
+2. RTMR3 carries no dstack events and must be zero. There is no app-compose,
+   KMS, vTPM-derived key or key-provider payload.
+3. RTMR0..RTMR2 come from Google OVMF's CCEL (TCG crypto-agile, SHA-384).
+   Tuples are created only from a reference boot that passes the native semantic
+   check (`ar-guest-verify`: CCEL replay equals the quote, exactly one RTMR1
+   EV_EFI_BOOT_SERVICES_APPLICATION equal to the UKI Authenticode SHA-384, and
+   allowlisted code events). The release policy records the UKI Authenticode
+   digest and verity root beside each tuple.
+4. Evidence may later add an advisory `gcp_boot.ccel_base64`; the SDK ignores it.
+
+SDK assumption to confirm with that worker: `instance_id` is SHA-256 over the
+raw 32-byte Ed25519 public key (the hex-decoded `public_key`). A different
+encoding fails closed.
 
 ## Gaps and gates
 
 - No real GCP pins exist. The C4 hardware qualification proved a genuine native
-  quote on stock Ubuntu, not the AnonRouter guest. Native UKI/command-line/verity
-  measurement into RTMR1/RTMR2, application measurement and CCEL replay are not
-  qualified, so no GCP tuple can be written yet.
+  quote on stock Ubuntu, not the AnonRouter guest. Hardware gate N1 (Google
+  firmware measures the UKI Authenticode digest into RTMR1 with the vTPM
+  present) is still open, so no GCP tuple can be written yet.
 - Qualifying the platform requires a reviewed SDK release that flips
   `GATEWAY_PLATFORM_QUALIFIED`, with real tuples, and a reviewed procedure for
   preparing tuple-form signed approvals. `scripts/gateway-policy-release.mjs`
@@ -140,7 +164,7 @@ follow:
 ## Tests
 
 - `shared/vectors/gateway-release-tuples.json`, generated by
-  `npm run gen:gateway-tuple-vectors`, holds 25 policy-document, 17 verdict and 2
+  `npm run gen:gateway-tuple-vectors`, holds 30 policy-document, 22 verdict and 2
   signed-approval cases. JavaScript (`test/gateway-release-tuples.test.ts`) and
   Python (`tests/test_gateway_release_tuples.py`) verify the same bytes.
 - Real loopback TLS: four gcp-tdx-native cases each in

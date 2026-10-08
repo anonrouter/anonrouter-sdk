@@ -34,7 +34,9 @@ including every check name, so the two languages produce comparable verdicts.
 
 from __future__ import annotations
 
+import hashlib
 import json
+import re
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -66,6 +68,8 @@ from .policy import (
 
 #: A vm_config blob is bounded so a hostile response cannot pin the CPU parsing it.
 _MAX_VM_CONFIG_CHARS = 65_536
+#: An unextended 48-byte register.
+_ZERO_REGISTER = "0" * 96
 
 
 class TdxChainVerifier(Protocol):
@@ -303,32 +307,70 @@ def verify_gateway_attestation(
         )
     )
 
-    # --- 5. Event log replays to the quote's registers ------------------------
-    compose_hash_event: str | None = None
-    instance_id_event: str | None = None
-    app_id_event: str | None = None
+    # dstack measurements (steps 5 and 6) exist only on phala-dstack-kms.
     key_provider_event: str | None = None
     os_image_hash_event: str | None = None
     event_log_read = False
-    events: list[Any] | None = None
-    try:
-        events = parse_event_log(doc.get("event_log"))
-        if native_gcp:
-            # Google's firmware does not emit a dstack boot log. RTMR0..RTMR2 are
-            # pinned EXACTLY from the quote by the release tuple, so only the
-            # application events are replayed; boot entries are never consulted.
-            replayed = replay_rtmrs([e for e in events if e.imr == 3])
-            checks.append(check("event_log_replays_rtmr3", hex_equal(replayed[3], quote.rtmr3), True))
-            checks.append(
-                check(
-                    "firmware_event_log_replayed",
-                    False,
-                    False,
-                    "RTMR0..RTMR2 are pinned directly from the quote; native CCEL/UKI "
-                    "measurement proof is pending qualification",
-                )
+    app_compose: AttestedAppCompose | None = None
+    if native_gcp:
+        # --- 5/6. gcp-tdx-native: the hardware registers ARE the measurements ----
+        # The application (compose and images) is baked into the dm-verity root
+        # that the UKI command line names, and firmware measures the UKI into
+        # RTMR1. The guest extends nothing into RTMR3 and has no KMS, key-provider
+        # event or app-compose, so none is consulted even if a document carries one.
+        rtmr3_zero = quote.rtmr3.lower() == _ZERO_REGISTER
+        checks.append(
+            check(
+                "rtmr3_unextended",
+                rtmr3_zero,
+                True,
+                None if rtmr3_zero else "RTMR3 was extended; this platform measures no runtime events",
             )
-        else:
+        )
+        # Owner-supplied registers can carry configuration the tuple does not pin.
+        checks.append(
+            check(
+                "owner_config_registers_zero",
+                all(
+                    value.lower() == _ZERO_REGISTER
+                    for value in (quote.mr_config_id, quote.mr_owner, quote.mr_owner_config)
+                ),
+                True,
+            )
+        )
+        # instance_id names the boot: SHA-256 of the per-boot Ed25519 boot key the
+        # binding also carries, so a per-boot identity cannot be detached from it.
+        boot_key_digest = (
+            hashlib.sha256(bytes.fromhex(binding.public_key)).hexdigest()
+            if binding.key_alg == "ed25519" and re.fullmatch(r"[0-9a-f]{64}", binding.public_key)
+            else None
+        )
+        checks.append(
+            check(
+                "instance_id_derives_from_boot_key",
+                boot_key_digest is not None and boot_key_digest == binding.instance_id,
+                True,
+                "binding does not carry a 32-byte ed25519 boot key" if boot_key_digest is None else None,
+            )
+        )
+        checks.append(
+            check(
+                "firmware_event_log_replayed",
+                False,
+                False,
+                "RTMR0..RTMR2 are pinned exactly from the quote; this SDK does not replay "
+                "Google's CCEL, so the UKI Authenticode and verity-root provenance of a "
+                "tuple rest on its release review",
+            )
+        )
+    else:
+        # --- 5. Event log replays to the quote's registers ------------------------
+        compose_hash_event: str | None = None
+        instance_id_event: str | None = None
+        app_id_event: str | None = None
+        events: list[Any] | None = None
+        try:
+            events = parse_event_log(doc.get("event_log"))
             replayed = replay_rtmrs(events)
             replays = (
                 hex_equal(replayed[0], quote.rtmr0)
@@ -338,191 +380,180 @@ def verify_gateway_attestation(
             )
             checks.append(check("event_log_replays_rtmrs", replays, True))
 
-        # Replay alone proves only that the DIGESTS are the measured ones. Each
-        # RTMR3 digest must additionally commit to the human-readable name and
-        # payload printed beside it, or a genuine quote could be re-served with a
-        # rewritten compose-hash payload and still replay correctly.
-        inconsistent = inconsistent_rtmr3_events(events)
-        checks.append(
-            check(
-                "event_digests_commit_to_payloads",
-                len(inconsistent) == 0,
-                True,
-                f"{len(inconsistent)} RTMR3 event(s) with a non-committing digest"
-                if inconsistent
-                else None,
+            # Replay alone proves only that the DIGESTS are the measured ones. Each
+            # RTMR3 digest must additionally commit to the human-readable name and
+            # payload printed beside it, or a genuine quote could be re-served with a
+            # rewritten compose-hash payload and still replay correctly.
+            inconsistent = inconsistent_rtmr3_events(events)
+            checks.append(
+                check(
+                    "event_digests_commit_to_payloads",
+                    len(inconsistent) == 0,
+                    True,
+                    f"{len(inconsistent)} RTMR3 event(s) with a non-committing digest"
+                    if inconsistent
+                    else None,
+                )
             )
-        )
 
-    except ValueError as exc:
-        checks.append(
-            check(
-                "event_log_replays_rtmr3" if native_gcp else "event_log_replays_rtmrs",
-                False,
-                True,
-                str(exc),
-            )
-        )
-        checks.append(check("event_digests_commit_to_payloads", False, True, str(exc)))
-        events = None
+        except ValueError as exc:
+            checks.append(check("event_log_replays_rtmrs", False, True, str(exc)))
+            checks.append(check("event_digests_commit_to_payloads", False, True, str(exc)))
+            events = None
 
-    # Reading the named identities is a SEPARATE step with its own failure mode.
-    # ``single_event_payload`` raises when an event appears twice, and folding that
-    # into the block above appended ``event_log_replays_rtmrs`` a second time, so a
-    # verdict could carry the same check name twice with different outcomes. A
-    # caller looking one up by name would find the passing copy and never see the
-    # failure.
-    if events is not None:
-        try:
-            compose_hash_event = single_event_payload(events, "compose-hash")
-            instance_id_event = single_event_payload(events, "instance-id")
-            app_id_event = single_event_payload(events, "app-id")
-            key_provider_event = single_event_payload(events, "key-provider")
-            os_image_hash_event = single_event_payload(events, "os-image-hash")
-            event_log_read = True
-        except ValueError:
-            # A duplicated or self-inconsistent named event makes EVERY identity
-            # read out of this log unusable, not just the one that raised. Leaving
-            # them None with ``event_log_read`` False is what makes the dependent
-            # checks fail rather than treating an absence as agreement.
-            compose_hash_event = None
-            instance_id_event = None
-            app_id_event = None
-            key_provider_event = None
-            os_image_hash_event = None
-            event_log_read = False
-
-    # The compose hash the TD asserted in the binding must be the one hardware
-    # measured. Without this the binding could name any configuration it liked.
-    checks.append(
-        check(
-            "compose_hash_measured_in_rtmr3",
-            compose_hash_event is not None and hex_equal(compose_hash_event, binding.compose_hash),
-            True,
-        )
-    )
-    # instance-id is measured too; when present it must agree with the binding.
-    # "Absent" is only acceptable when the log was actually readable, otherwise an
-    # unparsable log would silently satisfy this check.
-    checks.append(
-        check(
-            "instance_id_measured",
-            event_log_read
-            and (instance_id_event is None or hex_equal(instance_id_event, binding.instance_id)),
-            True,
-            "no instance-id event in log" if instance_id_event is None else None,
-        )
-    )
-    # app-id is measured independently of the binding, so a TD cannot claim an app
-    # identity it was not provisioned with.
-    checks.append(
-        check(
-            "app_id_measured",
-            event_log_read and app_id_event is not None and hex_equal(app_id_event, binding.app_id),
-            True,
-        )
-    )
-    # key-provider names who may hold this app's derived keys. A CVM booted under a
-    # different key provider is a different trust domain even at the same compose
-    # hash, so this is pinned rather than merely reported.
-    if tuple_form:
-        # Exact payload equality against the approved tuples: the tuple form never
-        # substring-matches, and the payload names the kind's own key provider
-        # (KMS for Phala, the ephemeral per-boot provider for GCP).
-        measured = key_provider_event.lower() if key_provider_event is not None else None
-        checks.append(
-            check(
-                "key_provider_pinned",
-                event_log_read
-                and measured is not None
-                and any(t.key_provider_payload == measured for t in policy.release_tuples or []),
-                True,
-                "no key-provider event in the log" if measured is None else None,
-            )
-        )
-    elif policy.key_provider_id:
-        expected = policy.key_provider_id.lower()
-        # The payload is a JSON blob ({"name":"kms","id":"<k256 pubkey>"}) encoded
-        # as hex, so match on the decoded text rather than the whole-field digest.
-        decoded = ""
-        if key_provider_event is not None:
+        # Reading the named identities is a SEPARATE step with its own failure mode.
+        # ``single_event_payload`` raises when an event appears twice, and folding that
+        # into the block above appended ``event_log_replays_rtmrs`` a second time, so a
+        # verdict could carry the same check name twice with different outcomes. A
+        # caller looking one up by name would find the passing copy and never see the
+        # failure.
+        if events is not None:
             try:
-                decoded = bytes.fromhex(key_provider_event).decode("utf-8", "replace").lower()
+                compose_hash_event = single_event_payload(events, "compose-hash")
+                instance_id_event = single_event_payload(events, "instance-id")
+                app_id_event = single_event_payload(events, "app-id")
+                key_provider_event = single_event_payload(events, "key-provider")
+                os_image_hash_event = single_event_payload(events, "os-image-hash")
+                event_log_read = True
             except ValueError:
-                decoded = ""
-        checks.append(check("key_provider_pinned", expected in decoded, True))
-    else:
-        checks.append(
-            check(
-                "key_provider_pinned",
-                False,
-                False,
-                "policy pins no key provider; a CVM under a different KMS would still pass",
-            )
-        )
+                # A duplicated or self-inconsistent named event makes EVERY identity
+                # read out of this log unusable, not just the one that raised. Leaving
+                # them None with ``event_log_read`` False is what makes the dependent
+                # checks fail rather than treating an absence as agreement.
+                compose_hash_event = None
+                instance_id_event = None
+                app_id_event = None
+                key_provider_event = None
+                os_image_hash_event = None
+                event_log_read = False
 
-    # vm_config is what lets someone recompute MRTD and RTMR0..2 offline with
-    # dstack-mr. It is served by the CVM, so on its own it is a claim; it becomes
-    # evidence only once it agrees with something hardware measured. The measured
-    # `os-image-hash` event is that anchor.
-    vm_config_os_image = _read_vm_config_os_image_hash(doc.get("vm_config"))
-    if native_gcp:
-        pass  # No dstack OS image on this platform: the OS is what RTMR1/RTMR2 pin.
-    elif os_image_hash_event is not None and vm_config_os_image is not None:
+        # The compose hash the TD asserted in the binding must be the one hardware
+        # measured. Without this the binding could name any configuration it liked.
         checks.append(
             check(
-                "vm_config_matches_measured_os_image",
-                hex_equal(os_image_hash_event, vm_config_os_image),
+                "compose_hash_measured_in_rtmr3",
+                compose_hash_event is not None and hex_equal(compose_hash_event, binding.compose_hash),
                 True,
             )
         )
-    else:
+        # instance-id is measured too; when present it must agree with the binding.
+        # "Absent" is only acceptable when the log was actually readable, otherwise an
+        # unparsable log would silently satisfy this check.
         checks.append(
             check(
-                "vm_config_matches_measured_os_image",
-                False,
-                False,
-                "no os-image-hash event in the log to anchor vm_config against"
-                if os_image_hash_event is None
-                else "evidence carries no vm_config.os_image_hash, so offline measurement "
-                "recomputation is unanchored",
+                "instance_id_measured",
+                event_log_read
+                and (instance_id_event is None or hex_equal(instance_id_event, binding.instance_id)),
+                True,
+                "no instance-id event in log" if instance_id_event is None else None,
+            )
+        )
+        # app-id is measured independently of the binding, so a TD cannot claim an app
+        # identity it was not provisioned with.
+        checks.append(
+            check(
+                "app_id_measured",
+                event_log_read and app_id_event is not None and hex_equal(app_id_event, binding.app_id),
+                True,
+            )
+        )
+        # key-provider names who may hold this app's derived keys. A CVM booted under a
+        # different key provider is a different trust domain even at the same compose
+        # hash, so this is pinned rather than merely reported.
+        if tuple_form:
+            # Exact payload equality against the approved tuples: the tuple form never
+            # substring-matches, and the payload names the KMS provider (checked at load).
+            measured = key_provider_event.lower() if key_provider_event is not None else None
+            checks.append(
+                check(
+                    "key_provider_pinned",
+                    event_log_read
+                    and measured is not None
+                    and any(t.key_provider_payload == measured for t in policy.release_tuples or []),
+                    True,
+                    "no key-provider event in the log" if measured is None else None,
+                )
+            )
+        elif policy.key_provider_id:
+            expected = policy.key_provider_id.lower()
+            # The payload is a JSON blob ({"name":"kms","id":"<k256 pubkey>"}) encoded
+            # as hex, so match on the decoded text rather than the whole-field digest.
+            decoded = ""
+            if key_provider_event is not None:
+                try:
+                    decoded = bytes.fromhex(key_provider_event).decode("utf-8", "replace").lower()
+                except ValueError:
+                    decoded = ""
+            checks.append(check("key_provider_pinned", expected in decoded, True))
+        else:
+            checks.append(
+                check(
+                    "key_provider_pinned",
+                    False,
+                    False,
+                    "policy pins no key provider; a CVM under a different KMS would still pass",
+                )
+            )
+
+        # vm_config is what lets someone recompute MRTD and RTMR0..2 offline with
+        # dstack-mr. It is served by the CVM, so on its own it is a claim; it becomes
+        # evidence only once it agrees with something hardware measured. The measured
+        # `os-image-hash` event is that anchor.
+        vm_config_os_image = _read_vm_config_os_image_hash(doc.get("vm_config"))
+        if os_image_hash_event is not None and vm_config_os_image is not None:
+            checks.append(
+                check(
+                    "vm_config_matches_measured_os_image",
+                    hex_equal(os_image_hash_event, vm_config_os_image),
+                    True,
+                )
+            )
+        else:
+            checks.append(
+                check(
+                    "vm_config_matches_measured_os_image",
+                    False,
+                    False,
+                    "no os-image-hash event in the log to anchor vm_config against"
+                    if os_image_hash_event is None
+                    else "evidence carries no vm_config.os_image_hash, so offline measurement "
+                    "recomputation is unanchored",
+                )
+            )
+
+        # --- 6. The manifest is the measured one, and says what it should ---------
+        try:
+            app_compose = read_attested_app_compose(doc.get("app_compose"))
+            checks.append(check("app_compose_parsed", True, True))
+        except ValueError as exc:
+            checks.append(check("app_compose_parsed", False, True, str(exc)))
+        checks.append(
+            check(
+                "app_compose_matches_measurement",
+                app_compose is not None and hex_equal(app_compose.compose_hash, binding.compose_hash),
+                True,
             )
         )
 
-    # --- 6. The manifest is the measured one, and says what it should ---------
-    app_compose: AttestedAppCompose | None = None
-    try:
-        app_compose = read_attested_app_compose(doc.get("app_compose"))
-        checks.append(check("app_compose_parsed", True, True))
-    except ValueError as exc:
-        checks.append(check("app_compose_parsed", False, True, str(exc)))
-    checks.append(
-        check(
-            "app_compose_matches_measurement",
-            app_compose is not None and hex_equal(app_compose.compose_hash, binding.compose_hash),
-            True,
-        )
-    )
-
-    if policy.require_private_logs:
-        checks.append(
-            check(
-                "compose_public_logs_disabled",
-                app_compose is not None and app_compose.public_logs is False,
-                True,
-                f"public_logs={app_compose.public_logs}" if app_compose else None,
+        if policy.require_private_logs:
+            checks.append(
+                check(
+                    "compose_public_logs_disabled",
+                    app_compose is not None and app_compose.public_logs is False,
+                    True,
+                    f"public_logs={app_compose.public_logs}" if app_compose else None,
+                )
             )
-        )
-    if policy.require_digest_pinned_images:
-        unpinned = [i for i in app_compose.images if not i.digest_pinned] if app_compose else []
-        checks.append(
-            check(
-                "compose_images_digest_pinned",
-                app_compose is not None and len(app_compose.images) > 0 and len(unpinned) == 0,
-                True,
-                f"{len(unpinned)} image reference(s) not digest-pinned" if unpinned else None,
+        if policy.require_digest_pinned_images:
+            unpinned = [i for i in app_compose.images if not i.digest_pinned] if app_compose else []
+            checks.append(
+                check(
+                    "compose_images_digest_pinned",
+                    app_compose is not None and len(app_compose.images) > 0 and len(unpinned) == 0,
+                    True,
+                    f"{len(unpinned)} image reference(s) not digest-pinned" if unpinned else None,
+                )
             )
-        )
 
     # --- 7. Locally pinned identity -------------------------------------------
     checks.append(
@@ -546,17 +577,22 @@ def verify_gateway_attestation(
         observed_kp = key_provider_event.lower() if key_provider_event is not None else None
 
         def measured_match(t: GatewayReleaseTuple) -> bool:
-            return (
-                event_log_read
-                and t.release_id == binding.release_id
+            common = (
+                t.release_id == binding.release_id
                 and t.app_id == binding.app_id
                 and t.compose_hash == binding.compose_hash
                 and t.mr_td == quote.mr_td.lower()
-                and t.mr_config_id == quote.mr_config_id.lower()
                 and t.rtmr0 == quote.rtmr0.lower()
                 and t.rtmr1 == quote.rtmr1.lower()
                 and t.rtmr2 == quote.rtmr2.lower()
-                and (native_gcp or t.os_image_hash == observed_os)
+            )
+            if native_gcp:
+                return common and t.td_attributes == quote.td_attributes.lower()
+            return (
+                common
+                and event_log_read
+                and t.mr_config_id == quote.mr_config_id.lower()
+                and t.os_image_hash == observed_os
                 and t.key_provider_payload == observed_kp
             )
 

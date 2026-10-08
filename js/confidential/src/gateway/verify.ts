@@ -34,7 +34,8 @@
 // Without one the honest verdict is `provider-attested`, never
 // `hardware-verified`. This SDK does not upgrade a claim it did not check.
 
-import { hexToBytes, utf8DecodeLossy } from "../bytes.js";
+import { sha256 } from "@noble/hashes/sha2.js";
+import { bytesToHex, hexToBytes, utf8DecodeLossy } from "../bytes.js";
 import { check } from "../verify/checks.js";
 import { hexEqual } from "../verify/crypto.js";
 import { parseTdxQuote, TDX_TEE_TYPE } from "../verify/tdx.js";
@@ -64,6 +65,8 @@ import {
 
 /** A vm_config blob is bounded so a hostile response cannot pin the CPU parsing it. */
 const MAX_VM_CONFIG_CHARS = 65_536;
+/** An unextended 48-byte register. */
+const ZERO_REGISTER = "0".repeat(96);
 
 /** What a chain verifier reports back about one quote. */
 export interface TdxChainOutcome {
@@ -331,193 +334,215 @@ export function verifyGatewayAttestation(
   checks.push(check("nonce_matches_request", binding.nonce === expectations.nonce.toLowerCase(), true));
   checks.push(check("origin_matches_connection", expectedOrigin !== null && binding.origin === expectedOrigin, true));
 
-  // --- 5. Event log replays to the quote's registers ------------------------
-  let composeHashEvent: string | null = null;
-  let instanceIdEvent: string | null = null;
-  let appIdEvent: string | null = null;
-  let keyProviderEvent: string | null = null;
+  // dstack measurements (steps 5 and 6) exist only on phala-dstack-kms.
   let osImageHashEvent: string | null = null;
+  let keyProviderEvent: string | null = null;
   let eventLogRead = false;
-  let events: DstackEventLogEntry[] | null = null;
-  try {
-    events = parseEventLog(evidence.event_log);
-    if (nativeGcp) {
-      // Google's firmware does not emit a dstack boot log. RTMR0..RTMR2 are pinned
-      // EXACTLY from the quote by the release tuple, so only the application
-      // events are replayed; any boot entries present are never consulted.
-      const replayed = replayRtmrs(events.filter((event) => event.imr === 3));
-      checks.push(check("event_log_replays_rtmr3", hexEqual(replayed[3], quote.rtmr3), true));
-      checks.push(check(
-        "firmware_event_log_replayed",
-        false,
-        false,
-        "RTMR0..RTMR2 are pinned directly from the quote; native CCEL/UKI measurement proof is pending qualification"
-      ));
-    } else {
+  let appCompose: AttestedAppCompose | null = null;
+  if (nativeGcp) {
+    // --- 5/6. gcp-tdx-native: the hardware registers ARE the measurements ----
+    // The application (compose and images) is baked into the dm-verity root that
+    // the UKI command line names, and firmware measures the UKI into RTMR1. The
+    // guest extends nothing into RTMR3 and has no KMS, key-provider event or
+    // app-compose to read, so none is consulted even if a document carries one.
+    checks.push(check(
+      "rtmr3_unextended",
+      quote.rtmr3.toLowerCase() === ZERO_REGISTER,
+      true,
+      quote.rtmr3.toLowerCase() === ZERO_REGISTER ? undefined : "RTMR3 was extended; this platform measures no runtime events"
+    ));
+    // Owner-supplied registers can carry configuration the tuple does not pin.
+    checks.push(check(
+      "owner_config_registers_zero",
+      [quote.mrConfigId, quote.mrOwner, quote.mrOwnerConfig].every((value) => value.toLowerCase() === ZERO_REGISTER),
+      true
+    ));
+    // instance_id names the boot: SHA-256 of the per-boot Ed25519 boot key the
+    // binding also carries, so a per-boot identity cannot be detached from it.
+    const bootKeyDigest = binding.key_alg === "ed25519" && /^[0-9a-f]{64}$/.test(binding.public_key)
+      ? bytesToHex(sha256(hexToBytes(binding.public_key)))
+      : null;
+    checks.push(check(
+      "instance_id_derives_from_boot_key",
+      bootKeyDigest !== null && bootKeyDigest === binding.instance_id,
+      true,
+      bootKeyDigest === null ? "binding does not carry a 32-byte ed25519 boot key" : undefined
+    ));
+    checks.push(check(
+      "firmware_event_log_replayed",
+      false,
+      false,
+      "RTMR0..RTMR2 are pinned exactly from the quote; this SDK does not replay Google's CCEL, so the UKI Authenticode and verity-root provenance of a tuple rest on its release review"
+    ));
+  } else {
+  // --- 5. Event log replays to the quote's registers ------------------------
+    let composeHashEvent: string | null = null;
+    let instanceIdEvent: string | null = null;
+    let appIdEvent: string | null = null;
+    let events: DstackEventLogEntry[] | null = null;
+    try {
+      events = parseEventLog(evidence.event_log);
       const replayed = replayRtmrs(events);
       const replays = hexEqual(replayed[0], quote.rtmr0)
         && hexEqual(replayed[1], quote.rtmr1)
         && hexEqual(replayed[2], quote.rtmr2)
         && hexEqual(replayed[3], quote.rtmr3);
       checks.push(check("event_log_replays_rtmrs", replays, true));
+
+      // Replay alone proves only that the DIGESTS are the measured ones. Each RTMR3
+      // digest must additionally commit to the human-readable name and payload
+      // printed beside it, or a genuine quote could be re-served with a rewritten
+      // compose-hash payload and still replay correctly.
+      const inconsistent = inconsistentRtmr3Events(events);
+      checks.push(check(
+        "event_digests_commit_to_payloads",
+        inconsistent.length === 0,
+        true,
+        inconsistent.length > 0 ? `${inconsistent.length} RTMR3 event(s) with a non-committing digest` : undefined
+      ));
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : undefined;
+      checks.push(check("event_log_replays_rtmrs", false, true, detail));
+      checks.push(check("event_digests_commit_to_payloads", false, true, detail));
+      events = null;
     }
 
-    // Replay alone proves only that the DIGESTS are the measured ones. Each RTMR3
-    // digest must additionally commit to the human-readable name and payload
-    // printed beside it, or a genuine quote could be re-served with a rewritten
-    // compose-hash payload and still replay correctly.
-    const inconsistent = inconsistentRtmr3Events(events);
-    checks.push(check(
-      "event_digests_commit_to_payloads",
-      inconsistent.length === 0,
-      true,
-      inconsistent.length > 0 ? `${inconsistent.length} RTMR3 event(s) with a non-committing digest` : undefined
-    ));
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : undefined;
-    checks.push(check(nativeGcp ? "event_log_replays_rtmr3" : "event_log_replays_rtmrs", false, true, detail));
-    checks.push(check("event_digests_commit_to_payloads", false, true, detail));
-    events = null;
-  }
-
-  // Reading the named identities is a SEPARATE step with its own failure mode.
-  // `singleEventPayload` throws when an event appears twice, and folding that into
-  // the block above pushed `event_log_replays_rtmrs` a second time, so a verdict
-  // could carry the same check name twice with different outcomes. A caller
-  // looking one up by name would find the passing copy and never see the failure.
-  if (events !== null) {
-    try {
-      composeHashEvent = singleEventPayload(events, "compose-hash");
-      instanceIdEvent = singleEventPayload(events, "instance-id");
-      appIdEvent = singleEventPayload(events, "app-id");
-      keyProviderEvent = singleEventPayload(events, "key-provider");
-      osImageHashEvent = singleEventPayload(events, "os-image-hash");
-      eventLogRead = true;
-    } catch {
-      // A duplicated or self-inconsistent named event makes EVERY identity read
-      // out of this log unusable, not just the one that threw. Leaving them null
-      // with `eventLogRead` false is what makes the dependent checks fail rather
-      // than treating an absence as agreement.
-      composeHashEvent = null;
-      instanceIdEvent = null;
-      appIdEvent = null;
-      keyProviderEvent = null;
-      osImageHashEvent = null;
-      eventLogRead = false;
+    // Reading the named identities is a SEPARATE step with its own failure mode.
+    // `singleEventPayload` throws when an event appears twice, and folding that into
+    // the block above pushed `event_log_replays_rtmrs` a second time, so a verdict
+    // could carry the same check name twice with different outcomes. A caller
+    // looking one up by name would find the passing copy and never see the failure.
+    if (events !== null) {
+      try {
+        composeHashEvent = singleEventPayload(events, "compose-hash");
+        instanceIdEvent = singleEventPayload(events, "instance-id");
+        appIdEvent = singleEventPayload(events, "app-id");
+        keyProviderEvent = singleEventPayload(events, "key-provider");
+        osImageHashEvent = singleEventPayload(events, "os-image-hash");
+        eventLogRead = true;
+      } catch {
+        // A duplicated or self-inconsistent named event makes EVERY identity read
+        // out of this log unusable, not just the one that threw. Leaving them null
+        // with `eventLogRead` false is what makes the dependent checks fail rather
+        // than treating an absence as agreement.
+        composeHashEvent = null;
+        instanceIdEvent = null;
+        appIdEvent = null;
+        keyProviderEvent = null;
+        osImageHashEvent = null;
+        eventLogRead = false;
+      }
     }
-  }
 
-  // The compose hash the TD asserted in the binding must be the one hardware
-  // measured. Without this the binding could name any configuration it liked.
-  checks.push(check(
-    "compose_hash_measured_in_rtmr3",
-    composeHashEvent !== null && hexEqual(composeHashEvent, binding.compose_hash),
-    true
-  ));
-  // instance-id is measured too; when present it must agree with the binding.
-  // "Absent" is only acceptable when the log was actually readable, otherwise an
-  // unparsable log would silently satisfy this check.
-  checks.push(check(
-    "instance_id_measured",
-    eventLogRead && (instanceIdEvent === null || hexEqual(instanceIdEvent, binding.instance_id)),
-    true,
-    instanceIdEvent === null ? "no instance-id event in log" : undefined
-  ));
-  // app-id is measured independently of the binding, so a TD cannot claim an app
-  // identity it was not provisioned with.
-  checks.push(check(
-    "app_id_measured",
-    eventLogRead && appIdEvent !== null && hexEqual(appIdEvent, binding.app_id),
-    true
-  ));
-  // key-provider names who may hold this app's derived keys. A CVM booted under a
-  // different key provider is a different trust domain even at the same compose
-  // hash, so this is pinned rather than merely reported.
-  if (tupleForm) {
-    // Exact payload equality against the approved tuples: the tuple form never
-    // substring-matches, and the payload names the kind's own key provider (KMS
-    // for Phala, the ephemeral per-boot provider for GCP), checked at load.
-    const measured = keyProviderEvent?.toLowerCase() ?? null;
+    // The compose hash the TD asserted in the binding must be the one hardware
+    // measured. Without this the binding could name any configuration it liked.
     checks.push(check(
-      "key_provider_pinned",
-      eventLogRead && measured !== null
-        && (policy.releaseTuples ?? []).some((tuple) => tuple.keyProviderPayload === measured),
-      true,
-      measured === null ? "no key-provider event in the log" : undefined
-    ));
-  } else if (policy.keyProviderId) {
-    const expected = policy.keyProviderId.toLowerCase();
-    // The payload is a JSON blob ({"name":"kms","id":"<k256 pubkey>"}) encoded as
-    // hex, so match on the decoded text rather than the whole-field digest.
-    const decoded = keyProviderEvent === null
-      ? ""
-      : utf8DecodeLossy(hexToBytes(keyProviderEvent)).toLowerCase();
-    checks.push(check("key_provider_pinned", decoded.includes(expected), true));
-  } else {
-    checks.push(check(
-      "key_provider_pinned",
-      false,
-      false,
-      "policy pins no key provider; a CVM under a different KMS would still pass"
-    ));
-  }
-
-  // vm_config is what lets someone recompute MRTD and RTMR0..2 offline with
-  // dstack-mr. It is served by the CVM, so on its own it is a claim; it becomes
-  // evidence only once it agrees with something hardware measured. The measured
-  // `os-image-hash` event is that anchor. A CVM that serves a vm_config naming a
-  // different OS image than the one it booted would otherwise send an auditor to
-  // reproduce the wrong measurements and conclude the quote was forged.
-  const vmConfigOsImage = readVmConfigOsImageHash(evidence.vm_config);
-  if (nativeGcp) {
-    // No dstack OS image on this platform: the OS is whatever RTMR1/RTMR2 pin.
-  } else if (osImageHashEvent !== null && vmConfigOsImage !== null) {
-    checks.push(check(
-      "vm_config_matches_measured_os_image",
-      hexEqual(osImageHashEvent, vmConfigOsImage),
+      "compose_hash_measured_in_rtmr3",
+      composeHashEvent !== null && hexEqual(composeHashEvent, binding.compose_hash),
       true
     ));
-  } else {
+    // instance-id is measured too; when present it must agree with the binding.
+    // "Absent" is only acceptable when the log was actually readable, otherwise an
+    // unparsable log would silently satisfy this check.
     checks.push(check(
-      "vm_config_matches_measured_os_image",
-      false,
-      false,
-      osImageHashEvent === null
-        ? "no os-image-hash event in the log to anchor vm_config against"
-        : "evidence carries no vm_config.os_image_hash, so offline measurement recomputation is unanchored"
+      "instance_id_measured",
+      eventLogRead && (instanceIdEvent === null || hexEqual(instanceIdEvent, binding.instance_id)),
+      true,
+      instanceIdEvent === null ? "no instance-id event in log" : undefined
     ));
-  }
+    // app-id is measured independently of the binding, so a TD cannot claim an app
+    // identity it was not provisioned with.
+    checks.push(check(
+      "app_id_measured",
+      eventLogRead && appIdEvent !== null && hexEqual(appIdEvent, binding.app_id),
+      true
+    ));
+    // key-provider names who may hold this app's derived keys. A CVM booted under a
+    // different key provider is a different trust domain even at the same compose
+    // hash, so this is pinned rather than merely reported.
+    if (tupleForm) {
+      // Exact payload equality against the approved tuples: the tuple form never
+      // substring-matches, and the payload names the KMS provider (checked at load).
+      const measured = keyProviderEvent?.toLowerCase() ?? null;
+      checks.push(check(
+        "key_provider_pinned",
+        eventLogRead && measured !== null
+          && (policy.releaseTuples ?? []).some((tuple) => tuple.keyProviderPayload === measured),
+        true,
+        measured === null ? "no key-provider event in the log" : undefined
+      ));
+    } else if (policy.keyProviderId) {
+      const expected = policy.keyProviderId.toLowerCase();
+      // The payload is a JSON blob ({"name":"kms","id":"<k256 pubkey>"}) encoded as
+      // hex, so match on the decoded text rather than the whole-field digest.
+      const decoded = keyProviderEvent === null
+        ? ""
+        : utf8DecodeLossy(hexToBytes(keyProviderEvent)).toLowerCase();
+      checks.push(check("key_provider_pinned", decoded.includes(expected), true));
+    } else {
+      checks.push(check(
+        "key_provider_pinned",
+        false,
+        false,
+        "policy pins no key provider; a CVM under a different KMS would still pass"
+      ));
+    }
+
+    // vm_config is what lets someone recompute MRTD and RTMR0..2 offline with
+    // dstack-mr. It is served by the CVM, so on its own it is a claim; it becomes
+    // evidence only once it agrees with something hardware measured. The measured
+    // `os-image-hash` event is that anchor. A CVM that serves a vm_config naming a
+    // different OS image than the one it booted would otherwise send an auditor to
+    // reproduce the wrong measurements and conclude the quote was forged.
+    const vmConfigOsImage = readVmConfigOsImageHash(evidence.vm_config);
+    if (osImageHashEvent !== null && vmConfigOsImage !== null) {
+      checks.push(check(
+        "vm_config_matches_measured_os_image",
+        hexEqual(osImageHashEvent, vmConfigOsImage),
+        true
+      ));
+    } else {
+      checks.push(check(
+        "vm_config_matches_measured_os_image",
+        false,
+        false,
+        osImageHashEvent === null
+          ? "no os-image-hash event in the log to anchor vm_config against"
+          : "evidence carries no vm_config.os_image_hash, so offline measurement recomputation is unanchored"
+      ));
+    }
 
   // --- 6. The manifest is the measured one, and says what it should ---------
-  let appCompose: AttestedAppCompose | null = null;
-  try {
-    appCompose = readAttestedAppCompose(evidence.app_compose);
-    checks.push(check("app_compose_parsed", true, true));
-  } catch (error) {
-    checks.push(check("app_compose_parsed", false, true, error instanceof Error ? error.message : undefined));
-  }
-  checks.push(check(
-    "app_compose_matches_measurement",
-    appCompose !== null && hexEqual(appCompose.composeHash, binding.compose_hash),
-    true
-  ));
+    try {
+      appCompose = readAttestedAppCompose(evidence.app_compose);
+      checks.push(check("app_compose_parsed", true, true));
+    } catch (error) {
+      checks.push(check("app_compose_parsed", false, true, error instanceof Error ? error.message : undefined));
+    }
+    checks.push(check(
+      "app_compose_matches_measurement",
+      appCompose !== null && hexEqual(appCompose.composeHash, binding.compose_hash),
+      true
+    ));
 
-  if (policy.requirePrivateLogs) {
-    checks.push(check(
-      "compose_public_logs_disabled",
-      appCompose?.publicLogs === false,
-      true,
-      appCompose ? `public_logs=${String(appCompose.publicLogs)}` : undefined
-    ));
-  }
-  if (policy.requireDigestPinnedImages) {
-    const unpinned = appCompose?.images.filter((image) => !image.digestPinned) ?? [];
-    checks.push(check(
-      "compose_images_digest_pinned",
-      appCompose !== null && appCompose.images.length > 0 && unpinned.length === 0,
-      true,
-      unpinned.length > 0 ? `${unpinned.length} image reference(s) not digest-pinned` : undefined
-    ));
+    if (policy.requirePrivateLogs) {
+      checks.push(check(
+        "compose_public_logs_disabled",
+        appCompose?.publicLogs === false,
+        true,
+        appCompose ? `public_logs=${String(appCompose.publicLogs)}` : undefined
+      ));
+    }
+    if (policy.requireDigestPinnedImages) {
+      const unpinned = appCompose?.images.filter((image) => !image.digestPinned) ?? [];
+      checks.push(check(
+        "compose_images_digest_pinned",
+        appCompose !== null && appCompose.images.length > 0 && unpinned.length === 0,
+        true,
+        unpinned.length > 0 ? `${unpinned.length} image reference(s) not digest-pinned` : undefined
+      ));
+    }
+
   }
 
   // --- 7. Locally pinned identity -------------------------------------------
@@ -534,7 +559,7 @@ export function verifyGatewayAttestation(
     // ONE tuple must match EVERY observed value at once. Independent allowlists
     // would accept an old firmware register beside a new compose hash; a tuple
     // cannot. Every compared value is either measured by hardware or committed to
-    // by report_data and cross-checked against RTMR3 above.
+    // by report_data (and, on Phala, cross-checked against RTMR3 above).
     const observed = {
       releaseId: binding.release_id,
       appId: binding.app_id,
@@ -544,20 +569,23 @@ export function verifyGatewayAttestation(
       rtmr0: quote.rtmr0.toLowerCase(),
       rtmr1: quote.rtmr1.toLowerCase(),
       rtmr2: quote.rtmr2.toLowerCase(),
+      tdAttributes: quote.tdAttributes.toLowerCase(),
       osImageHash: osImageHashEvent?.toLowerCase() ?? null,
       keyProviderPayload: keyProviderEvent?.toLowerCase() ?? null
     };
-    const measuredMatch = (tuple: GatewayReleaseTuple) => eventLogRead
-      && tuple.releaseId === observed.releaseId
+    const measuredMatch = (tuple: GatewayReleaseTuple) => tuple.releaseId === observed.releaseId
       && tuple.appId === observed.appId
       && tuple.composeHash === observed.composeHash
       && tuple.mrTd === observed.mrTd
-      && tuple.mrConfigId === observed.mrConfigId
       && tuple.rtmr0 === observed.rtmr0
       && tuple.rtmr1 === observed.rtmr1
       && tuple.rtmr2 === observed.rtmr2
-      && (nativeGcp || tuple.osImageHash === observed.osImageHash)
-      && tuple.keyProviderPayload === observed.keyProviderPayload;
+      && (nativeGcp
+        ? tuple.tdAttributes === observed.tdAttributes
+        : eventLogRead
+          && tuple.mrConfigId === observed.mrConfigId
+          && tuple.osImageHash === observed.osImageHash
+          && tuple.keyProviderPayload === observed.keyProviderPayload);
     const candidates = (policy.releaseTuples ?? []).filter(measuredMatch);
     const matched = candidates.find((tuple) => tuple.notBeforeMs <= now && now < tuple.expiresAtMs);
     checks.push(check(

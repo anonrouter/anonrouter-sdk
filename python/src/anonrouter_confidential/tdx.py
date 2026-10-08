@@ -59,6 +59,9 @@ class ParsedTdxQuote:
     td_attributes: str
     # True when the TUD.DEBUG bit (td_attributes bit 0) is set.
     debug_enabled: bool
+    # MROWNER and MROWNERCONFIG (48 bytes each), lowercase hex.
+    mr_owner: str = ""
+    mr_owner_config: str = ""
 
 
 def _is_canonical_base64(value: str) -> bool:
@@ -114,6 +117,8 @@ def parse_tdx_quote(raw: object) -> ParsedTdxQuote | None:
         td_attributes=hexat(_OFF_TD_ATTRIBUTES, 8),
         # TUD.DEBUG is bit 0 of the first td_attributes byte.
         debug_enabled=(buf[_OFF_TD_ATTRIBUTES] & 0x01) == 0x01,
+        mr_owner=hexat(_OFF_MR_CONFIG_ID + 48, 48),
+        mr_owner_config=hexat(_OFF_MR_CONFIG_ID + 96, 48),
     )
 
 

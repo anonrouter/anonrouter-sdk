@@ -23,7 +23,8 @@ environment on each CI run, so every published format is exercised.
 - Add explicit gateway platform kinds and tuple-form policies: whole release
   tuples evaluated as OR with per-tuple expiry, mixed forms refused, legacy
   Phala policies unchanged. Add `gcp-tdx-native` verification with native DCAP,
-  exact hardware registers and mandatory same-socket TLS key binding. It is not
+  exact hardware registers and TD attributes, zero RTMR3 and owner registers, a
+  boot-key-derived instance id and mandatory same-socket TLS key binding. It is not
   qualified: the packaged registry and signed feed refuse it, and a caller policy
   needs an explicit pilot opt-in. See `docs/gateway-platform-tuples.md`.
 

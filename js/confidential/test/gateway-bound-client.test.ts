@@ -17,8 +17,9 @@ const { createVerifiedGatewayConnection }: typeof import("../dist/gateway/connec
   packageRoot ? pathToFileURL(join(packageRoot, "dist/gateway/connection-session.js")).href : new URL("../dist/gateway/connection-session.js", import.meta.url).href);
 import { gatewayBindingHash, GATEWAY_BINDING_VERSION } from "../src/gateway/binding.js";
 import { loadGatewayPolicy } from "../src/gateway/policy.js";
-import { buildAppCompose, buildSyntheticEventLog, buildSyntheticGcpEventLog, buildSyntheticTdxQuote, buildVmConfig,
-  SYNTHETIC_EPHEMERAL_KEY_PROVIDER, SYNTHETIC_GCP_REGISTERS, SYNTHETIC_MR_CONFIG_ID, SYNTHETIC_OS_IMAGE_HASH } from "./helpers/gateway-fixtures.js";
+import { buildAppCompose, buildSyntheticEventLog, buildSyntheticGcpQuote, buildSyntheticTdxQuote, buildVmConfig,
+  SYNTHETIC_GCP_BOOT_KEY, SYNTHETIC_GCP_INSTANCE_ID, SYNTHETIC_GCP_REGISTERS, SYNTHETIC_GCP_VERITY_ROOT,
+  SYNTHETIC_MR_CONFIG_ID, SYNTHETIC_OS_IMAGE_HASH } from "./helpers/gateway-fixtures.js";
 import { createVeniceMockEnclave } from "./helpers/mock-enclaves.js";
 
 const fixture = process.env.SDK_BOUND_CLIENT_FIXTURE!;
@@ -478,26 +479,24 @@ it("an expired refreshed approval cannot authorize the retained socket", async (
   expect(t.observed.paidTickets).toBe(0); expect(t.observed.content).toEqual([]);
 });
 
-// gcp-tdx-native: synthetic registers and the ephemeral key provider, NOT Google
-// firmware values. The node's per-boot TLS key must be the one on THIS socket.
+// gcp-tdx-native: synthetic registers, verity root and boot key, NOT Google
+// firmware values. RTMR3 and owner registers are zero; there is no event log or
+// app-compose. The node's per-boot TLS key must be the one on THIS socket.
 const GCP_RELEASE = "sdk-bound-client@gcp-synthetic";
-const gcpLog = buildSyntheticGcpEventLog({ appId: APP, instanceId: INSTANCE, composeHash: compose.hash });
 function gcpPolicy(origin: string) {
   return loadGatewayPolicy({ platformKind: "gcp-tdx-native", source: "synthetic-gcp-client-wiring-policy", version: "1",
-    origins: [origin], releaseTuples: [{ tupleId: "synthetic-gcp", releaseId: GCP_RELEASE, appId: APP, composeHash: compose.hash,
-      ...SYNTHETIC_GCP_REGISTERS, keyProviderPayload: SYNTHETIC_EPHEMERAL_KEY_PROVIDER,
+    origins: [origin], releaseTuples: [{ tupleId: "synthetic-gcp", releaseId: GCP_RELEASE, appId: SYNTHETIC_GCP_VERITY_ROOT,
+      composeHash: compose.hash, ...SYNTHETIC_GCP_REGISTERS,
       notBeforeMs: Date.now() - 60_000, expiresAtMs: Date.now() + 3_600_000 }],
     requireInTeeTls: true, requirePrivateLogs: true, requireDigestPinnedImages: true, requireHardwareVerified: true,
     requireEvidenceExpiry: true, maxEvidenceAgeMs: 300_000, acceptableTcbStatuses: ["UpToDate"] });
 }
-function gcpEvidence(boundSlot?: string, registers: Partial<typeof SYNTHETIC_GCP_REGISTERS> = {}) {
+function gcpEvidence(boundSlot?: string, registers: Record<string, string> = {}) {
   return (origin: string, nonce: string, slot: string) => {
-    const binding = { v: GATEWAY_BINDING_VERSION, nonce, app_id: APP, instance_id: INSTANCE, compose_hash: compose.hash,
-      release_id: GCP_RELEASE, origin, key_alg: "x25519" as const, public_key: "ab".repeat(32),
+    const binding = { v: GATEWAY_BINDING_VERSION, nonce, app_id: SYNTHETIC_GCP_VERITY_ROOT, instance_id: SYNTHETIC_GCP_INSTANCE_ID,
+      compose_hash: compose.hash, release_id: GCP_RELEASE, origin, key_alg: "ed25519" as const, public_key: SYNTHETIC_GCP_BOOT_KEY,
       transport: "in-tee-tls" as const, tls_spki_sha256: pins[boundSlot ?? slot]! };
-    return { binding, quote: buildSyntheticTdxQuote({ reportDataHex: gatewayBindingHash(binding),
-      ...SYNTHETIC_GCP_REGISTERS, ...registers, rtmr3: gcpLog.rtmr3 }),
-      event_log: JSON.stringify(gcpLog.events), app_compose: compose.manifest, issued_at_ms: Date.now() };
+    return { binding, quote: buildSyntheticGcpQuote(gatewayBindingHash(binding), registers), issued_at_ms: Date.now() };
   };
 }
 function gcpClient(t: Awaited<ReturnType<typeof topology>>, pilot = true) {

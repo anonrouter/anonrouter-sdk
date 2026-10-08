@@ -50,12 +50,15 @@ export interface GatewayPlatformMeasurements {
  *                     from a pinned KMS. A policy document WITHOUT `platformKind`
  *                     is the legacy form of this kind and parses exactly as it
  *                     always has.
- *   gcp-tdx-native    A Google Cloud Intel TDX content node with guest-only,
- *                     per-boot keys (ephemeral key provider, no KMS) whose boot
- *                     chain is pinned through the hardware registers in the
- *                     quote. Never vTPM evidence. Requires same-connection
- *                     verification and, until its native boot chain is
- *                     qualified, an explicit caller pilot opt-in.
+ *   gcp-tdx-native    A Google Cloud Intel TDX content node whose application
+ *                     (compose and images) is baked into a dm-verity root named
+ *                     on the UKI command line, which firmware measures into
+ *                     RTMR1. It has guest-only per-boot keys, no KMS, no dstack
+ *                     application events (RTMR3 stays zero) and is pinned only
+ *                     through the hardware registers in the quote. Never vTPM
+ *                     evidence. Requires same-connection verification and,
+ *                     until its native boot chain is qualified, an explicit
+ *                     caller pilot opt-in.
  */
 export type GatewayPlatformKind = "phala-dstack-kms" | "gcp-tdx-native";
 
@@ -66,8 +69,8 @@ export const GATEWAY_PLATFORM_KINDS: readonly GatewayPlatformKind[] = ["phala-ds
  *
  * gcp-tdx-native is NOT qualified: a small C4 TDX VM has produced a genuine,
  * natively verified quote, but no AnonRouter guest has yet proved that Google's
- * firmware measures its UKI, command line and verity root into RTMR1/RTMR2, nor
- * that the application measurement in RTMR3 covers the code that runs. Until a
+ * firmware measures its UKI (with the command line naming the verity root that
+ * holds the application) into RTMR1 on this platform. Until a
  * reviewed SDK release flips this, the packaged registry and the signed feed
  * refuse the kind, and the verifier fails it unless the caller explicitly opted
  * into an unqualified pilot.
@@ -91,24 +94,29 @@ export interface GatewayReleaseTuple {
   tupleId: string;
   /** The binding's release_id. */
   releaseId: string;
-  /** The binding's (and RTMR3-measured) app id, lowercase hex. */
+  /**
+   * The binding's app id, lowercase hex. Measured in RTMR3 on Phala; on GCP it
+   * is the 32-byte dm-verity root hash that the UKI command line (RTMR1) names.
+   */
   appId: string;
-  /** The measured compose hash, 64 lowercase hex. */
+  /** The binding's compose hash, 64 lowercase hex. */
   composeHash: string;
   /** Quote registers, 96 lowercase hex each, compared exactly. */
   mrTd: string;
-  mrConfigId: string;
   rtmr0: string;
   rtmr1: string;
   rtmr2: string;
+  /** phala-dstack-kms only: MRCONFIGID (GCP requires it to be zero). */
+  mrConfigId?: string;
   /** phala-dstack-kms only: the measured dstack os-image-hash event. */
   osImageHash?: string;
   /**
-   * The exact payload (lowercase hex) of the measured RTMR3 key-provider event.
-   * It must decode to a JSON object naming `kms` for phala-dstack-kms and the
-   * ephemeral `none` provider for gcp-tdx-native.
+   * phala-dstack-kms only: the exact payload (lowercase hex) of the measured
+   * RTMR3 key-provider event, which must decode to a JSON object naming `kms`.
    */
-  keyProviderPayload: string;
+  keyProviderPayload?: string;
+  /** gcp-tdx-native only: the quote's exact td_attributes, 16 lowercase hex. */
+  tdAttributes?: string;
   /** Validity window, epoch ms: notBeforeMs <= now < expiresAtMs. */
   notBeforeMs: number;
   expiresAtMs: number;
@@ -254,11 +262,13 @@ const TUPLE_POLICY_FIELDS = new Set([
   "requireDigestPinnedImages", "requireHardwareVerified", "acceptableTcbStatuses", "requireEvidenceExpiry",
   "maxEvidenceAgeMs"
 ]);
-const TUPLE_FIELDS = ["tupleId", "releaseId", "appId", "composeHash", "mrTd", "mrConfigId", "rtmr0", "rtmr1", "rtmr2",
-  "keyProviderPayload", "notBeforeMs", "expiresAtMs"] as const;
-const KEY_PROVIDER_NAME: Readonly<Record<GatewayPlatformKind, string>> = {
-  "phala-dstack-kms": "kms",
-  "gcp-tdx-native": "none"
+const COMMON_TUPLE_FIELDS = ["tupleId", "releaseId", "appId", "composeHash", "mrTd", "rtmr0", "rtmr1", "rtmr2",
+  "notBeforeMs", "expiresAtMs"];
+const KIND_TUPLE_FIELDS: Readonly<Record<GatewayPlatformKind, readonly string[]>> = {
+  "phala-dstack-kms": ["mrConfigId", "osImageHash", "keyProviderPayload"],
+  // No MRCONFIGID (required zero), OS image or key provider: the application is
+  // the verity root in RTMR1, and the node has no KMS and no RTMR3 events.
+  "gcp-tdx-native": ["tdAttributes"]
 };
 
 /** The platform a parsed policy describes; the legacy form is phala-dstack-kms. */
@@ -300,11 +310,10 @@ export function validateGatewayReleaseTuple(kind: GatewayPlatformKind, input: un
   const at = `policy.releaseTuples[${index}]`;
   if (!input || typeof input !== "object" || Array.isArray(input)) throw new GatewayPolicyError(`${at} must be an object`);
   const raw = input as Record<string, unknown>;
-  const expected: string[] = kind === "phala-dstack-kms" ? [...TUPLE_FIELDS, "osImageHash"] : [...TUPLE_FIELDS];
+  const expected = [...COMMON_TUPLE_FIELDS, ...KIND_TUPLE_FIELDS[kind]];
   const keys = Object.keys(raw).filter((key) => raw[key] !== undefined);
   if (keys.length !== expected.length || keys.some((key) => !expected.includes(key))) {
-    // gcp-tdx-native deliberately has no osImageHash (its OS is RTMR1/RTMR2) and
-    // no vTPM/PCR field of any kind: an unknown field is refused, never ignored.
+    // A field of the other kind, or any vTPM/PCR field, is refused, never ignored.
     throw new GatewayPolicyError(`${at} must have exactly the fields ${expected.join(", ")}`);
   }
   for (const field of ["tupleId", "releaseId"] as const) {
@@ -312,23 +321,39 @@ export function validateGatewayReleaseTuple(kind: GatewayPlatformKind, input: un
       throw new GatewayPolicyError(`${at}.${field} must be 1..128 chars of [A-Za-z0-9._:@+-]`);
     }
   }
-  if (typeof raw.appId !== "string" || !/^[0-9a-f]{1,512}$/.test(raw.appId)) {
-    throw new GatewayPolicyError(`${at}.appId must be lowercase hex`);
-  }
-  const keyProviderPayload = raw.keyProviderPayload;
-  if (typeof keyProviderPayload !== "string" || keyProviderPayload.length < 2 || keyProviderPayload.length > 2048
-      || keyProviderPayload.length % 2 !== 0 || !/^[0-9a-f]+$/.test(keyProviderPayload)) {
-    throw new GatewayPolicyError(`${at}.keyProviderPayload must be 2..2048 lowercase hex characters`);
-  }
-  let provider: unknown;
-  try {
-    provider = JSON.parse(utf8Decode(hexToBytes(keyProviderPayload)));
-  } catch {
-    throw new GatewayPolicyError(`${at}.keyProviderPayload must decode to a UTF-8 JSON object`);
-  }
-  if (!provider || typeof provider !== "object" || Array.isArray(provider)
-      || (provider as Record<string, unknown>).name !== KEY_PROVIDER_NAME[kind]) {
-    throw new GatewayPolicyError(`${at}.keyProviderPayload must name the ${KEY_PROVIDER_NAME[kind]} key provider for ${kind}`);
+  const appId = kind === "gcp-tdx-native"
+    ? exactHex(`${at}.appId`, raw.appId, 64)
+    : typeof raw.appId === "string" && /^[0-9a-f]{1,512}$/.test(raw.appId) ? raw.appId : undefined;
+  if (appId === undefined) throw new GatewayPolicyError(`${at}.appId must be lowercase hex`);
+  let kindFields: Partial<GatewayReleaseTuple>;
+  if (kind === "phala-dstack-kms") {
+    const keyProviderPayload = raw.keyProviderPayload;
+    if (typeof keyProviderPayload !== "string" || keyProviderPayload.length < 2 || keyProviderPayload.length > 2048
+        || keyProviderPayload.length % 2 !== 0 || !/^[0-9a-f]+$/.test(keyProviderPayload)) {
+      throw new GatewayPolicyError(`${at}.keyProviderPayload must be 2..2048 lowercase hex characters`);
+    }
+    let provider: unknown;
+    try {
+      provider = JSON.parse(utf8Decode(hexToBytes(keyProviderPayload)));
+    } catch {
+      throw new GatewayPolicyError(`${at}.keyProviderPayload must decode to a UTF-8 JSON object`);
+    }
+    if (!provider || typeof provider !== "object" || Array.isArray(provider)
+        || (provider as Record<string, unknown>).name !== "kms") {
+      throw new GatewayPolicyError(`${at}.keyProviderPayload must name the kms key provider for ${kind}`);
+    }
+    kindFields = {
+      mrConfigId: exactHex(`${at}.mrConfigId`, raw.mrConfigId, 96),
+      osImageHash: exactHex(`${at}.osImageHash`, raw.osImageHash, 64),
+      keyProviderPayload
+    };
+  } else {
+    const tdAttributes = exactHex(`${at}.tdAttributes`, raw.tdAttributes, 16);
+    // TUD.DEBUG is bit 0 of the first byte. A debug TD is never approvable.
+    if ((parseInt(tdAttributes.slice(0, 2), 16) & 0x01) !== 0) {
+      throw new GatewayPolicyError(`${at}.tdAttributes must not enable debug`);
+    }
+    kindFields = { tdAttributes };
   }
   const notBeforeMs = tupleTime(`${at}.notBeforeMs`, raw.notBeforeMs);
   const expiresAtMs = tupleTime(`${at}.expiresAtMs`, raw.expiresAtMs);
@@ -338,15 +363,13 @@ export function validateGatewayReleaseTuple(kind: GatewayPlatformKind, input: un
   return {
     tupleId: raw.tupleId as string,
     releaseId: raw.releaseId as string,
-    appId: raw.appId,
+    appId,
     composeHash: exactHex(`${at}.composeHash`, raw.composeHash, 64),
     mrTd: exactHex(`${at}.mrTd`, raw.mrTd, 96),
-    mrConfigId: exactHex(`${at}.mrConfigId`, raw.mrConfigId, 96),
     rtmr0: exactHex(`${at}.rtmr0`, raw.rtmr0, 96),
     rtmr1: exactHex(`${at}.rtmr1`, raw.rtmr1, 96),
     rtmr2: exactHex(`${at}.rtmr2`, raw.rtmr2, 96),
-    ...(kind === "phala-dstack-kms" ? { osImageHash: exactHex(`${at}.osImageHash`, raw.osImageHash, 64) } : {}),
-    keyProviderPayload,
+    ...kindFields,
     notBeforeMs,
     expiresAtMs
   };

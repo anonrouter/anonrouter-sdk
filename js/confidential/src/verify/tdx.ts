@@ -20,6 +20,9 @@ export interface ParsedTdxQuote {
   /** TD build measurement (48-byte SHA-384), lowercase hex. */
   mrTd: string;
   mrConfigId: string;
+  /** MROWNER and MROWNERCONFIG (48 bytes each), lowercase hex. */
+  mrOwner: string;
+  mrOwnerConfig: string;
   rtmr0: string;
   rtmr1: string;
   rtmr2: string;
@@ -74,6 +77,8 @@ export function parseTdxQuote(input: unknown): ParsedTdxQuote | null {
     teeType: view.getUint32(4, true),
     mrTd: hex(OFF_MR_TD, 48),
     mrConfigId: hex(OFF_MR_CONFIG_ID, 48),
+    mrOwner: hex(OFF_MR_CONFIG_ID + 48, 48),
+    mrOwnerConfig: hex(OFF_MR_CONFIG_ID + 96, 48),
     rtmr0: hex(OFF_RTMR0, 48),
     rtmr1: hex(OFF_RTMR0 + 48, 48),
     rtmr2: hex(OFF_RTMR0 + 96, 48),

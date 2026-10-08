@@ -47,6 +47,10 @@ export interface SyntheticQuoteOptions {
   rtmr3?: string;
   mrTd?: string;
   mrConfigId?: string;
+  mrOwner?: string;
+  mrOwnerConfig?: string;
+  /** td_attributes, 8 bytes hex (zero when omitted). */
+  tdAttributes?: string;
   teeType?: number;
   debug?: boolean;
 }
@@ -61,16 +65,19 @@ export function buildSyntheticTdxQuote(options: SyntheticQuoteOptions): string {
   view.setUint16(2, 2, true); // att_key_type (ECDSA-P256)
   view.setUint32(4, options.teeType ?? TEE_TYPE_TDX, true);
 
-  if (options.debug) buf[OFF_TD_ATTRIBUTES] |= 0x01;
-
   const write = (offset: number, hex: string, bytes: number) => {
     const value = hexToBytes(hex);
     if (value.length !== bytes) throw new Error(`expected ${bytes} bytes at offset ${offset}`);
     buf.set(value, offset);
   };
 
+  if (options.tdAttributes) write(OFF_TD_ATTRIBUTES, options.tdAttributes, 8);
+  if (options.debug) buf[OFF_TD_ATTRIBUTES] |= 0x01;
+
   write(OFF_MR_TD, options.mrTd ?? ZERO_48, 48);
   write(OFF_MR_CONFIG_ID, options.mrConfigId ?? SYNTHETIC_MR_CONFIG_ID, 48);
+  write(OFF_MR_CONFIG_ID + 48, options.mrOwner ?? ZERO_48, 48);
+  write(OFF_MR_CONFIG_ID + 96, options.mrOwnerConfig ?? ZERO_48, 48);
   write(OFF_RTMR0, options.rtmr0 ?? ZERO_48, 48);
   write(OFF_RTMR0 + 48, options.rtmr1 ?? ZERO_48, 48);
   write(OFF_RTMR0 + 96, options.rtmr2 ?? ZERO_48, 48);
@@ -241,38 +248,28 @@ export function buildAppCompose(overrides: Record<string, unknown> = {}): { mani
 }
 
 /**
- * The key-provider payload a synthetic gcp-tdx-native guest measures: the
- * ephemeral per-boot `none` provider. SYNTHETIC: the real adapter's exact bytes
- * are an open protocol item, and nothing here is a production pin.
+ * Synthetic gcp-tdx-native identity. NEVER Google firmware values or a real
+ * AnonRouter release: registers, verity root and boot key are invented.
+ *
+ * The guest protocol: RTMR3 stays zero, MRCONFIGID/MROWNER/MROWNERCONFIG are
+ * zero, app_id is the dm-verity root, and instance_id is SHA-256 of the
+ * per-boot Ed25519 boot key carried as the binding's public_key.
  */
-export const SYNTHETIC_EPHEMERAL_KEY_PROVIDER = bytesToHex(utf8Encode(JSON.stringify({ name: "none", id: "" })));
-
-/** Synthetic GCP hardware registers. Never Google firmware values. */
 export const SYNTHETIC_GCP_REGISTERS = {
   mrTd: "1a".repeat(48),
-  mrConfigId: "00".repeat(48),
   rtmr0: "2b".repeat(48),
   rtmr1: "3c".repeat(48),
-  rtmr2: "4d".repeat(48)
+  rtmr2: "4d".repeat(48),
+  tdAttributes: "0000001000000000"
 } as const;
+export const SYNTHETIC_GCP_VERITY_ROOT = "5a".repeat(32);
+export const SYNTHETIC_GCP_BOOT_KEY = "e7".repeat(32);
+export const SYNTHETIC_GCP_INSTANCE_ID = bytesToHex(sha256(hexToBytes(SYNTHETIC_GCP_BOOT_KEY)));
 
-/**
- * A gcp-tdx-native event log: RTMR3 application events only. Google's firmware
- * does not produce a dstack boot log, so RTMR0..RTMR2 are pinned directly from
- * the quote and this log replays only RTMR3.
- */
-export function buildSyntheticGcpEventLog(options: {
-  appId: string;
-  composeHash: string;
-  instanceId: string;
-  keyProviderPayload?: string;
-}): { events: DstackEventLogEntry[]; rtmr3: string } {
-  const events: DstackEventLogEntry[] = [
-    rtmr3Event("system-preparing", ""),
-    rtmr3Event("app-id", options.appId),
-    rtmr3Event("compose-hash", options.composeHash),
-    rtmr3Event("instance-id", options.instanceId),
-    rtmr3Event("key-provider", options.keyProviderPayload ?? SYNTHETIC_EPHEMERAL_KEY_PROVIDER)
-  ];
-  return { events, rtmr3: replayRegister(events.map((e) => rtmr3EventDigest(e) ?? "ff".repeat(48))) };
+/** A structurally valid gcp-tdx-native quote: zero RTMR3 and owner registers. */
+export function buildSyntheticGcpQuote(reportDataHex: string, registers: Partial<SyntheticQuoteOptions> = {}): string {
+  return buildSyntheticTdxQuote({
+    reportDataHex, ...SYNTHETIC_GCP_REGISTERS, mrConfigId: ZERO_48, mrOwner: ZERO_48, mrOwnerConfig: ZERO_48,
+    rtmr3: ZERO_48, ...registers
+  });
 }

@@ -23,14 +23,18 @@ import { canonicalGatewayPolicyJson, GATEWAY_POLICY_DOMAIN, verifySignedGatewayP
 import { gatewayBindingHash } from "../src/gateway/binding.js";
 import { loadGatewayPolicy } from "../src/gateway/policy.js";
 import { verifyGatewayAttestation, type GatewayAttestationEvidence } from "../src/gateway/verify.js";
+import { sha256 } from "@noble/hashes/sha2.js";
+import { hexToBytes } from "../src/bytes.js";
 import {
   buildAppCompose,
   buildSyntheticEventLog,
-  buildSyntheticGcpEventLog,
+  buildSyntheticGcpQuote,
   buildSyntheticTdxQuote,
   buildVmConfig,
-  SYNTHETIC_EPHEMERAL_KEY_PROVIDER,
+  SYNTHETIC_GCP_BOOT_KEY,
+  SYNTHETIC_GCP_INSTANCE_ID,
   SYNTHETIC_GCP_REGISTERS,
+  SYNTHETIC_GCP_VERITY_ROOT,
   SYNTHETIC_MR_CONFIG_ID,
   SYNTHETIC_OS_IMAGE_HASH
 } from "../test/helpers/gateway-fixtures.js";
@@ -47,19 +51,23 @@ const OTHER_NODE_SPKI = "dd".repeat(32);
 const NOW = 1_791_327_000_000;
 const DAY = 86_400_000;
 const KMS_PAYLOAD = bytesToHex(utf8Encode(JSON.stringify({ name: "kms", id: "aa".repeat(33) })));
+const NONE_PAYLOAD = bytesToHex(utf8Encode(JSON.stringify({ name: "none", id: "" })));
 
+// On GCP the compose is baked into the verity root (the app id); only its hash
+// travels in the binding. Release B is a different verity root and compose.
 const composeA = buildAppCompose({ name: "anonrouter-content-a" });
 const composeB = buildAppCompose({ name: "anonrouter-content-b" });
+const ROOT_A = SYNTHETIC_GCP_VERITY_ROOT;
+const ROOT_B = "6b".repeat(32);
 
 // Two complete approved releases on two firmware/shape tuples.
 const FW1 = SYNTHETIC_GCP_REGISTERS;
 const FW2 = { ...SYNTHETIC_GCP_REGISTERS, mrTd: "5e".repeat(48), rtmr0: "6f".repeat(48) };
 
-function gcpTuple(id: string, release: string, compose: { hash: string }, fw: typeof FW1, window = { notBeforeMs: NOW - DAY, expiresAtMs: NOW + DAY }) {
+function gcpTuple(id: string, release: string, root: string, compose: { hash: string }, fw: typeof FW1, window = { notBeforeMs: NOW - DAY, expiresAtMs: NOW + DAY }) {
   return {
-    tupleId: id, releaseId: release, appId: APP_ID, composeHash: compose.hash,
-    mrTd: fw.mrTd, mrConfigId: fw.mrConfigId, rtmr0: fw.rtmr0, rtmr1: fw.rtmr1, rtmr2: fw.rtmr2,
-    keyProviderPayload: SYNTHETIC_EPHEMERAL_KEY_PROVIDER, ...window
+    tupleId: id, releaseId: release, appId: root, composeHash: compose.hash,
+    mrTd: fw.mrTd, rtmr0: fw.rtmr0, rtmr1: fw.rtmr1, rtmr2: fw.rtmr2, tdAttributes: fw.tdAttributes, ...window
   };
 }
 
@@ -70,27 +78,28 @@ const floor = {
 
 const gcpPolicy = {
   platformKind: "gcp-tdx-native", source: "synthetic-gcp-tuple-vectors", version: "1", origins: [ORIGIN],
-  releaseTuples: [gcpTuple("release-a@fw1", "content@a", composeA, FW1), gcpTuple("release-b@fw2", "content@b", composeB, FW2)],
+  releaseTuples: [gcpTuple("release-a@fw1", "content@a", ROOT_A, composeA, FW1), gcpTuple("release-b@fw2", "content@b", ROOT_B, composeB, FW2)],
   ...floor
 };
 
-function gcpEvidence(options: { release: string; compose: { hash: string; manifest: string }; fw: typeof FW1; spki?: string; keyProviderPayload?: string; tamperRtmr3?: boolean }) {
-  const log = buildSyntheticGcpEventLog({ appId: APP_ID, composeHash: options.compose.hash, instanceId: INSTANCE_ID,
-    ...(options.keyProviderPayload ? { keyProviderPayload: options.keyProviderPayload } : {}) });
-  const binding = { v: 1, nonce: NONCE, app_id: APP_ID, instance_id: INSTANCE_ID, compose_hash: options.compose.hash,
-    release_id: options.release, origin: ORIGIN, key_alg: "x25519", public_key: "ab".repeat(32), transport: "in-tee-tls",
-    tls_spki_sha256: options.spki ?? SPKI };
+interface GcpEvidenceOptions {
+  release: string; root: string; compose: { hash: string }; fw: typeof FW1; spki?: string;
+  quote?: Record<string, string>; binding?: Record<string, unknown>;
+}
+function gcpEvidence(options: GcpEvidenceOptions) {
+  const binding = { v: 1, nonce: NONCE, app_id: options.root, instance_id: SYNTHETIC_GCP_INSTANCE_ID,
+    compose_hash: options.compose.hash, release_id: options.release, origin: ORIGIN, key_alg: "ed25519",
+    public_key: SYNTHETIC_GCP_BOOT_KEY, transport: "in-tee-tls", tls_spki_sha256: options.spki ?? SPKI, ...options.binding };
   return {
     binding,
-    quote: buildSyntheticTdxQuote({ reportDataHex: gatewayBindingHash(binding as never), ...options.fw,
-      rtmr3: options.tamperRtmr3 ? "99".repeat(48) : log.rtmr3 }),
-    event_log: JSON.stringify(log.events),
-    app_compose: options.compose.manifest,
+    quote: buildSyntheticGcpQuote(gatewayBindingHash(binding as never), { ...options.fw, ...options.quote }),
     issued_at_ms: NOW - 1_000
   };
 }
 
-const releaseA = { release: "content@a", compose: composeA, fw: FW1 };
+const releaseA = { release: "content@a", root: ROOT_A, compose: composeA, fw: FW1 };
+const releaseB = { release: "content@b", root: ROOT_B, compose: composeB, fw: FW2 };
+const otherBootKey = "e8".repeat(32);
 
 // A Phala tuple-form policy and matching dstack evidence, for the positive
 // control that tuple form also serves the existing platform.
@@ -129,10 +138,15 @@ const loadCases: { name: string; policy: unknown; accepted: boolean }[] = [
   { name: "VTPM: a PCR allowlist is an unknown policy field", policy: { ...gcpPolicy, vtpmPcrs: { "0": "00".repeat(32) } }, accepted: false },
   { name: "VTPM: a PCR field inside a tuple", policy: withTuple({ pcr0: "00".repeat(32) }), accepted: false },
   { name: "gcp tuple must not carry a dstack osImageHash", policy: withTuple({ osImageHash: SYNTHETIC_OS_IMAGE_HASH }), accepted: false },
+  { name: "gcp tuple must not carry a key provider", policy: withTuple({ keyProviderPayload: NONE_PAYLOAD }), accepted: false },
+  { name: "gcp tuple must not carry MRCONFIGID (it is required zero)", policy: withTuple({ mrConfigId: "00".repeat(48) }), accepted: false },
+  { name: "gcp tuple requires tdAttributes", policy: withTuple({ tdAttributes: undefined }), accepted: false },
+  { name: "gcp tuple with debug tdAttributes", policy: withTuple({ tdAttributes: "0100001000000000" }), accepted: false },
+  { name: "gcp app id must be a 32-byte verity root", policy: withTuple({ appId: APP_ID }), accepted: false },
   { name: "phala tuple requires osImageHash", policy: { ...phalaPolicy, releaseTuples: [(({ osImageHash: _o, ...rest }) => rest)(phalaPolicy.releaseTuples[0]!)] }, accepted: false },
-  { name: "gcp tuple naming a KMS key provider", policy: withTuple({ keyProviderPayload: KMS_PAYLOAD }), accepted: false },
-  { name: "phala tuple naming the ephemeral provider", policy: { ...phalaPolicy, releaseTuples: [{ ...phalaPolicy.releaseTuples[0]!, keyProviderPayload: SYNTHETIC_EPHEMERAL_KEY_PROVIDER }] }, accepted: false },
-  { name: "key provider payload that is not JSON", policy: withTuple({ keyProviderPayload: "6e6f6e65" }), accepted: false },
+  { name: "phala tuple must not carry tdAttributes", policy: { ...phalaPolicy, releaseTuples: [{ ...phalaPolicy.releaseTuples[0]!, tdAttributes: FW1.tdAttributes }] }, accepted: false },
+  { name: "phala tuple naming a non-KMS provider", policy: { ...phalaPolicy, releaseTuples: [{ ...phalaPolicy.releaseTuples[0]!, keyProviderPayload: NONE_PAYLOAD }] }, accepted: false },
+  { name: "phala key provider payload that is not JSON", policy: { ...phalaPolicy, releaseTuples: [{ ...phalaPolicy.releaseTuples[0]!, keyProviderPayload: "6b6d73" }] }, accepted: false },
   { name: "missing tuple register", policy: withTuple({ rtmr2: undefined }), accepted: false },
   { name: "uppercase register hex", policy: withTuple({ rtmr1: FW1.rtmr1.toUpperCase() }), accepted: false },
   { name: "short register", policy: withTuple({ mrTd: "1a".repeat(47) }), accepted: false },
@@ -165,19 +179,27 @@ const verifyInputs: VerifyCase[] = [
   { name: "gcp pilot: release A on firmware 1 over the retained socket", why: "The only shape that passes: whole tuple, native DCAP, same-socket key, explicit pilot. The unqualified boot chain stays visible as an unmet advisory.",
     policy: gcpPolicy, evidence: gcpEvidence(releaseA), expectations: retained, chainVerifier: chainOk },
   { name: "gcp pilot: release B on firmware 2", why: "Tuples are OR: the second complete tuple matches on its own.",
-    policy: gcpPolicy, evidence: gcpEvidence({ release: "content@b", compose: composeB, fw: FW2 }), expectations: retained, chainVerifier: chainOk },
+    policy: gcpPolicy, evidence: gcpEvidence(releaseB), expectations: retained, chainVerifier: chainOk },
   { name: "MIXED TUPLE: release B code on firmware 1", why: "Every value is individually approved somewhere, but no single tuple holds them together.",
-    policy: gcpPolicy, evidence: gcpEvidence({ release: "content@b", compose: composeB, fw: FW1 }), expectations: retained, chainVerifier: chainOk },
-  { name: "MIXED TUPLE: release A label with release B compose", why: "The release label and the measured configuration must come from the same tuple.",
-    policy: gcpPolicy, evidence: gcpEvidence({ release: "content@a", compose: composeB, fw: FW2 }), expectations: retained, chainVerifier: chainOk },
-  { name: "WRONG PLATFORM: RTMR1 differs (another UKI)", why: "A kernel/initrd the tuple does not name fails even with everything else approved.",
-    policy: gcpPolicy, evidence: gcpEvidence({ ...releaseA, fw: { ...FW1, rtmr1: "77".repeat(48) } }), expectations: retained, chainVerifier: chainOk },
-  { name: "WRONG PLATFORM: MRCONFIGID differs", why: "The CPU-measured config id is part of the tuple.",
-    policy: gcpPolicy, evidence: gcpEvidence({ ...releaseA, fw: { ...FW1, mrConfigId: "01".repeat(48) } }), expectations: retained, chainVerifier: chainOk },
-  { name: "WRONG KEY PROVIDER: a KMS provider measured on GCP", why: "GCP keys are ephemeral per boot; a KMS-backed boot is a different trust domain.",
-    policy: gcpPolicy, evidence: gcpEvidence({ ...releaseA, keyProviderPayload: KMS_PAYLOAD }), expectations: retained, chainVerifier: chainOk },
-  { name: "TAMPERED RTMR3", why: "The application events must replay to the quote's RTMR3.",
-    policy: gcpPolicy, evidence: gcpEvidence({ ...releaseA, tamperRtmr3: true }), expectations: retained, chainVerifier: chainOk },
+    policy: gcpPolicy, evidence: gcpEvidence({ ...releaseB, fw: FW1 }), expectations: retained, chainVerifier: chainOk },
+  { name: "MIXED TUPLE: release A label and verity root with release B compose", why: "The release label, verity root and compose hash must come from the same tuple.",
+    policy: gcpPolicy, evidence: gcpEvidence({ ...releaseA, compose: composeB }), expectations: retained, chainVerifier: chainOk },
+  { name: "MIXED TUPLE: release A verity root on release B everything else", why: "The verity root that RTMR1 commits to is part of the tuple.",
+    policy: gcpPolicy, evidence: gcpEvidence({ ...releaseB, root: ROOT_A }), expectations: retained, chainVerifier: chainOk },
+  { name: "WRONG PLATFORM: RTMR1 differs (another UKI)", why: "A kernel, command line or verity root the tuple does not name fails even with everything else approved.",
+    policy: gcpPolicy, evidence: gcpEvidence({ ...releaseA, quote: { rtmr1: "77".repeat(48) } }), expectations: retained, chainVerifier: chainOk },
+  { name: "WRONG PLATFORM: TD attributes differ", why: "The exact TD attributes are part of the tuple.",
+    policy: gcpPolicy, evidence: gcpEvidence({ ...releaseA, quote: { tdAttributes: "0000000000000000" } }), expectations: retained, chainVerifier: chainOk },
+  { name: "WRONG PLATFORM: MRCONFIGID set", why: "Owner-supplied configuration registers must be zero.",
+    policy: gcpPolicy, evidence: gcpEvidence({ ...releaseA, quote: { mrConfigId: "01".repeat(48) } }), expectations: retained, chainVerifier: chainOk },
+  { name: "WRONG PLATFORM: MROWNER set", why: "Owner-supplied configuration registers must be zero.",
+    policy: gcpPolicy, evidence: gcpEvidence({ ...releaseA, quote: { mrOwner: "02".repeat(48) } }), expectations: retained, chainVerifier: chainOk },
+  { name: "RTMR3 EXTENDED", why: "This guest measures no runtime events; any RTMR3 extension is unexplained code or configuration.",
+    policy: gcpPolicy, evidence: gcpEvidence({ ...releaseA, quote: { rtmr3: "99".repeat(48) } }), expectations: retained, chainVerifier: chainOk },
+  { name: "INSTANCE ID not derived from the boot key", why: "The per-boot identity must be SHA-256 of the boot key the binding carries.",
+    policy: gcpPolicy, evidence: gcpEvidence({ ...releaseA, binding: { public_key: otherBootKey } }), expectations: retained, chainVerifier: chainOk },
+  { name: "BOOT KEY not ed25519", why: "The GCP boot key is Ed25519; another algorithm is a different protocol.",
+    policy: gcpPolicy, evidence: gcpEvidence({ ...releaseA, binding: { key_alg: "x25519" } }), expectations: retained, chainVerifier: chainOk },
   { name: "EXPIRED TUPLE", why: "A tuple's own expiry ends acceptance even when every measurement matches.",
     policy: { ...gcpPolicy, releaseTuples: [{ ...tuple0, notBeforeMs: NOW - 2 * DAY, expiresAtMs: NOW - DAY }] }, evidence: gcpEvidence(releaseA), expectations: retained, chainVerifier: chainOk },
   { name: "NOT YET VALID TUPLE", why: "A tuple cannot be used before its window opens.",
@@ -196,6 +218,11 @@ const verifyInputs: VerifyCase[] = [
     policy: gcpPolicy, evidence: gcpEvidence(releaseA), expectations: retained, chainVerifier: { verified: true, tcbStatus: "OutOfDate" } },
   { name: "phala tuple form, full replay", why: "The tuple form also serves the existing platform, with its full dstack replay and KMS provider.",
     policy: phalaPolicy, evidence: phalaEvidence,
+    expectations: { nonce: NONCE, origin: PHALA_ORIGIN, nowMs: NOW, observedTlsSpki: { supplied: true, value: SPKI }, observedOnRetainedConnection: false, unqualifiedPlatformPilot: false },
+    chainVerifier: chainOk },
+  { name: "phala tuple form, another KMS", why: "The exact key-provider payload is part of the Phala tuple.",
+    policy: { ...phalaPolicy, releaseTuples: [{ ...phalaPolicy.releaseTuples[0]!, keyProviderPayload: bytesToHex(utf8Encode(JSON.stringify({ name: "kms", id: "bb".repeat(33) }))) }] },
+    evidence: phalaEvidence,
     expectations: { nonce: NONCE, origin: PHALA_ORIGIN, nowMs: NOW, observedTlsSpki: { supplied: true, value: SPKI }, observedOnRetainedConnection: false, unqualifiedPlatformPilot: false },
     chainVerifier: chainOk }
 ];
@@ -223,6 +250,8 @@ const verifyCases = verifyInputs.map((input) => {
     }
   };
 });
+
+if (bytesToHex(sha256(hexToBytes(SYNTHETIC_GCP_BOOT_KEY))) !== SYNTHETIC_GCP_INSTANCE_ID) throw new Error("fixture boot key drift");
 
 // Signed approvals, from ephemeral keys that exist only while this runs.
 const secrets = [ed25519.utils.randomSecretKey(), ed25519.utils.randomSecretKey()];

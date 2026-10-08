@@ -32,7 +32,7 @@ import httpx
 from cryptography import x509
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
-from gateway_fixtures import build_app_compose, build_synthetic_event_log, build_synthetic_gcp_event_log, build_synthetic_tdx_quote, build_vm_config, SYNTHETIC_EPHEMERAL_KEY_PROVIDER, SYNTHETIC_GCP_REGISTERS, SYNTHETIC_MR_CONFIG_ID, SYNTHETIC_OS_IMAGE_HASH
+from gateway_fixtures import build_app_compose, build_synthetic_event_log, build_synthetic_gcp_quote, build_synthetic_tdx_quote, build_vm_config, SYNTHETIC_GCP_BOOT_KEY, SYNTHETIC_GCP_INSTANCE_ID, SYNTHETIC_GCP_REGISTERS, SYNTHETIC_GCP_VERITY_ROOT, SYNTHETIC_MR_CONFIG_ID, SYNTHETIC_OS_IMAGE_HASH
 from test_route_binding_negatives import venice_evidence
 from anonrouter_confidential.client import create_client
 from anonrouter_confidential.crypto import venice
@@ -145,22 +145,20 @@ def evidence(origin,nonce,pin):
     return {'binding':binding,'quote':build_synthetic_tdx_quote(report_data_hex=gateway_binding_hash(binding),rtmr0=LOG.rtmr0,rtmr1=LOG.rtmr1,rtmr2=LOG.rtmr2,rtmr3=LOG.rtmr3),
         'event_log':LOG.as_json(),'app_compose':MANIFEST,'vm_config':build_vm_config(),'issued_at_ms':int(time.time()*1000)}
 
-# gcp-tdx-native: synthetic registers and the ephemeral key provider, NOT Google
-# firmware values. The node's per-boot TLS key must be the one on THIS socket.
+# gcp-tdx-native: synthetic registers, verity root and boot key, NOT Google
+# firmware values. RTMR3 and owner registers are zero; there is no event log or
+# app-compose. The node's per-boot TLS key must be the one on THIS socket.
 GCP_RELEASE='sdk-bound-python@gcp-synthetic'
-GCP_LOG=build_synthetic_gcp_event_log(app_id=APP,instance_id=INSTANCE,compose_hash=COMPOSE)
 def gcp_policy(origin):
     now=int(time.time()*1000)
     return load_gateway_policy({'platformKind':'gcp-tdx-native','source':'synthetic-gcp-client-policy','version':'1','origins':[origin],
-        'releaseTuples':[{'tupleId':'synthetic-gcp','releaseId':GCP_RELEASE,'appId':APP,'composeHash':COMPOSE,**SYNTHETIC_GCP_REGISTERS,
-            'keyProviderPayload':SYNTHETIC_EPHEMERAL_KEY_PROVIDER,'notBeforeMs':now-60000,'expiresAtMs':now+3600000}],
+        'releaseTuples':[{'tupleId':'synthetic-gcp','releaseId':GCP_RELEASE,'appId':SYNTHETIC_GCP_VERITY_ROOT,'composeHash':COMPOSE,**SYNTHETIC_GCP_REGISTERS,
+            'notBeforeMs':now-60000,'expiresAtMs':now+3600000}],
         'requireInTeeTls':True,'requirePrivateLogs':True,'requireDigestPinnedImages':True,'requireHardwareVerified':True,'requireEvidenceExpiry':True,'maxEvidenceAgeMs':300000,'acceptableTcbStatuses':['UpToDate']})
 def gcp_evidence(bound_slot=None,registers=None):
     def build(server,nonce,slot):
-        binding={'v':1,'nonce':nonce,'app_id':APP,'instance_id':INSTANCE,'compose_hash':COMPOSE,'release_id':GCP_RELEASE,'origin':server.origin,'key_alg':'x25519','public_key':'ab'*32,'transport':'in-tee-tls','tls_spki_sha256':server.pins[bound_slot or slot]}
-        regs={**SYNTHETIC_GCP_REGISTERS,**(registers or {})}
-        return {'binding':binding,'quote':build_synthetic_tdx_quote(report_data_hex=gateway_binding_hash(binding),mr_td=regs['mrTd'],mr_config_id=regs['mrConfigId'],rtmr0=regs['rtmr0'],rtmr1=regs['rtmr1'],rtmr2=regs['rtmr2'],rtmr3=GCP_LOG.rtmr3),
-            'event_log':GCP_LOG.as_json(),'app_compose':MANIFEST,'issued_at_ms':int(time.time()*1000)}
+        binding={'v':1,'nonce':nonce,'app_id':SYNTHETIC_GCP_VERITY_ROOT,'instance_id':SYNTHETIC_GCP_INSTANCE_ID,'compose_hash':COMPOSE,'release_id':GCP_RELEASE,'origin':server.origin,'key_alg':'ed25519','public_key':SYNTHETIC_GCP_BOOT_KEY,'transport':'in-tee-tls','tls_spki_sha256':server.pins[bound_slot or slot]}
+        return {'binding':binding,'quote':build_synthetic_gcp_quote(gateway_binding_hash(binding),**(registers or {})),'issued_at_ms':int(time.time()*1000)}
     return build
 
 class Topology:
