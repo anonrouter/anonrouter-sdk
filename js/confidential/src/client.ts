@@ -43,7 +43,8 @@ import {
   type RouteVerdict
 } from "./verify/route.js";
 import { GATEWAY_NONCE_HEX_LENGTH } from "./gateway/binding.js";
-import { createSignedGatewayPolicySource, packagedGatewayPolicyAuthority, type GatewayPolicySource } from "./gateway/authority.js";
+import { assertGatewayPolicySecurityFloor, createSignedGatewayPolicySource, packagedGatewayPolicyAuthority, type GatewayPolicySource } from "./gateway/authority.js";
+type VerifiedGatewayConnection = import("./gateway/connection-session.js").VerifiedGatewayConnection;
 import {
   pinnedGatewayPolicyFor,
   type GatewayMeasurementPolicy,
@@ -69,6 +70,13 @@ import { validateE2eeMessages, validateE2eeRequest, type RawTurnMessage } from "
 import { joinUrl, type FetchLike, type HttpContext } from "./transport/types.js";
 
 export interface CreateClientOptions {
+  /** Opt-in Node content-connection binding. Each operation verifies a fresh
+   * gateway quote before tickets and pins its attested TLS key on every content
+   * connection. Generic custom fetch and browser runtimes cannot satisfy it. */
+  gatewayConnectionBinding?: {
+    mode: "required";
+    verification: Pick<VerifyGatewayInput, "policy" | "allowCandidatePolicy" | "chainVerifier">;
+  };
   /** Follow independently signed gateway approvals. Defaults to the packaged
    * authority's activation flag. false retains exact bundled/caller pins.
    * A source can supply durable sequence storage; it receives no API key. */
@@ -639,6 +647,19 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
     throw new ConfidentialError("unsupported_request", "createClient needs an apiKey.");
   }
   const fetchImpl: FetchLike = options.fetch ?? (globalThis.fetch.bind(globalThis) as FetchLike);
+  const connectionBinding = options.gatewayConnectionBinding;
+  let requiredGatewayVerification: Pick<VerifyGatewayInput, "policy" | "allowCandidatePolicy" | "chainVerifier"> | null = null;
+  if (connectionBinding !== undefined) {
+    if (!connectionBinding || connectionBinding.mode !== "required" || !connectionBinding.verification
+        || Object.keys(connectionBinding).some(key => !["mode", "verification"].includes(key))
+        || Object.keys(connectionBinding.verification).some(key => !["policy", "allowCandidatePolicy", "chainVerifier"].includes(key))
+        || options.fetch !== undefined || !connectionBinding.verification.chainVerifier
+        || new URL(origin).protocol !== "https:" || controlOrigin === origin) {
+      throw new ConfidentialError("unsupported_request", "Required gateway connection binding needs a supported Node transport, a chain verifier and distinct control/content origins; generic fetch overrides are refused.");
+    }
+    requiredGatewayVerification = { ...connectionBinding.verification,
+      ...(connectionBinding.verification.policy ? { policy: structuredClone(connectionBinding.verification.policy) } : {}) };
+  }
   const authority = packagedGatewayPolicyAuthority();
   const updateOption = options.gatewayPolicyUpdates;
   const gatewayPolicySource = typeof updateOption === "object" ? updateOption
@@ -646,6 +667,49 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
       ? createSignedGatewayPolicySource() : undefined;
   const authHeaders = { authorization: `Bearer ${options.apiKey}` };
   const http: HttpContext = { baseUrl: origin, fetchImpl };
+  type BoundOperation = { connection: VerifiedGatewayConnection; result: VerifyGatewayResult };
+
+  function refusePerCallReplacement(value: unknown): void {
+    if (requiredGatewayVerification && value !== undefined && value !== true) {
+      throw new ConfidentialError("unsupported_request", "Per-call gateway options cannot disable or replace required connection binding.");
+    }
+  }
+
+  async function openBoundOperation(signal?: AbortSignal): Promise<BoundOperation> {
+    // Load the real Node implementation before policy/evidence/ticket network
+    // calls. A browser or shimmed runtime must fail, never downgrade silently.
+    let sessionModule: typeof import("./gateway/connection-session.js");
+    try {
+      const runtime = globalThis as unknown as { process?: { versions?: { node?: string } }; window?: { document?: unknown } };
+      if (!runtime.process?.versions?.node || runtime.window?.document) throw new Error("unsupported runtime");
+      const sessionSpecifier = "./gateway/connection-session.js";
+      sessionModule = await import(sessionSpecifier) as typeof import("./gateway/connection-session.js");
+    } catch {
+      throw new ConfidentialError("unsupported_request", "Required gateway connection binding is available only through Node's native TLS transport.");
+    }
+    throwIfAborted(signal);
+    const verification = requiredGatewayVerification!;
+    const resolved = await resolveGatewayPolicy(verification, signal);
+    if (!resolved) throw new ConfidentialError("measurement_untrusted", "No approved gateway policy for connection binding.");
+    assertGatewayPolicySecurityFloor(resolved.policy);
+    const nonce = freshNonce();
+    const evidence = await fetchGatewayEvidence(nonce, signal);
+    if (evidence === GATEWAY_UNAVAILABLE) throw new ConfidentialError("attestation_failed", "The gateway cannot establish a bound confidential connection.");
+    const checked = await verifyGatewayEvidence(evidence, nonce, resolved, verification, signal);
+    // A refreshed policy is checked again; it cannot weaken required mode.
+    assertGatewayPolicySecurityFloor(checked.resolved.policy);
+    const result = { origin, policy: checked.resolved.provenance, verdict: checked.verdict, rawEvidence: evidence };
+    const connection = sessionModule.createVerifiedGatewayConnection({ origin, verdict: checked.verdict,
+      policy: checked.resolved.policy, evidenceIssuedAtMs: evidence.issued_at_ms as number,
+      ...(checked.resolved.provenance.expiresAtMs !== undefined ? { approvalExpiresAtMs: checked.resolved.provenance.expiresAtMs } : {}),
+      ...(signal ? { signal } : {}) });
+    return { connection, result };
+  }
+
+  async function withBoundOperation<T>(signal: AbortSignal | undefined, run: (operation: BoundOperation) => Promise<T>): Promise<T> {
+    const operation = await openBoundOperation(signal);
+    try { return await run(operation); } finally { operation.connection.close(); }
+  }
 
   /**
    * Fetch raw attestation evidence for a route, for verification only.
@@ -679,7 +743,8 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
     model: string,
     provider: string,
     nonce: string,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    operation?: BoundOperation
   ): Promise<AttestationResponse> {
     const parse = async (response: Response): Promise<AttestationResponse> => {
       let body: AttestationResponse;
@@ -696,6 +761,7 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
 
     let ticket: string | null = null;
     try {
+      operation?.connection.assertDispatchAllowed();
       const issued = await postJson<{ ticket?: unknown }>(
         "/v1/inference/attestation-tickets",
         { model, provider },
@@ -728,7 +794,7 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
     if (ticket) {
       let response: Response;
       try {
-        response = await fetchImpl(joinUrl(origin, "/v1/tee/attestation"), {
+        response = await (operation?.connection.fetch ?? fetchImpl)(joinUrl(origin, "/v1/tee/attestation"), {
           method: "POST",
           credentials: "omit",
           cache: "no-store",
@@ -758,7 +824,7 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
       + new URLSearchParams({ model, provider, nonce }).toString();
     let response: Response;
     try {
-      response = await fetchImpl(url, {
+      response = await (operation?.connection.fetch ?? fetchImpl)(url, {
         method: "GET",
         cache: "no-store",
         headers: { accept: "application/json", ...authHeaders },
@@ -797,8 +863,12 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
    * is carried out intact and the two callers each decide what to do with it.
    */
   async function attestRoute(
-    input: VerifyAttestationInput
+    input: VerifyAttestationInput,
+    operation?: BoundOperation
   ): Promise<{ result: VerifyAttestationResult; echo: RouteEcho }> {
+    if (requiredGatewayVerification && !operation) {
+      return withBoundOperation(input.signal, bound => attestRoute(input, bound));
+    }
     const provider = input.provider;
     const model = input.model;
     const nonce = input.nonce ?? freshNonce();
@@ -808,7 +878,7 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
     // Make the Node X.509 possession check available (no-op / degrade in a browser).
     await enableNodeCrypto();
 
-    const body = await fetchAttestationEvidence(model, provider, nonce, input.signal);
+    const body = await fetchAttestationEvidence(model, provider, nonce, input.signal, operation);
     const echo = readRouteEcho(body);
 
     // THE MODALITY IS A PROPERTY OF THE ROUTE, and this is where it is decided.
@@ -857,8 +927,8 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
     };
   }
 
-  async function verifyAttestation(input: VerifyAttestationInput): Promise<VerifyAttestationResult> {
-    const { result, echo } = await attestRoute(input);
+  async function verifyAttestation(input: VerifyAttestationInput, operation?: BoundOperation): Promise<VerifyAttestationResult> {
+    const { result, echo } = await attestRoute(input, operation);
 
     // Single-hop callers get a hard failure on a route disagreement: they asked
     // about ONE route and did not get it, and there is no second hop here whose
@@ -1092,9 +1162,14 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
 
   // ---- Both hops ------------------------------------------------------------
 
-  async function verify(input: VerifyInput): Promise<VerificationReport> {
+  async function verify(input: VerifyInput, operation?: BoundOperation): Promise<VerificationReport> {
+    refusePerCallReplacement(input.gateway);
+    if (requiredGatewayVerification && !operation) return withBoundOperation(input.signal, bound => verify(input, bound));
     const gatewayOption = gatewayOptionToInput(input.gateway);
-    const gateway: GatewayHopReport = gatewayOption === null
+    const gateway: GatewayHopReport = operation ? {
+      requested: true, status: "ok", verificationLevel: operation.result.verdict.verificationLevel,
+      reason: null, policy: operation.result.policy, verdict: operation.result.verdict, rawEvidence: operation.result.rawEvidence
+    } : gatewayOption === null
       ? { requested: false, status: "not-requested", verificationLevel: null, reason: null }
       : await gatewayHop(gatewayOption, input.signal);
 
@@ -1104,7 +1179,7 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
       upstreamModel: input.upstreamModel,
       nonce: input.nonce,
       signal: input.signal
-    });
+    }, operation);
 
     const provider: ProviderHopReport = {
       status: attestation.verdict.status,
@@ -1148,11 +1223,13 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
    * a hop attested forces the whole verdict untrusted, however strong the
    * individual hops were.
    */
-  async function verifyRoute(input: VerifyRouteInput): Promise<RouteVerdict> {
+  async function verifyRoute(input: VerifyRouteInput, operation?: BoundOperation): Promise<RouteVerdict> {
+    refusePerCallReplacement(input.gateway);
+    if (requiredGatewayVerification && !operation) return withBoundOperation(input.signal, bound => verifyRoute(input, bound));
     const gatewayOption = gatewayOptionToInput(input.gateway);
 
-    let gatewayHop = gatewayOption === null ? hopNotRequested() : null;
-    if (gatewayOption !== null) {
+    let gatewayHop = operation ? gatewayHopVerdict(operation.result.verdict) : gatewayOption === null ? hopNotRequested() : null;
+    if (!operation && gatewayOption !== null) {
       const hop = await gatewayHop2(gatewayOption, input.signal);
       gatewayHop = hop.verdict;
     }
@@ -1174,7 +1251,7 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
         privacyClass: input.privacyClass,
         nonce: input.nonce,
         signal: input.signal
-      }));
+      }, operation));
     } catch (error) {
       if (error instanceof ConfidentialError && error.code === "cancelled") throw error;
       providerFailure = error instanceof ConfidentialError ? error.code : "provider_verification_failed";
@@ -1298,6 +1375,12 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
   }
 
   async function chat(input: ChatInput): Promise<ChatResult> {
+    refusePerCallReplacement(input.requireGateway);
+    if (requiredGatewayVerification) return withBoundOperation(input.signal, operation => chatOperation(input, operation));
+    return chatOperation(input);
+  }
+
+  async function chatOperation(input: ChatInput, operation?: BoundOperation): Promise<ChatResult> {
     const transport = transportFor(input.provider);
     // A ROUTE THE SERVICE WITHHOLDS FAILS HERE, before the first authenticated
     // call and long before anything is encrypted or sent. The mint would refuse
@@ -1325,7 +1408,7 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
     //    a caller who requires AnonRouter's own plane to be attested must not
     //    have spent a ticket, or named a model, against a plane that is not.
     const gatewayRequirement = gatewayOptionToInput(input.requireGateway);
-    if (gatewayRequirement) {
+    if (gatewayRequirement && !operation) {
       const hop = await gatewayHop(gatewayRequirement, input.signal);
       if (hop.status !== "ok") {
         throw new ConfidentialError(
@@ -1336,6 +1419,7 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
     }
 
     // 1. Authenticated, content-free attestation ticket.
+    operation?.connection.assertDispatchAllowed();
     const ticketBody = await postJson<{ ticket?: unknown }>(
       "/v1/inference/attestation-tickets",
       { model: input.model, provider: input.provider },
@@ -1353,7 +1437,7 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
     // 3. Credential-free attestation (single-use ticket in header, no Bearer).
     let attestationResponse: Response;
     try {
-      attestationResponse = await fetchImpl(joinUrl(origin, "/v1/tee/attestation"), {
+      attestationResponse = await (operation?.connection.fetch ?? fetchImpl)(joinUrl(origin, "/v1/tee/attestation"), {
         method: "POST",
         credentials: "omit",
         cache: "no-store",
@@ -1438,6 +1522,7 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
       const reservedMaxOutputTokens = transport.streaming
         ? input.maxOutputTokens
         : await resolveOutputCeiling(input.model, input.provider, input.signal);
+      operation?.connection.assertDispatchAllowed();
       const inferenceTicket = await postJson<{ ticket?: unknown }>(
         "/v1/inference/tickets",
         { model: input.model, provider: input.provider, e2ee: true, max_completion_tokens: reservedMaxOutputTokens },
@@ -1451,7 +1536,7 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
 
       // 8. Encrypted inference over the credential-isolated relay.
       const completion = await transport.complete(session, request, {
-        http,
+        http: operation ? { baseUrl: origin, fetchImpl: operation.connection.fetch } : http,
         ticket: inferenceTicket.ticket,
         signal: input.signal,
         onDelta: input.onDelta
@@ -1511,6 +1596,10 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
   const images: ImagesApi = {
     async generate(input) {
       assertSplitOrigins();
+      if (requiredGatewayVerification) return withBoundOperation(input.signal, operation => createMediaApi({
+        controlOrigin, inferenceOrigin: origin, apiKey: options.apiKey, fetchImpl,
+        contentFetchImpl: operation.connection.fetch, beforeTicket: operation.connection.assertDispatchAllowed
+      }).images.generate(input));
       return mediaApi.images.generate(input);
     }
   };
@@ -1518,6 +1607,10 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
     speech: {
       async create(input) {
         assertSplitOrigins();
+        if (requiredGatewayVerification) return withBoundOperation(input.signal, operation => createMediaApi({
+          controlOrigin, inferenceOrigin: origin, apiKey: options.apiKey, fetchImpl,
+          contentFetchImpl: operation.connection.fetch, beforeTicket: operation.connection.assertDispatchAllowed
+        }).audio.speech.create(input));
         return mediaApi.audio.speech.create(input);
       }
     }

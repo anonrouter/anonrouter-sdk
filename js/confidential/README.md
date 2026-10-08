@@ -52,32 +52,65 @@ import { createAnonRouterDcapVerifier } from "@anonrouter/confidential/dcap";
 const client = createClient({
   baseUrl: "https://api.anonrouter.ai",
   controlBaseUrl: "https://control.anonrouter.ai",
-  apiKey: process.env.ANONROUTER_API_KEY!
+  apiKey: process.env.ANONROUTER_API_KEY!,
+  gatewayPolicyUpdates: true,
+  gatewayConnectionBinding: {
+    mode: "required",
+    verification: { chainVerifier: createAnonRouterDcapVerifier() }
+  }
 });
 
 // Verify BOTH hops, cross-bound to the route you asked for, and gate on it.
 const verdict = await client.verifyRoute({
   model: "google/gemma-4-26b-a4b-uncensored",
   provider: "venice",
-  gateway: { chainVerifier: createAnonRouterDcapVerifier() }
+  gateway: true
 });
 if (!atLeast(verdict.overallState, "cryptographically_checked")) {
   throw new Error(`route not established: ${verdict.reason}`);
 }
 
 // End-to-end-encrypted chat: keys and nonce are fresh per call, and only
-// ciphertext ever reaches AnonRouter's relay. requireGateway re-establishes hop 1
-// with a NEW nonce before a ticket is spent or a model is named, because a verdict
-// from a minute ago is a fact about a minute ago.
+// ciphertext ever reaches AnonRouter's relay. Required connection binding obtains
+// fresh gateway evidence for this operation and checks the attested TLS key
+// before sending provider evidence or inference to the content origin.
 const reply = await client.chat({
   model: "google/gemma-4-26b-a4b-uncensored",
   provider: "venice",
   messages: [{ role: "user", content: "Draft a private message." }],
   maxOutputTokens: 512,
-  requireGateway: { chainVerifier: createAnonRouterDcapVerifier() }
+  requireGateway: true
 });
 console.log(reply.content);
 ```
+
+## Required gateway connection binding in Node
+
+`gatewayConnectionBinding` is an opt-in Node mode. It verifies a fresh gateway
+quote for each operation and uses the verified quote's TLS key to check every
+connection carrying provider evidence, encrypted chat, image prompts or speech
+text. Normal certificate and hostname checks still apply. Control requests use
+the separate control origin. Approval and evidence expiry are checked before
+tickets and immediately before content dispatch.
+
+This mode requires a hardware chain verifier, HTTPS and distinct control/content
+origins. It refuses custom `fetch`, browsers and per-call options that disable or
+replace the required verification. `gateway: true` and `requireGateway: true`
+retain the configured requirement. Streams keep their operation's checked
+identity until they finish or are cancelled. There is no automatic inference
+retry, ticket re-mint or replay.
+
+`verifyGateway()` by itself verifies evidence; it does not bind a later generic
+HTTP connection. The default transport, Python clients, `@anonrouter/client` and
+external OpenAI clients do not inherit this Node option. Python transport work
+is still preparation, pending client integration.
+
+Operational acceptance remains pending. Fresh quotes per operation can hit the
+current service limit of 20 requests per client address per minute (240 aggregate).
+During a deployment switch, evidence from A followed by a connection to B is
+safely refused; that can still produce a visible failure. Local TLS tests do not
+prove deployment continuity or native quote capacity. Use this candidate mode
+only with the matching reviewed policy and operational capacity.
 
 ## Images and speech
 

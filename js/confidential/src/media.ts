@@ -446,6 +446,10 @@ export interface MediaHttp {
   inferenceOrigin: string;
   apiKey: string;
   fetchImpl: FetchLike;
+  /** Operation-owned content transport; control calls retain fetchImpl. */
+  contentFetchImpl?: FetchLike;
+  /** Required-mode approval check immediately before ticket minting. */
+  beforeTicket?: () => void;
 }
 
 interface ErrorEnvelope {
@@ -528,6 +532,7 @@ async function mintTicket(
 
   let response: Response;
   try {
+    http.beforeTicket?.();
     response = await http.fetchImpl(joinUrl(http.controlOrigin, TICKET_PATH), {
       method: "POST",
       // The ticket mint is the ONLY request that carries the API key. It is sent
@@ -598,7 +603,7 @@ async function postContent(
 
   let response: Response;
   try {
-    response = await http.fetchImpl(joinUrl(http.inferenceOrigin, path), {
+    response = await (http.contentFetchImpl ?? http.fetchImpl)(joinUrl(http.inferenceOrigin, path), {
       method: "POST",
       // NO API KEY, NO COOKIE. `credentials: "omit"` also stops a browser from
       // attaching one. The single-use ticket is the entire authorization.

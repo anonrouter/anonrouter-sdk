@@ -1,5 +1,5 @@
 # Dependencies / build output
-node_modules/
+node_modules
 dist/
 build/
 *.tsbuildinfo
@@ -32,3 +32,10 @@ venv/
 .vscode/
 *.log
 *.tmp
+
+# Local connection-binding acceptance outputs
+.transport-build/
+.transport-mypy-cache/
+.bound-client-vite-cache/
+.bound-client-tls-*/
+.synthetic-tls-*/

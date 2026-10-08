@@ -74,3 +74,29 @@ updates do not replace the recorded artifact identities.
 Publication is pending explicit GitHub release authorization under the project
 source-control rule. No registry setting, tag or public branch was changed.
 The [0.1.2 readiness record](release-readiness-0.1.2.md) is historical.
+
+## Connection-binding candidate — 2026-10-07
+
+A separate unpublished candidate, based on cf1e9470, adds opt-in required Node
+connection binding to the confidential client. Fresh fully checked gateway quotes
+provide immutable operation identity; actual content sockets check normal CA,
+hostname and the attested SPKI before sending HTTP. Provider evidence, encrypted
+chat, image and speech use the operation transport; control is separate. Generic
+fetch/browser/per-call downgrade refuses, expiry is checked before tickets and
+HTTP dispatch, streams retain ownership, and no paid inference retry is added.
+Standalone verifyGateway remains evidence-only and authority defaults stay off.
+
+The isolated port passes 16 real local TLS client cases, 16 transport cases and 547
+existing offline regressions, package/example types and build. Synthetic native
+verifier boundaries are explicit; these are not new hardware or paid acceptance.
+The network-dependent no-insecure-escape-hatch file was excluded: an earlier
+scratch broad run attempted one credential-free public evidence GET and failed
+before its expected chain check. No content/ticket/inference was sent or retried.
+
+Python's synchronous transport primitive is preparation; Python and ordinary
+client integration remain incomplete. Fresh per-operation quotes can hit the
+current 20/client-address and 240 aggregate per-minute service limits; capacity is
+unverified. A quote from A followed by a connection to B safely refuses but can
+still fail visibly during switching. Packed-artifact installation, hardware and
+operational acceptance, complete client integration and publication remain gates.
+The older acceptance records above describe their exact previous bytes only.
