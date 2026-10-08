@@ -121,7 +121,9 @@ class TransportTests(unittest.TestCase):
         cls.fixture = Path(tempfile.mkdtemp(prefix=".synthetic-python-tls-", dir=ROOT))
         def openssl(*args):
             subprocess.run(["openssl", *args], cwd=cls.fixture, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        openssl("req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", "ca.key", "-out", "ca.pem", "-subj", "/CN=SDK local Python test CA", "-days", "1")
+        openssl("req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", "ca.key", "-out", "ca.pem", "-subj", "/CN=SDK local Python test CA", "-days", "1",
+                # Python 3.13+ verifies strictly and requires CA key usage.
+                "-addext", "keyUsage=critical,keyCertSign,cRLSign")
         cls.ca = (cls.fixture / "ca.pem").read_text()
         for name in ["a", "b", "wrong-host"]:
             openssl("req", "-newkey", "rsa:2048", "-nodes", "-keyout", f"{name}.key", "-out", f"{name}.csr", "-subj", f"/CN={name}")

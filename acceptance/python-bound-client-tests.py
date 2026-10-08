@@ -223,7 +223,9 @@ class BoundClientTests(unittest.TestCase):
     def setUpClass(cls):
         cls.fixture=Path(tempfile.mkdtemp(prefix='.python-bound-client-tls-',dir=ROOT))
         def openssl(*args):subprocess.run(['openssl',*args],cwd=cls.fixture,check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-        openssl('req','-x509','-newkey','rsa:2048','-nodes','-keyout','ca.key','-out','ca.pem','-subj','/CN=Python bound-client CA','-days','1')
+        openssl('req','-x509','-newkey','rsa:2048','-nodes','-keyout','ca.key','-out','ca.pem','-subj','/CN=Python bound-client CA','-days','1',
+                # Python 3.13+ verifies strictly and requires CA key usage.
+                '-addext','keyUsage=critical,keyCertSign,cRLSign')
         for name in ['a','b']:
             openssl('req','-newkey','rsa:2048','-nodes','-keyout',f'{name}.key','-out',f'{name}.csr','-subj',f'/CN={name}')
             (cls.fixture/f'{name}.ext').write_text('subjectAltName=IP:127.0.0.1,DNS:localhost\n')
