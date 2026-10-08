@@ -15,6 +15,10 @@ export function prepareGatewayPolicyRelease(manifestBytes, policyDocument, seque
   const manifest = JSON.parse(manifestBytes.toString("utf8"));
   const policy = loadGatewayPolicy(policyDocument);
   assertGatewayPolicySecurityFloor(policy);
+  // A tuple-form policy can name several releases, but a retained manifest names
+  // one. Its correlation procedure is not reviewed yet, and gcp-tdx-native is not
+  // qualified for signed approval at all, so refuse rather than half-check it.
+  if (policy.platformKind !== undefined) throw new Error("tuple-form policy approval preparation is not supported yet");
   const manifestSha256 = createHash("sha256").update(manifestBytes).digest("hex");
   if (manifest.schema !== "anonrouter.release-manifest/v2" || manifest.status !== "live-hardware-measurement"
     || manifest.source?.dirty !== false || manifest.deployment?.transport !== "in-tee-tls") throw new Error("a retained finalized clean hardware/TLS manifest is required");

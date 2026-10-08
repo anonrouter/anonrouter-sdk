@@ -49,7 +49,13 @@ from .gateway.authority import (
     packaged_gateway_policy_authority,
 )
 from .gateway.binding import GATEWAY_NONCE_HEX_LENGTH
-from .gateway.policy import GatewayMeasurementPolicy, pinned_gateway_policy_for
+from .gateway.policy import (
+    GATEWAY_PLATFORM_QUALIFIED,
+    GatewayMeasurementPolicy,
+    gateway_policy_platform_kind,
+    gateway_policy_requires_retained_connection,
+    pinned_gateway_policy_for,
+)
 from .gateway.retained_sync import (
     RetainedGatewayConnection as VerifiedGatewayConnection,
 )
@@ -322,7 +328,8 @@ class ConfidentialClient(MediaOwner):
             verification = binding.get("verification") if isinstance(binding, dict) else None
             if (not isinstance(binding, dict) or set(binding) != {"mode", "verification"}
                     or binding["mode"] != "required" or not isinstance(verification, dict)
-                    or set(verification) - {"policy", "allow_candidate_policy", "chain_verifier"}
+                    or set(verification) - {"policy", "allow_candidate_policy", "chain_verifier", "unqualified_platform_pilot"}
+                    or type(verification.get("unqualified_platform_pilot", False)) is not bool
                     or verification.get("chain_verifier") is None or http_client is not None
                     or not self.origin.startswith("https://") or self.control_origin == self.origin):
                 raise ConfidentialError("required sync gateway binding needs a chain verifier and distinct origins; custom HTTPX/async clients and unsafe overrides are refused")
@@ -404,7 +411,8 @@ class ConfidentialClient(MediaOwner):
             preparation_deadline = time.monotonic() + 180.0
             for attempt in range(2):
                 guard()
-                resolved = self._resolve_gateway_policy(verification.get("policy"), verification.get("allow_candidate_policy", False))
+                resolved = self._resolve_gateway_policy(verification.get("policy"), verification.get("allow_candidate_policy", False),
+                    connection="retained", pilot=verification.get("unqualified_platform_pilot") is True)
                 guard()
                 if resolved is None:
                     raise ConfidentialError("no approved gateway policy for connection binding")
@@ -413,7 +421,7 @@ class ConfidentialClient(MediaOwner):
                 def refresh_policy() -> tuple[GatewayMeasurementPolicy, float | None]:
                     nonlocal provenance
                     guard()
-                    updated = self._resolve_gateway_policy(None, False, force_refresh=True)
+                    updated = self._resolve_gateway_policy(None, False, force_refresh=True, connection="retained")
                     guard()
                     if updated is None:
                         raise ConfidentialError("no approved gateway policy for connection binding")
@@ -428,6 +436,7 @@ class ConfidentialClient(MediaOwner):
                         chain_verifier=verification["chain_verifier"], approval_expires_at_ms=provenance.get("expiresAtMs"),
                         cancel_event=cancellation, timeout=self._bound_timeout, pre_dispatch_budget=remaining,
                         preparation_deadline=preparation_deadline,
+                        unqualified_platform_pilot=verification.get("unqualified_platform_pilot") is True,
                         refresh_policy=refresh_policy if self._gateway_policy_source and verification.get("policy") is None else None)
                     break
                 except Exception as error:
@@ -633,6 +642,7 @@ class ConfidentialClient(MediaOwner):
         observed_tls_spki_sha256: str | None = None,
         observed_tls_spki_supplied: bool = False,
         chain_verifier: TdxChainVerifier | None = None,
+        unqualified_platform_pilot: bool = False,
     ) -> dict[str, Any]:
         """Verify AnonRouter's OWN confidential plane, independently of hop 2.
 
@@ -649,13 +659,18 @@ class ConfidentialClient(MediaOwner):
         The request is credential-free by design: a client verifies the plane
         BEFORE it trusts the endpoint with anything, so sending a key here would
         invert the trust order.
+
+        This is a separate-connection check. A policy for a platform that needs
+        same-connection key binding (``gcp-tdx-native``) is refused here before
+        any request; use ``gateway_connection_binding`` instead.
         """
         nonce = (nonce or os.urandom(32).hex()).lower()
         if len(nonce) != GATEWAY_NONCE_HEX_LENGTH or not re.fullmatch(r"[0-9a-f]+", nonce):
             raise ConfidentialError(
                 f"the gateway attestation nonce must be exactly {GATEWAY_NONCE_HEX_LENGTH} hex characters"
             )
-        resolved = self._resolve_gateway_policy(policy, allow_candidate_policy)
+        resolved = self._resolve_gateway_policy(policy, allow_candidate_policy,
+            pilot=unqualified_platform_pilot)
         if resolved is None:
             # No policy means nothing to check the evidence against. Fetching it
             # anyway and reporting what it says would be reading the server's own
@@ -866,7 +881,7 @@ class ConfidentialClient(MediaOwner):
             c.name == "quote_signature_chain" and c.passed for c in verdict.checks
         ) and any(not c.passed and c.name in {
             "app_id_pinned", "compose_hash_pinned", "release_pinned", "platform_measurements_pinned",
-            "os_image_pinned", "key_provider_pinned",
+            "os_image_pinned", "key_provider_pinned", "release_tuple_matched",
         } for c in verdict.checks)
         if moved and self._gateway_policy_source and options.get("policy") is None:
             approved = self._resolve_gateway_policy(None, False, force_refresh=True)
@@ -884,6 +899,35 @@ class ConfidentialClient(MediaOwner):
         return verdict, provenance
 
     def _resolve_gateway_policy(
+        self, policy: GatewayMeasurementPolicy | None, allow_candidate: bool, *, force_refresh: bool = False,
+        connection: str = "separate", pilot: bool = False,
+    ) -> tuple[GatewayMeasurementPolicy, dict[str, Any]] | None:
+        """Resolve the policy, then refuse a platform this path cannot verify.
+
+        Refusal happens BEFORE any evidence, ticket or content request: a policy
+        that needs same-connection binding is never checked on a separate
+        connection, and an unqualified platform is reachable only through the
+        caller's own explicit pilot policy.
+        """
+        resolved = self._resolve_gateway_policy_source(policy, allow_candidate, force_refresh=force_refresh)
+        if resolved is not None:
+            active, provenance = resolved
+            kind = gateway_policy_platform_kind(active)
+            if not GATEWAY_PLATFORM_QUALIFIED.get(kind, False):
+                if provenance["origin"] != "caller-supplied":
+                    raise ConfidentialError(f"a {kind} policy can only be supplied explicitly by the caller")
+                if not pilot:
+                    raise ConfidentialError(
+                        f"the {kind} boot chain is not qualified by this SDK release; verification "
+                        "requires an explicit unqualified_platform_pilot opt-in"
+                    )
+            if gateway_policy_requires_retained_connection(active) and connection != "retained":
+                raise ConfidentialError(
+                    f"a {kind} policy is verifiable only through required gateway connection binding"
+                )
+        return resolved
+
+    def _resolve_gateway_policy_source(
         self, policy: GatewayMeasurementPolicy | None, allow_candidate: bool, *, force_refresh: bool = False
     ) -> tuple[GatewayMeasurementPolicy, dict[str, Any]] | None:
         """Resolve the policy to hold the plane to, and say where it came from.
@@ -947,7 +991,8 @@ class ConfidentialClient(MediaOwner):
         """Establish hop 1 for verify()/chat(), turning every outcome into a report
         rather than an exception, so the caller decides what a status means."""
         resolved = self._resolve_gateway_policy(
-            options.get("policy"), bool(options.get("allow_candidate_policy"))
+            options.get("policy"), bool(options.get("allow_candidate_policy")),
+            pilot=options.get("unqualified_platform_pilot") is True,
         )
         if resolved is None:
             return {

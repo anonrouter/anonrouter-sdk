@@ -52,6 +52,7 @@
     "gen:gateway-binding-vectors": "tsx scripts/gen-gateway-binding-vectors.ts",
     "gen:gateway-verdict-vectors": "tsx scripts/gen-gateway-verdict-vectors.ts",
     "gen:dcap-vectors": "tsx scripts/gen-dcap-vectors.ts",
+    "gen:gateway-tuple-vectors": "tsx scripts/gen-gateway-tuple-vectors.ts",
     "example:route-matrix": "tsx examples/route-matrix.ts",
     "example:negative-controls": "tsx examples/negative-controls.ts"
   },

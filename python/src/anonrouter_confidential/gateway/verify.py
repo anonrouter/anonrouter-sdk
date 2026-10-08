@@ -54,7 +54,15 @@ from .event_log import (
     replay_rtmrs,
     single_event_payload,
 )
-from .policy import GatewayMeasurementPolicy
+from .policy import (
+    GATEWAY_PLATFORM_QUALIFIED,
+    GatewayMeasurementPolicy,
+    GatewayPolicyError,
+    GatewayReleaseTuple,
+    assert_gateway_platform_security_floor,
+    gateway_policy_platform_kind,
+    gateway_policy_requires_retained_connection,
+)
 
 #: A vm_config blob is bounded so a hostile response cannot pin the CPU parsing it.
 _MAX_VM_CONFIG_CHARS = 65_536
@@ -190,6 +198,8 @@ def verify_gateway_attestation(
     observed_tls_spki_sha256: str | None = None,
     observed_tls_spki_supplied: bool = False,
     chain_verifier: TdxChainVerifier | None = None,
+    observed_on_retained_connection: bool = False,
+    unqualified_platform_pilot: bool = False,
 ) -> GatewayVerificationResult:
     """Verify a gateway attestation document.
 
@@ -201,9 +211,43 @@ def verify_gateway_attestation(
     see its own certificate) from "observed and there is none". Python has no
     ``undefined``, so the two are separated explicitly rather than collapsed into
     None, which would silently turn an unmet gap into a mismatch or vice versa.
+
+    ``observed_on_retained_connection`` is True only when the SPKI was read from
+    the very socket that fetched this evidence and will carry content (the SDK's
+    retained operation sets it). ``unqualified_platform_pilot`` is the caller's
+    explicit acknowledgement for a platform kind this release has not qualified;
+    it relaxes nothing else and the gap stays visible as an unmet advisory.
     """
     checks: list[AttestationCheck] = []
     doc = evidence if isinstance(evidence, dict) else {}
+    kind = gateway_policy_platform_kind(policy)
+    tuple_form = policy.platform_kind is not None or policy.release_tuples is not None
+    native_gcp = kind == "gcp-tdx-native"
+
+    # --- 0. Tuple-form policies prove their own floor ---------------------------
+    # Legacy policies are checked exactly as before. A tuple-form policy is held
+    # to its platform's floor HERE as well as at load time, so a hand-built or
+    # mutated policy object cannot quietly drop hardware verification.
+    if tuple_form:
+        floor_detail: str | None = None
+        try:
+            assert_gateway_platform_security_floor(policy)
+        except GatewayPolicyError as exc:
+            floor_detail = str(exc)
+        checks.append(check("policy_security_floor", floor_detail is None, True, floor_detail))
+        qualified = GATEWAY_PLATFORM_QUALIFIED.get(kind, False) is True
+        checks.append(
+            check(
+                "platform_boot_chain_qualified",
+                qualified,
+                not (not qualified and unqualified_platform_pilot),
+                None
+                if qualified
+                else f"{kind} native boot chain (UKI, command line, verity root, application "
+                "measurement) is not qualified by this SDK release"
+                + ("; caller acknowledged an unqualified pilot" if unqualified_platform_pilot else ""),
+            )
+        )
 
     # --- 1. Binding -----------------------------------------------------------
     try:
@@ -269,14 +313,30 @@ def verify_gateway_attestation(
     events: list[Any] | None = None
     try:
         events = parse_event_log(doc.get("event_log"))
-        replayed = replay_rtmrs(events)
-        replays = (
-            hex_equal(replayed[0], quote.rtmr0)
-            and hex_equal(replayed[1], quote.rtmr1)
-            and hex_equal(replayed[2], quote.rtmr2)
-            and hex_equal(replayed[3], quote.rtmr3)
-        )
-        checks.append(check("event_log_replays_rtmrs", replays, True))
+        if native_gcp:
+            # Google's firmware does not emit a dstack boot log. RTMR0..RTMR2 are
+            # pinned EXACTLY from the quote by the release tuple, so only the
+            # application events are replayed; boot entries are never consulted.
+            replayed = replay_rtmrs([e for e in events if e.imr == 3])
+            checks.append(check("event_log_replays_rtmr3", hex_equal(replayed[3], quote.rtmr3), True))
+            checks.append(
+                check(
+                    "firmware_event_log_replayed",
+                    False,
+                    False,
+                    "RTMR0..RTMR2 are pinned directly from the quote; native CCEL/UKI "
+                    "measurement proof is pending qualification",
+                )
+            )
+        else:
+            replayed = replay_rtmrs(events)
+            replays = (
+                hex_equal(replayed[0], quote.rtmr0)
+                and hex_equal(replayed[1], quote.rtmr1)
+                and hex_equal(replayed[2], quote.rtmr2)
+                and hex_equal(replayed[3], quote.rtmr3)
+            )
+            checks.append(check("event_log_replays_rtmrs", replays, True))
 
         # Replay alone proves only that the DIGESTS are the measured ones. Each
         # RTMR3 digest must additionally commit to the human-readable name and
@@ -295,7 +355,14 @@ def verify_gateway_attestation(
         )
 
     except ValueError as exc:
-        checks.append(check("event_log_replays_rtmrs", False, True, str(exc)))
+        checks.append(
+            check(
+                "event_log_replays_rtmr3" if native_gcp else "event_log_replays_rtmrs",
+                False,
+                True,
+                str(exc),
+            )
+        )
         checks.append(check("event_digests_commit_to_payloads", False, True, str(exc)))
         events = None
 
@@ -358,7 +425,22 @@ def verify_gateway_attestation(
     # key-provider names who may hold this app's derived keys. A CVM booted under a
     # different key provider is a different trust domain even at the same compose
     # hash, so this is pinned rather than merely reported.
-    if policy.key_provider_id:
+    if tuple_form:
+        # Exact payload equality against the approved tuples: the tuple form never
+        # substring-matches, and the payload names the kind's own key provider
+        # (KMS for Phala, the ephemeral per-boot provider for GCP).
+        measured = key_provider_event.lower() if key_provider_event is not None else None
+        checks.append(
+            check(
+                "key_provider_pinned",
+                event_log_read
+                and measured is not None
+                and any(t.key_provider_payload == measured for t in policy.release_tuples or []),
+                True,
+                "no key-provider event in the log" if measured is None else None,
+            )
+        )
+    elif policy.key_provider_id:
         expected = policy.key_provider_id.lower()
         # The payload is a JSON blob ({"name":"kms","id":"<k256 pubkey>"}) encoded
         # as hex, so match on the decoded text rather than the whole-field digest.
@@ -384,7 +466,9 @@ def verify_gateway_attestation(
     # evidence only once it agrees with something hardware measured. The measured
     # `os-image-hash` event is that anchor.
     vm_config_os_image = _read_vm_config_os_image_hash(doc.get("vm_config"))
-    if os_image_hash_event is not None and vm_config_os_image is not None:
+    if native_gcp:
+        pass  # No dstack OS image on this platform: the OS is what RTMR1/RTMR2 pin.
+    elif os_image_hash_event is not None and vm_config_os_image is not None:
         checks.append(
             check(
                 "vm_config_matches_measured_os_image",
@@ -454,7 +538,45 @@ def verify_gateway_attestation(
     checks.append(check("release_pinned", binding.release_id in policy.release_ids, True))
     checks.append(check("origin_pinned", binding.origin in policy.origins, True))
 
-    if policy.platform:
+    if tuple_form:
+        # ONE tuple must match EVERY observed value at once. Independent allowlists
+        # would accept an old firmware register beside a new compose hash; a tuple
+        # cannot.
+        observed_os = os_image_hash_event.lower() if os_image_hash_event is not None else None
+        observed_kp = key_provider_event.lower() if key_provider_event is not None else None
+
+        def measured_match(t: GatewayReleaseTuple) -> bool:
+            return (
+                event_log_read
+                and t.release_id == binding.release_id
+                and t.app_id == binding.app_id
+                and t.compose_hash == binding.compose_hash
+                and t.mr_td == quote.mr_td.lower()
+                and t.mr_config_id == quote.mr_config_id.lower()
+                and t.rtmr0 == quote.rtmr0.lower()
+                and t.rtmr1 == quote.rtmr1.lower()
+                and t.rtmr2 == quote.rtmr2.lower()
+                and (native_gcp or t.os_image_hash == observed_os)
+                and t.key_provider_payload == observed_kp
+            )
+
+        candidates = [t for t in policy.release_tuples or [] if measured_match(t)]
+        matched = next(
+            (t for t in candidates if t.not_before_ms <= now_ms < t.expires_at_ms), None
+        )
+        checks.append(
+            check(
+                "release_tuple_matched",
+                matched is not None,
+                True,
+                f"tuple={matched.tuple_id}"
+                if matched is not None
+                else "the matching release tuple is outside its validity window"
+                if candidates
+                else "no single approved release tuple matches every measured value",
+            )
+        )
+    elif policy.platform:
         p = policy.platform
         checks.append(
             check(
@@ -480,7 +602,33 @@ def verify_gateway_attestation(
         )
 
     # --- 8. Transport binding --------------------------------------------------
-    if policy.require_in_tee_tls:
+    if gateway_policy_requires_retained_connection(policy):
+        # Mandatory real-connection key binding. Each node has its own per-boot TLS
+        # key behind a shared name, so the quote is only evidence about the node on
+        # THIS socket: an unobserved certificate, or one observed on any other
+        # connection, is a failure rather than an advisory gap.
+        checks.append(check("transport_terminates_in_tee", binding.transport == "in-tee-tls", True))
+        checks.append(
+            check(
+                "tls_certificate_bound_to_quote",
+                observed_tls_spki_supplied
+                and isinstance(observed_tls_spki_sha256, str)
+                and hex_equal(observed_tls_spki_sha256, binding.tls_spki_sha256),
+                True,
+                None if observed_tls_spki_supplied else "caller did not observe its TLS certificate",
+            )
+        )
+        checks.append(
+            check(
+                "tls_observed_on_retained_connection",
+                observed_on_retained_connection is True,
+                True,
+                None
+                if observed_on_retained_connection is True
+                else "the certificate was not observed on the retained connection that carries content",
+            )
+        )
+    elif policy.require_in_tee_tls:
         checks.append(check("transport_terminates_in_tee", binding.transport == "in-tee-tls", True))
         if observed_tls_spki_supplied:
             checks.append(
@@ -574,13 +722,14 @@ def verify_gateway_attestation(
         # Required when the policy demands hardware verification, so a client whose
         # DCAP engine is missing or unbuilt fails loudly instead of quietly
         # accepting at the weaker level and reporting success.
+        hardware_required = policy.require_hardware_verified or tuple_form
         checks.append(
             check(
                 "quote_signature_chain",
                 False,
-                policy.require_hardware_verified,
+                hardware_required,
                 "policy requires hardware verification but no DCAP chain verifier was supplied"
-                if policy.require_hardware_verified
+                if hardware_required
                 else "no DCAP chain verifier supplied; verdict capped at provider-attested",
             )
         )
@@ -591,7 +740,7 @@ def verify_gateway_attestation(
             check(
                 "tcb_status_acceptable",
                 False,
-                policy.require_hardware_verified,
+                hardware_required,
                 "no chain verifier supplied, so no TCB status was reported to check",
             )
         )

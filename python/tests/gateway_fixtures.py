@@ -254,3 +254,39 @@ def build_app_compose(**overrides: Any) -> tuple[str, str]:
     manifest_obj.update(overrides)
     manifest = json.dumps(manifest_obj, separators=(",", ":"))
     return manifest, hashlib.sha256(manifest.encode("utf-8")).hexdigest()
+
+
+#: The key-provider payload a synthetic gcp-tdx-native guest measures: the
+#: ephemeral per-boot ``none`` provider. SYNTHETIC: the real adapter's exact bytes
+#: are an open protocol item, and nothing here is a production pin.
+SYNTHETIC_EPHEMERAL_KEY_PROVIDER = json.dumps({"name": "none", "id": ""}, separators=(",", ":")).encode().hex()
+
+#: Synthetic GCP hardware registers. Never Google firmware values.
+SYNTHETIC_GCP_REGISTERS = {
+    "mrTd": "1a" * 48,
+    "mrConfigId": "00" * 48,
+    "rtmr0": "2b" * 48,
+    "rtmr1": "3c" * 48,
+    "rtmr2": "4d" * 48,
+}
+
+
+def build_synthetic_gcp_event_log(
+    *, app_id: str, compose_hash: str, instance_id: str, key_provider_payload: str | None = None
+) -> SyntheticEventLog:
+    """A gcp-tdx-native event log: RTMR3 application events only. RTMR0..RTMR2
+    are the synthetic hardware registers, pinned directly from the quote."""
+    events = [
+        rtmr3_event("system-preparing", ""),
+        rtmr3_event("app-id", app_id),
+        rtmr3_event("compose-hash", compose_hash),
+        rtmr3_event("instance-id", instance_id),
+        rtmr3_event("key-provider", key_provider_payload or SYNTHETIC_EPHEMERAL_KEY_PROVIDER),
+    ]
+    return SyntheticEventLog(
+        events=events,
+        rtmr0=SYNTHETIC_GCP_REGISTERS["rtmr0"],
+        rtmr1=SYNTHETIC_GCP_REGISTERS["rtmr1"],
+        rtmr2=SYNTHETIC_GCP_REGISTERS["rtmr2"],
+        rtmr3=replay_register([rtmr3_event_digest(e) or "ff" * 48 for e in events]),
+    )

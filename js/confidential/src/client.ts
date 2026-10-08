@@ -46,6 +46,9 @@ import { GATEWAY_NONCE_HEX_LENGTH } from "./gateway/binding.js";
 import { assertGatewayPolicySecurityFloor, createSignedGatewayPolicySource, packagedGatewayPolicyAuthority, type GatewayPolicySource } from "./gateway/authority.js";
 type VerifiedGatewayConnection = import("./gateway/retained-operation-node.js").RetainedGatewayOperation;
 import {
+  GATEWAY_PLATFORM_QUALIFIED,
+  gatewayPolicyPlatformKind,
+  gatewayPolicyRequiresRetainedConnection,
   pinnedGatewayPolicyFor,
   type GatewayMeasurementPolicy,
   type GatewayPolicyStatus
@@ -75,7 +78,7 @@ export interface CreateClientOptions {
    * provider evidence and content. Generic fetch/browser runtimes cannot satisfy it. */
   gatewayConnectionBinding?: {
     mode: "required";
-    verification: Pick<VerifyGatewayInput, "policy" | "allowCandidatePolicy" | "chainVerifier">;
+    verification: Pick<VerifyGatewayInput, "policy" | "allowCandidatePolicy" | "chainVerifier" | "unqualifiedPlatformPilot">;
   };
   /** Follow independently signed gateway approvals. Defaults to the packaged
    * authority's activation flag. false retains exact bundled/caller pins.
@@ -268,6 +271,17 @@ export interface VerifyGatewayInput {
    * `provider-attested` and a policy with `requireHardwareVerified` fails closed.
    */
   chainVerifier?: TdxChainVerifier | TdxChainVerifierFactory;
+  /**
+   * Explicitly run a PILOT against a caller-supplied policy for a platform kind
+   * this SDK release has not qualified (today: `gcp-tdx-native`, whose native
+   * UKI/root boot chain and application measurement are not yet proved on
+   * hardware). Only honored for a caller-supplied policy with required
+   * connection binding; the packaged registry and the signed feed never supply
+   * such a policy. It relaxes no other check and the gap stays in the verdict.
+   * Do not send real content to a pilot node until its boot integrity is
+   * qualified.
+   */
+  unqualifiedPlatformPilot?: boolean;
   signal?: AbortSignal;
 }
 
@@ -648,11 +662,12 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
   }
   const fetchImpl: FetchLike = options.fetch ?? (globalThis.fetch.bind(globalThis) as FetchLike);
   const connectionBinding = options.gatewayConnectionBinding;
-  let requiredGatewayVerification: Pick<VerifyGatewayInput, "policy" | "allowCandidatePolicy" | "chainVerifier"> | null = null;
+  let requiredGatewayVerification: Pick<VerifyGatewayInput, "policy" | "allowCandidatePolicy" | "chainVerifier" | "unqualifiedPlatformPilot"> | null = null;
   if (connectionBinding !== undefined) {
     if (!connectionBinding || connectionBinding.mode !== "required" || !connectionBinding.verification
         || Object.keys(connectionBinding).some(key => !["mode", "verification"].includes(key))
-        || Object.keys(connectionBinding.verification).some(key => !["policy", "allowCandidatePolicy", "chainVerifier"].includes(key))
+        || Object.keys(connectionBinding.verification).some(key => !["policy", "allowCandidatePolicy", "chainVerifier", "unqualifiedPlatformPilot"].includes(key))
+        || (connectionBinding.verification.unqualifiedPlatformPilot !== undefined && typeof connectionBinding.verification.unqualifiedPlatformPilot !== "boolean")
         || options.fetch !== undefined || !connectionBinding.verification.chainVerifier
         || new URL(origin).protocol !== "https:" || controlOrigin === origin) {
       throw new ConfidentialError("unsupported_request", "Required gateway connection binding needs a supported Node transport, a chain verifier and distinct control/content origins; generic fetch overrides are refused.");
@@ -691,7 +706,7 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
     const verification = requiredGatewayVerification!;
     const preparationDeadline = performance.now() + 180_000;
     for (let attempt = 0; attempt < 2; attempt++) {
-      let resolved = await resolveGatewayPolicy(verification, signal);
+      let resolved = await resolveGatewayPolicy(verification, signal, false, "retained");
       if (!resolved) throw new ConfidentialError("measurement_untrusted", "No approved gateway policy for connection binding.");
       assertGatewayPolicySecurityFloor(resolved.policy);
       try {
@@ -702,10 +717,11 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
           preDispatchBudgetMs: remaining,
           preparationDeadlineMs: preparationDeadline,
           chainVerifier: verification.chainVerifier!,
+          ...(verification.unqualifiedPlatformPilot === true ? { unqualifiedPlatformPilot: true } : {}),
           ...(resolved.provenance.expiresAtMs !== undefined ? { approvalExpiresAtMs: resolved.provenance.expiresAtMs } : {}),
           ...(signal ? { signal } : {}),
           ...(gatewayPolicySource && !verification.policy ? { refreshPolicy: async (refreshSignal: AbortSignal) => {
-            const updated = await resolveGatewayPolicy(verification, refreshSignal, true);
+            const updated = await resolveGatewayPolicy(verification, refreshSignal, true, "retained");
             if (!updated) throw new ConfidentialError("measurement_untrusted", "No approved gateway policy.");
             assertGatewayPolicySecurityFloor(updated.policy);
             resolved = updated;
@@ -990,6 +1006,39 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
    * updates were selected. The gateway never chooses the verification roots.
    */
   async function resolveGatewayPolicy(
+    input: Omit<VerifyGatewayInput, "signal">, signal?: AbortSignal, forceRefresh = false,
+    connection: "retained" | "separate" = "separate"
+  ): Promise<{ policy: GatewayMeasurementPolicy; provenance: GatewayPolicyProvenance } | null> {
+    const resolved = await resolveGatewayPolicySource(input, signal, forceRefresh);
+    if (resolved) assertPlatformUsable(resolved, input, connection);
+    return resolved;
+  }
+
+  /**
+   * Refuse a platform this path cannot verify BEFORE any evidence, ticket or
+   * content request is made. A policy that needs same-connection binding is
+   * never checked on a separate connection, and an unqualified platform is only
+   * reachable through the caller's own explicit pilot policy.
+   */
+  function assertPlatformUsable(
+    resolved: { policy: GatewayMeasurementPolicy; provenance: GatewayPolicyProvenance },
+    input: Omit<VerifyGatewayInput, "signal">, connection: "retained" | "separate"
+  ): void {
+    const kind = gatewayPolicyPlatformKind(resolved.policy);
+    if (!GATEWAY_PLATFORM_QUALIFIED[kind]) {
+      if (resolved.provenance.origin !== "caller-supplied") {
+        throw new ConfidentialError("measurement_untrusted", `A ${kind} policy can only be supplied explicitly by the caller.`);
+      }
+      if (input.unqualifiedPlatformPilot !== true) {
+        throw new ConfidentialError("unsupported_request", `The ${kind} boot chain is not qualified by this SDK release; verification requires an explicit unqualifiedPlatformPilot opt-in.`);
+      }
+    }
+    if (gatewayPolicyRequiresRetainedConnection(resolved.policy) && connection !== "retained") {
+      throw new ConfidentialError("unsupported_request", `A ${kind} policy is verifiable only through required gateway connection binding.`);
+    }
+  }
+
+  async function resolveGatewayPolicySource(
     input: Omit<VerifyGatewayInput, "signal">, signal?: AbortSignal, forceRefresh = false
   ): Promise<{ policy: GatewayMeasurementPolicy; provenance: GatewayPolicyProvenance } | null> {
     if (input.policy) {
@@ -1101,7 +1150,7 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
     });
     const moved = verdict.status === "failed"
       && verdict.checks.some(c => c.name === "quote_signature_chain" && c.passed)
-      && verdict.checks.some(c => !c.passed && ["app_id_pinned", "compose_hash_pinned", "release_pinned", "platform_measurements_pinned", "os_image_pinned", "key_provider_pinned"].includes(c.name));
+      && verdict.checks.some(c => !c.passed && ["app_id_pinned", "compose_hash_pinned", "release_pinned", "platform_measurements_pinned", "os_image_pinned", "key_provider_pinned", "release_tuple_matched"].includes(c.name));
     if (moved && gatewayPolicySource && !input.policy) {
       const updated = await resolveGatewayPolicy(input, signal, true);
       if (!updated) throw new ConfidentialError("measurement_untrusted", "No approved gateway policy.");

@@ -4,7 +4,10 @@ import { ed25519 } from "@noble/curves/ed25519.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex, hexToBytes, utf8Encode, utf8Decode } from "../bytes.js";
 import { canonicalGatewayOrigin } from "./binding.js";
-import { GatewayPolicyError, loadGatewayPolicy, type GatewayMeasurementPolicy } from "./policy.js";
+import {
+  assertGatewayPlatformSecurityFloor, GATEWAY_PLATFORM_QUALIFIED, gatewayPolicyPlatformKind, GatewayPolicyError,
+  loadGatewayPolicy, type GatewayMeasurementPolicy
+} from "./policy.js";
 import roots from "./gateway-policy-authority.json" with { type: "json" };
 import { createDefaultGatewayPolicyStateStore } from "./state.js";
 
@@ -81,11 +84,14 @@ export function validateGatewayPolicyAuthority(root: GatewayPolicyAuthority): vo
   if (values.length < root.threshold || new Set(values).size !== values.length
     || values.some(v => typeof v !== "string" || !/^[0-9a-f]{64}$/.test(v))) reject("invalid distinct signing keys");
 }
+/** The per-platform-kind floor (see policy.ts). Legacy policies keep exactly
+ * their historical floor; tuple-form policies are also re-validated whole. */
 export function assertGatewayPolicySecurityFloor(policy: GatewayMeasurementPolicy): void {
-  if (!policy.requireHardwareVerified || !policy.requireInTeeTls || !policy.requirePrivateLogs
-    || !policy.requireDigestPinnedImages || !policy.requireEvidenceExpiry || !policy.keyProviderId || !policy.platform
-    || policy.maxEvidenceAgeMs > 300_000 || policy.acceptableTcbStatuses.length !== 1
-    || policy.acceptableTcbStatuses[0] !== "UpToDate") reject("policy weakens mandatory security requirements");
+  try { assertGatewayPlatformSecurityFloor(policy); }
+  catch (error) {
+    if (error instanceof GatewayPolicyError) reject(error.message.replace(/^policy security floor: /, ""));
+    throw error;
+  }
 }
 export function verifySignedGatewayPolicy(
   envelope: unknown, root: GatewayPolicyAuthority, origin: string, nowMs: number,
@@ -118,6 +124,9 @@ export function verifySignedGatewayPolicy(
   }
   if (acceptedKeyIds.length < root.threshold) reject("signature threshold not met");
   const policy = loadGatewayPolicy(raw.policy); assertGatewayPolicySecurityFloor(policy);
+  // Custodian signatures cannot qualify a platform: an unqualified boot chain is
+  // refused here until a reviewed SDK release qualifies its kind.
+  if (!GATEWAY_PLATFORM_QUALIFIED[gatewayPolicyPlatformKind(policy)]) reject("platform kind is not qualified for signed approval");
   const canonical = canonicalGatewayOrigin(origin);
   if (!root.origins.includes(canonical) || !policy.origins.includes(canonical)
     || policy.origins.some(o => !root.origins.includes(o))) reject("unauthorized origin");

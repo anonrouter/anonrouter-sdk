@@ -445,7 +445,8 @@ class RetainedGatewayConnection:
                  approval_expires_at_ms: float | None = None, cancel_event: threading.Event | None = None,
                  timeout: float = 300.0, pre_dispatch_budget: float = 180.0, ca_pem: str | None = None,
                  preparation_deadline: float | None = None,
-                 refresh_policy: Callable[[], tuple[GatewayMeasurementPolicy, float | None]] | None = None) -> None:
+                 refresh_policy: Callable[[], tuple[GatewayMeasurementPolicy, float | None]] | None = None,
+                 unqualified_platform_pilot: bool = False) -> None:
         if httpx.__version__ != "0.28.1" or httpcore.__version__ != "1.0.9":
             raise _fail("configuration")
         if not isinstance(origin, str) or ca_pem is not None and (not isinstance(ca_pem, str) or not ca_pem.strip()):
@@ -461,6 +462,8 @@ class RetainedGatewayConnection:
         if approval_expires_at_ms is not None and (type(approval_expires_at_ms) not in {int, float} or not math.isfinite(approval_expires_at_ms) or approval_expires_at_ms <= 0):
             raise _fail("configuration")
         if cancel_event is not None and not isinstance(cancel_event, threading.Event):
+            raise _fail("configuration")
+        if type(unqualified_platform_pilot) is not bool:
             raise _fail("configuration")
         if any(inspect.iscoroutinefunction(getattr(chain_verifier, name, None)) for name in ["prepare", "verify_chain"]) or refresh_policy is not None and not callable(refresh_policy):
             raise _fail("configuration")
@@ -496,9 +499,13 @@ class RetainedGatewayConnection:
             def verify() -> GatewayVerificationResult:
                 return verify_gateway_attestation(evidence, nonce=nonce, origin=origin, policy=active,
                     now_ms=time.time() * 1000, observed_tls_spki_sha256=self._channel.pin,
-                    observed_tls_spki_supplied=True, chain_verifier=prepared)
+                    observed_tls_spki_supplied=True, chain_verifier=prepared,
+                    # The pin above was read from THIS socket, which fetched the
+                    # evidence and is the only one that may carry content.
+                    observed_on_retained_connection=True,
+                    unqualified_platform_pilot=unqualified_platform_pilot)
             verdict = self._bounded(verify)
-            moved = verdict.status == "failed" and any(c.name == "quote_signature_chain" and c.passed for c in verdict.checks) and any(not c.passed and c.name in {"app_id_pinned", "compose_hash_pinned", "release_pinned", "platform_measurements_pinned", "os_image_pinned", "key_provider_pinned"} for c in verdict.checks)
+            moved = verdict.status == "failed" and any(c.name == "quote_signature_chain" and c.passed for c in verdict.checks) and any(not c.passed and c.name in {"app_id_pinned", "compose_hash_pinned", "release_pinned", "platform_measurements_pinned", "os_image_pinned", "key_provider_pinned", "release_tuple_matched"} for c in verdict.checks)
             if moved and refresh_policy:
                 updated = self._bounded(refresh_policy)
                 if not isinstance(updated, tuple) or len(updated) != 2:

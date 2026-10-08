@@ -21,7 +21,14 @@ from nacl.exceptions import BadSignatureError
 from nacl.signing import VerifyKey
 
 from .binding import canonical_gateway_origin
-from .policy import GatewayMeasurementPolicy, GatewayPolicyError, load_gateway_policy
+from .policy import (
+    GATEWAY_PLATFORM_QUALIFIED,
+    GatewayMeasurementPolicy,
+    GatewayPolicyError,
+    assert_gateway_platform_security_floor,
+    gateway_policy_platform_kind,
+    load_gateway_policy,
+)
 from .state import FileGatewayPolicyStateStore
 
 GATEWAY_POLICY_DOMAIN = "anonrouter.gateway-policy-signature/v1\n"
@@ -104,12 +111,12 @@ def validate_gateway_policy_authority(root: dict[str, Any]) -> None:
 
 
 def assert_gateway_policy_security_floor(policy: GatewayMeasurementPolicy) -> None:
-    if (not policy.require_hardware_verified or not policy.require_in_tee_tls
-            or not policy.require_private_logs or not policy.require_digest_pinned_images
-            or not policy.require_evidence_expiry or not policy.key_provider_id
-            or not policy.platform or policy.max_evidence_age_ms > 300_000
-            or policy.acceptable_tcb_statuses != ["UpToDate"]):
-        _fail("policy weakens mandatory security requirements")
+    """The per-platform-kind floor (see policy.py). Legacy policies keep exactly
+    their historical floor; tuple-form policies are also re-validated whole."""
+    try:
+        assert_gateway_platform_security_floor(policy)
+    except GatewayPolicyError as exc:
+        _fail(str(exc).removeprefix("policy security floor: "))
 
 
 def verify_signed_gateway_policy(
@@ -167,6 +174,10 @@ def verify_signed_gateway_policy(
         _fail("signature threshold not met")
     policy = load_gateway_policy(raw["policy"])
     assert_gateway_policy_security_floor(policy)
+    # Custodian signatures cannot qualify a platform: an unqualified boot chain is
+    # refused here until a reviewed SDK release qualifies its kind.
+    if not GATEWAY_PLATFORM_QUALIFIED.get(gateway_policy_platform_kind(policy), False):
+        _fail("platform kind is not qualified for signed approval")
     canonical = canonical_gateway_origin(origin)
     if (canonical not in root["origins"] or canonical not in policy.origins
             or any(o not in root["origins"] for o in policy.origins)):

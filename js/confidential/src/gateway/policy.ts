@@ -11,6 +11,7 @@
 // already-obtained document and fails closed on anything unexpected.
 
 import registryJson from "./gateway-policies.json" with { type: "json" };
+import { hexToBytes, utf8Decode } from "../bytes.js";
 import { canonicalGatewayOrigin } from "./binding.js";
 
 /** Platform-level measurements (firmware + OS image), when pinned. */
@@ -40,7 +41,94 @@ export interface GatewayPlatformMeasurements {
   osImageHash: string[];
 }
 
+/**
+ * Which kind of confidential platform a policy describes. Each kind has its own
+ * security floor and its own evidence rules, so a policy can never be satisfied
+ * by evidence shaped for a different platform.
+ *
+ *   phala-dstack-kms  The current Phala/dstack deployment, whose app keys come
+ *                     from a pinned KMS. A policy document WITHOUT `platformKind`
+ *                     is the legacy form of this kind and parses exactly as it
+ *                     always has.
+ *   gcp-tdx-native    A Google Cloud Intel TDX content node with guest-only,
+ *                     per-boot keys (ephemeral key provider, no KMS) whose boot
+ *                     chain is pinned through the hardware registers in the
+ *                     quote. Never vTPM evidence. Requires same-connection
+ *                     verification and, until its native boot chain is
+ *                     qualified, an explicit caller pilot opt-in.
+ */
+export type GatewayPlatformKind = "phala-dstack-kms" | "gcp-tdx-native";
+
+export const GATEWAY_PLATFORM_KINDS: readonly GatewayPlatformKind[] = ["phala-dstack-kms", "gcp-tdx-native"];
+
+/**
+ * Whether a platform kind's boot chain has been qualified for this SDK release.
+ *
+ * gcp-tdx-native is NOT qualified: a small C4 TDX VM has produced a genuine,
+ * natively verified quote, but no AnonRouter guest has yet proved that Google's
+ * firmware measures its UKI, command line and verity root into RTMR1/RTMR2, nor
+ * that the application measurement in RTMR3 covers the code that runs. Until a
+ * reviewed SDK release flips this, the packaged registry and the signed feed
+ * refuse the kind, and the verifier fails it unless the caller explicitly opted
+ * into an unqualified pilot.
+ */
+export const GATEWAY_PLATFORM_QUALIFIED: Readonly<Record<GatewayPlatformKind, boolean>> = Object.freeze({
+  "phala-dstack-kms": true,
+  "gcp-tdx-native": false
+});
+
+/**
+ * One approved release, as the WHOLE tuple of values that must be observed
+ * together. A policy that lists several tuples accepts evidence matching ANY ONE
+ * of them completely, never a mixture: an old firmware register with a new
+ * compose hash matches no tuple and fails.
+ *
+ * Firmware rolls and machine shapes are expressed as additional complete tuples,
+ * because Google's MRTD changes with firmware and RTMR0 changes with shape.
+ */
+export interface GatewayReleaseTuple {
+  /** Operator label for the audit trail, 1..128 of [A-Za-z0-9._:@+-]. */
+  tupleId: string;
+  /** The binding's release_id. */
+  releaseId: string;
+  /** The binding's (and RTMR3-measured) app id, lowercase hex. */
+  appId: string;
+  /** The measured compose hash, 64 lowercase hex. */
+  composeHash: string;
+  /** Quote registers, 96 lowercase hex each, compared exactly. */
+  mrTd: string;
+  mrConfigId: string;
+  rtmr0: string;
+  rtmr1: string;
+  rtmr2: string;
+  /** phala-dstack-kms only: the measured dstack os-image-hash event. */
+  osImageHash?: string;
+  /**
+   * The exact payload (lowercase hex) of the measured RTMR3 key-provider event.
+   * It must decode to a JSON object naming `kms` for phala-dstack-kms and the
+   * ephemeral `none` provider for gcp-tdx-native.
+   */
+  keyProviderPayload: string;
+  /** Validity window, epoch ms: notBeforeMs <= now < expiresAtMs. */
+  notBeforeMs: number;
+  expiresAtMs: number;
+}
+
+/** The longest validity window a single tuple may claim (366 days). */
+export const MAX_RELEASE_TUPLE_LIFETIME_MS = 31_622_400_000;
+/** At most this many tuples, so a hostile policy cannot pin the CPU. */
+export const MAX_RELEASE_TUPLES = 64;
+
 export interface GatewayMeasurementPolicy {
+  /**
+   * Explicit platform discriminator. Absent means the legacy phala-dstack-kms
+   * form (independent allowlists plus `platform`/`keyProviderId`). Present means
+   * the tuple form: `releaseTuples` is the only source of accepted identities and
+   * the list fields below are derived from it for display only.
+   */
+  platformKind?: GatewayPlatformKind;
+  /** Tuple form only: the approved releases, evaluated as OR of whole tuples. */
+  releaseTuples?: GatewayReleaseTuple[];
   /** Where this policy came from, for the audit trail. Never a gateway URL. */
   source: string;
   /** Policy version so a stale pin is visible in output. */
@@ -159,16 +247,207 @@ function requiredBoolean(field: string, value: unknown): boolean {
   return value;
 }
 
+const RELEASE_LABEL = /^[A-Za-z0-9._:@+-]{1,128}$/;
+const LEGACY_IDENTITY_FIELDS = ["appIds", "composeHashes", "releaseIds", "keyProviderId", "platform"] as const;
+const TUPLE_POLICY_FIELDS = new Set([
+  "platformKind", "source", "version", "origins", "releaseTuples", "requireInTeeTls", "requirePrivateLogs",
+  "requireDigestPinnedImages", "requireHardwareVerified", "acceptableTcbStatuses", "requireEvidenceExpiry",
+  "maxEvidenceAgeMs"
+]);
+const TUPLE_FIELDS = ["tupleId", "releaseId", "appId", "composeHash", "mrTd", "mrConfigId", "rtmr0", "rtmr1", "rtmr2",
+  "keyProviderPayload", "notBeforeMs", "expiresAtMs"] as const;
+const KEY_PROVIDER_NAME: Readonly<Record<GatewayPlatformKind, string>> = {
+  "phala-dstack-kms": "kms",
+  "gcp-tdx-native": "none"
+};
+
+/** The platform a parsed policy describes; the legacy form is phala-dstack-kms. */
+export function gatewayPolicyPlatformKind(policy: GatewayMeasurementPolicy): GatewayPlatformKind {
+  return policy.platformKind ?? "phala-dstack-kms";
+}
+
+/**
+ * True when evidence for this policy is only meaningful if its TLS key was
+ * observed on the very socket that will carry content. Behind a load balancer
+ * with a different key per node, a separately observed certificate proves
+ * nothing about the node that receives the request.
+ */
+export function gatewayPolicyRequiresRetainedConnection(policy: GatewayMeasurementPolicy): boolean {
+  return gatewayPolicyPlatformKind(policy) === "gcp-tdx-native";
+}
+
+function exactHex(field: string, value: unknown, chars: number): string {
+  if (typeof value !== "string" || value.length !== chars || !/^[0-9a-f]+$/.test(value)) {
+    throw new GatewayPolicyError(`${field} must be exactly ${chars} lowercase hex characters`);
+  }
+  return value;
+}
+
+function tupleTime(field: string, value: unknown): number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    throw new GatewayPolicyError(`${field} must be a non-negative safe integer (epoch ms)`);
+  }
+  return value;
+}
+
+/**
+ * Validate one tuple for its platform kind. Idempotent over its own output, so
+ * the security floor can re-run it on an already-parsed (or hand-built) policy.
+ * Values must already be canonical lowercase hex: a tuple is compared exactly,
+ * so it is written exactly.
+ */
+export function validateGatewayReleaseTuple(kind: GatewayPlatformKind, input: unknown, index: number): GatewayReleaseTuple {
+  const at = `policy.releaseTuples[${index}]`;
+  if (!input || typeof input !== "object" || Array.isArray(input)) throw new GatewayPolicyError(`${at} must be an object`);
+  const raw = input as Record<string, unknown>;
+  const expected: string[] = kind === "phala-dstack-kms" ? [...TUPLE_FIELDS, "osImageHash"] : [...TUPLE_FIELDS];
+  const keys = Object.keys(raw).filter((key) => raw[key] !== undefined);
+  if (keys.length !== expected.length || keys.some((key) => !expected.includes(key))) {
+    // gcp-tdx-native deliberately has no osImageHash (its OS is RTMR1/RTMR2) and
+    // no vTPM/PCR field of any kind: an unknown field is refused, never ignored.
+    throw new GatewayPolicyError(`${at} must have exactly the fields ${expected.join(", ")}`);
+  }
+  for (const field of ["tupleId", "releaseId"] as const) {
+    if (typeof raw[field] !== "string" || !RELEASE_LABEL.test(raw[field] as string)) {
+      throw new GatewayPolicyError(`${at}.${field} must be 1..128 chars of [A-Za-z0-9._:@+-]`);
+    }
+  }
+  if (typeof raw.appId !== "string" || !/^[0-9a-f]{1,512}$/.test(raw.appId)) {
+    throw new GatewayPolicyError(`${at}.appId must be lowercase hex`);
+  }
+  const keyProviderPayload = raw.keyProviderPayload;
+  if (typeof keyProviderPayload !== "string" || keyProviderPayload.length < 2 || keyProviderPayload.length > 2048
+      || keyProviderPayload.length % 2 !== 0 || !/^[0-9a-f]+$/.test(keyProviderPayload)) {
+    throw new GatewayPolicyError(`${at}.keyProviderPayload must be 2..2048 lowercase hex characters`);
+  }
+  let provider: unknown;
+  try {
+    provider = JSON.parse(utf8Decode(hexToBytes(keyProviderPayload)));
+  } catch {
+    throw new GatewayPolicyError(`${at}.keyProviderPayload must decode to a UTF-8 JSON object`);
+  }
+  if (!provider || typeof provider !== "object" || Array.isArray(provider)
+      || (provider as Record<string, unknown>).name !== KEY_PROVIDER_NAME[kind]) {
+    throw new GatewayPolicyError(`${at}.keyProviderPayload must name the ${KEY_PROVIDER_NAME[kind]} key provider for ${kind}`);
+  }
+  const notBeforeMs = tupleTime(`${at}.notBeforeMs`, raw.notBeforeMs);
+  const expiresAtMs = tupleTime(`${at}.expiresAtMs`, raw.expiresAtMs);
+  if (expiresAtMs <= notBeforeMs || expiresAtMs - notBeforeMs > MAX_RELEASE_TUPLE_LIFETIME_MS) {
+    throw new GatewayPolicyError(`${at} validity must be a non-empty window of at most ${MAX_RELEASE_TUPLE_LIFETIME_MS} ms`);
+  }
+  return {
+    tupleId: raw.tupleId as string,
+    releaseId: raw.releaseId as string,
+    appId: raw.appId,
+    composeHash: exactHex(`${at}.composeHash`, raw.composeHash, 64),
+    mrTd: exactHex(`${at}.mrTd`, raw.mrTd, 96),
+    mrConfigId: exactHex(`${at}.mrConfigId`, raw.mrConfigId, 96),
+    rtmr0: exactHex(`${at}.rtmr0`, raw.rtmr0, 96),
+    rtmr1: exactHex(`${at}.rtmr1`, raw.rtmr1, 96),
+    rtmr2: exactHex(`${at}.rtmr2`, raw.rtmr2, 96),
+    ...(kind === "phala-dstack-kms" ? { osImageHash: exactHex(`${at}.osImageHash`, raw.osImageHash, 64) } : {}),
+    keyProviderPayload,
+    notBeforeMs,
+    expiresAtMs
+  };
+}
+
+function validateReleaseTuples(kind: GatewayPlatformKind, value: unknown): GatewayReleaseTuple[] {
+  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_RELEASE_TUPLES) {
+    throw new GatewayPolicyError(`policy.releaseTuples must contain 1..${MAX_RELEASE_TUPLES} tuples`);
+  }
+  const tuples = value.map((entry, index) => validateGatewayReleaseTuple(kind, entry, index));
+  if (new Set(tuples.map((tuple) => tuple.tupleId)).size !== tuples.length) {
+    throw new GatewayPolicyError("policy.releaseTuples tupleIds must be unique");
+  }
+  return tuples;
+}
+
+function unique(values: string[]): string[] {
+  return [...new Set(values)];
+}
+
+/**
+ * The per-kind floor every policy must meet before any evidence is judged
+ * against it. The legacy form keeps exactly its historical floor. The tuple form
+ * additionally refuses a mixed document and re-validates every tuple.
+ */
+export function assertGatewayPlatformSecurityFloor(policy: GatewayMeasurementPolicy): void {
+  const refuse = (why: string): never => { throw new GatewayPolicyError(`policy security floor: ${why}`); };
+  if (!policy.requireHardwareVerified || !policy.requireInTeeTls || !policy.requirePrivateLogs
+    || !policy.requireDigestPinnedImages || !policy.requireEvidenceExpiry
+    || policy.maxEvidenceAgeMs > 300_000 || policy.acceptableTcbStatuses.length !== 1
+    || policy.acceptableTcbStatuses[0] !== "UpToDate") refuse("policy weakens mandatory security requirements");
+  if (policy.platformKind === undefined) {
+    if (policy.releaseTuples !== undefined) refuse("release tuples require an explicit platformKind");
+    if (!policy.keyProviderId || !policy.platform) refuse("policy weakens mandatory security requirements");
+    return;
+  }
+  if (!GATEWAY_PLATFORM_KINDS.includes(policy.platformKind)) refuse("unknown platformKind");
+  if (policy.keyProviderId !== undefined || policy.platform !== undefined) {
+    refuse("a tuple-form policy cannot also carry independent platform or key-provider allowlists");
+  }
+  try {
+    const tuples = validateReleaseTuples(policy.platformKind, policy.releaseTuples);
+    const derived = (pick: (tuple: GatewayReleaseTuple) => string) => unique(tuples.map(pick)).join("\n");
+    if (policy.appIds.join("\n") !== derived((tuple) => tuple.appId)
+      || policy.composeHashes.join("\n") !== derived((tuple) => tuple.composeHash)
+      || policy.releaseIds.join("\n") !== derived((tuple) => tuple.releaseId)) {
+      refuse("derived identity lists disagree with the release tuples");
+    }
+  } catch (error) {
+    if (error instanceof GatewayPolicyError) refuse(error.message);
+    throw error;
+  }
+}
+
+function loadTupleGatewayPolicy(raw: Record<string, unknown>): GatewayMeasurementPolicy {
+  const kind = raw.platformKind;
+  if (typeof kind !== "string" || !GATEWAY_PLATFORM_KINDS.includes(kind as GatewayPlatformKind)) {
+    throw new GatewayPolicyError(`policy.platformKind must be one of ${GATEWAY_PLATFORM_KINDS.join(", ")}`);
+  }
+  for (const field of LEGACY_IDENTITY_FIELDS) {
+    if (field in raw) {
+      // Ambiguity is refused rather than resolved: a document carrying both forms
+      // could be read as either, and the two readings accept different evidence.
+      throw new GatewayPolicyError(`policy.${field} is not allowed with platformKind; use releaseTuples`);
+    }
+  }
+  const unknown = Object.keys(raw).filter((key) => !TUPLE_POLICY_FIELDS.has(key));
+  if (unknown.length > 0) throw new GatewayPolicyError(`policy has unknown field(s): ${unknown.join(", ")}`);
+  const releaseTuples = validateReleaseTuples(kind as GatewayPlatformKind, raw.releaseTuples);
+  const base = loadLegacyGatewayPolicy({
+    ...raw,
+    appIds: unique(releaseTuples.map((tuple) => tuple.appId)),
+    composeHashes: unique(releaseTuples.map((tuple) => tuple.composeHash)),
+    releaseIds: unique(releaseTuples.map((tuple) => tuple.releaseId))
+  });
+  return { platformKind: kind as GatewayPlatformKind, releaseTuples, ...base };
+}
+
 /**
  * Parse an untrusted policy document. Every security-relevant switch is REQUIRED:
  * there are no permissive defaults, so a truncated or hand-edited policy cannot
  * silently disable a check.
+ *
+ * Two forms exist. Without `platformKind` the document is the legacy
+ * phala-dstack-kms form and parses exactly as it always has. With
+ * `platformKind` it must carry `releaseTuples` and none of the independent
+ * allowlists; mixing the two forms is refused.
  */
 export function loadGatewayPolicy(input: unknown): GatewayMeasurementPolicy {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     throw new GatewayPolicyError("policy must be a JSON object");
   }
   const raw = input as Record<string, unknown>;
+  if ("platformKind" in raw) return loadTupleGatewayPolicy(raw);
+  if ("releaseTuples" in raw) {
+    throw new GatewayPolicyError("policy.releaseTuples requires an explicit platformKind");
+  }
+  return loadLegacyGatewayPolicy(raw);
+}
+
+function loadLegacyGatewayPolicy(raw: Record<string, unknown>): GatewayMeasurementPolicy {
   if (typeof raw.source !== "string" || raw.source.trim().length === 0) {
     throw new GatewayPolicyError("policy.source is required");
   }
@@ -255,11 +534,17 @@ function parseEntry(raw: unknown): GatewayPolicyEntry {
   if (record.status !== "published" && record.status !== "candidate") {
     throw new GatewayPolicyError("registry entry status must be published or candidate");
   }
+  const policy = loadGatewayPolicy(record.policy);
+  // The package must never ship an approval for a platform whose boot chain this
+  // release has not qualified, not even as a candidate.
+  if (!GATEWAY_PLATFORM_QUALIFIED[gatewayPolicyPlatformKind(policy)]) {
+    throw new GatewayPolicyError("registry entry names a platform kind this release has not qualified");
+  }
   return {
     status: record.status,
     reviewedAt: typeof record.reviewedAt === "string" ? record.reviewedAt : "",
     notes: typeof record.notes === "string" ? record.notes : "",
-    policy: loadGatewayPolicy(record.policy)
+    policy
   };
 }
 

@@ -17,8 +17,8 @@ const { createVerifiedGatewayConnection }: typeof import("../dist/gateway/connec
   packageRoot ? pathToFileURL(join(packageRoot, "dist/gateway/connection-session.js")).href : new URL("../dist/gateway/connection-session.js", import.meta.url).href);
 import { gatewayBindingHash, GATEWAY_BINDING_VERSION } from "../src/gateway/binding.js";
 import { loadGatewayPolicy } from "../src/gateway/policy.js";
-import { buildAppCompose, buildSyntheticEventLog, buildSyntheticTdxQuote, buildVmConfig,
-  SYNTHETIC_MR_CONFIG_ID, SYNTHETIC_OS_IMAGE_HASH } from "./helpers/gateway-fixtures.js";
+import { buildAppCompose, buildSyntheticEventLog, buildSyntheticGcpEventLog, buildSyntheticTdxQuote, buildVmConfig,
+  SYNTHETIC_EPHEMERAL_KEY_PROVIDER, SYNTHETIC_GCP_REGISTERS, SYNTHETIC_MR_CONFIG_ID, SYNTHETIC_OS_IMAGE_HASH } from "./helpers/gateway-fixtures.js";
 import { createVeniceMockEnclave } from "./helpers/mock-enclaves.js";
 
 const fixture = process.env.SDK_BOUND_CLIENT_FIXTURE!;
@@ -35,7 +35,9 @@ const MODEL = "venice-uncensored";
 const compose = buildAppCompose();
 const log = buildSyntheticEventLog({ appId: APP, instanceId: INSTANCE, composeHash: compose.hash, keyProviderId: KMS });
 const cleanup: Array<() => Promise<void>> = [];
-afterEach(async () => { vi.restoreAllMocks(); vi.unstubAllGlobals(); for (const close of cleanup.splice(0)) await close(); });
+// Replaces the served evidence for one test; reset after every test.
+let evidenceOverride: ((origin: string, nonce: string, slot: string) => unknown) | null = null;
+afterEach(async () => { evidenceOverride = null; vi.restoreAllMocks(); vi.unstubAllGlobals(); for (const close of cleanup.splice(0)) await close(); });
 
 function policy(origin: string) {
   return loadGatewayPolicy({ source: "synthetic-client-wiring-policy", version: "1", origins: [origin],
@@ -97,7 +99,7 @@ async function topology(options: { start?: string; switchOnEvidence?: boolean; h
       const nonce = url.searchParams.get("nonce")!;
       observed.nonces.push(nonce);
       res.setHeader("content-type", "application/json");
-      res.end(JSON.stringify(evidence(contentOrigin, nonce, slot)));
+      res.end(JSON.stringify(evidenceOverride ? evidenceOverride(contentOrigin, nonce, slot) : evidence(contentOrigin, nonce, slot)));
       if (options.dnsSwitch) dnsTarget = "::1";
       else if (options.switchOnEvidence) { active = "b"; content.setSecureContext(keys.b); }
       return;
@@ -474,4 +476,57 @@ it("an expired refreshed approval cannot authorize the retained socket", async (
   await expect(client.chat(chat())).rejects.toThrow(/expired/);
   expect(t.observed.gateway).toBe(1); expect(t.observed.attTickets).toBe(0);
   expect(t.observed.paidTickets).toBe(0); expect(t.observed.content).toEqual([]);
+});
+
+// gcp-tdx-native: synthetic registers and the ephemeral key provider, NOT Google
+// firmware values. The node's per-boot TLS key must be the one on THIS socket.
+const GCP_RELEASE = "sdk-bound-client@gcp-synthetic";
+const gcpLog = buildSyntheticGcpEventLog({ appId: APP, instanceId: INSTANCE, composeHash: compose.hash });
+function gcpPolicy(origin: string) {
+  return loadGatewayPolicy({ platformKind: "gcp-tdx-native", source: "synthetic-gcp-client-wiring-policy", version: "1",
+    origins: [origin], releaseTuples: [{ tupleId: "synthetic-gcp", releaseId: GCP_RELEASE, appId: APP, composeHash: compose.hash,
+      ...SYNTHETIC_GCP_REGISTERS, keyProviderPayload: SYNTHETIC_EPHEMERAL_KEY_PROVIDER,
+      notBeforeMs: Date.now() - 60_000, expiresAtMs: Date.now() + 3_600_000 }],
+    requireInTeeTls: true, requirePrivateLogs: true, requireDigestPinnedImages: true, requireHardwareVerified: true,
+    requireEvidenceExpiry: true, maxEvidenceAgeMs: 300_000, acceptableTcbStatuses: ["UpToDate"] });
+}
+function gcpEvidence(boundSlot?: string, registers: Partial<typeof SYNTHETIC_GCP_REGISTERS> = {}) {
+  return (origin: string, nonce: string, slot: string) => {
+    const binding = { v: GATEWAY_BINDING_VERSION, nonce, app_id: APP, instance_id: INSTANCE, compose_hash: compose.hash,
+      release_id: GCP_RELEASE, origin, key_alg: "x25519" as const, public_key: "ab".repeat(32),
+      transport: "in-tee-tls" as const, tls_spki_sha256: pins[boundSlot ?? slot]! };
+    return { binding, quote: buildSyntheticTdxQuote({ reportDataHex: gatewayBindingHash(binding),
+      ...SYNTHETIC_GCP_REGISTERS, ...registers, rtmr3: gcpLog.rtmr3 }),
+      event_log: JSON.stringify(gcpLog.events), app_compose: compose.manifest, issued_at_ms: Date.now() };
+  };
+}
+function gcpClient(t: Awaited<ReturnType<typeof topology>>, pilot = true) {
+  return createClient({ ...t.clientOptions, gatewayConnectionBinding: { mode: "required", verification: {
+    policy: gcpPolicy(t.contentOrigin), chainVerifier: syntheticNativeBoundary, ...(pilot ? { unqualifiedPlatformPilot: true } : {}) } } });
+}
+
+describe("gcp-tdx-native mandatory real-connection key binding — synthetic native port, real TLS", () => {
+  it("pilot: the per-boot key on the retained socket matches the quote, and content uses that socket", async () => {
+    const t = await topology(); evidenceOverride = gcpEvidence();
+    expect((await gcpClient(t).chat(chat())).content).toBe("Hello E2EE");
+    expect(t.observed.handshakes).toEqual({ a: 1, b: 0 }); expect(t.observed.gateway).toBe(1);
+    expect(t.observed.content.map(c => c.slot)).toEqual(["a", "a"]);
+  });
+  it("wrong key: a quote binding another node's TLS key yields zero tickets and zero content", async () => {
+    const t = await topology(); evidenceOverride = gcpEvidence("b");
+    await expect(gcpClient(t).chat(chat())).rejects.toMatchObject({ code: "attestation_untrusted" });
+    expect(t.observed.gateway).toBe(1);
+    expect(t.observed.attTickets).toBe(0); expect(t.observed.paidTickets).toBe(0); expect(t.observed.content).toHaveLength(0);
+  });
+  it("wrong platform tuple: an unapproved firmware register yields zero tickets and zero content", async () => {
+    const t = await topology(); evidenceOverride = gcpEvidence(undefined, { mrTd: "5e".repeat(48) });
+    await expect(gcpClient(t).chat(chat())).rejects.toMatchObject({ code: "attestation_untrusted" });
+    expect(t.observed.attTickets).toBe(0); expect(t.observed.paidTickets).toBe(0); expect(t.observed.content).toHaveLength(0);
+  });
+  it("no pilot opt-in: refused before any connection", async () => {
+    const t = await topology(); evidenceOverride = gcpEvidence();
+    await expect(gcpClient(t, false).chat(chat())).rejects.toMatchObject({ code: "unsupported_request" });
+    expect(t.observed.connections).toBe(0); expect(t.observed.gateway).toBe(0);
+    expect(t.observed.attTickets).toBe(0); expect(t.observed.content).toHaveLength(0);
+  });
 });

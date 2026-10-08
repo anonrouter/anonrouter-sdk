@@ -53,7 +53,14 @@ import {
   singleEventPayload,
   type DstackEventLogEntry
 } from "./eventLog.js";
-import type { GatewayMeasurementPolicy } from "./policy.js";
+import {
+  assertGatewayPlatformSecurityFloor,
+  GATEWAY_PLATFORM_QUALIFIED,
+  gatewayPolicyPlatformKind,
+  gatewayPolicyRequiresRetainedConnection,
+  type GatewayMeasurementPolicy,
+  type GatewayReleaseTuple
+} from "./policy.js";
 
 /** A vm_config blob is bounded so a hostile response cannot pin the CPU parsing it. */
 const MAX_VM_CONFIG_CHARS = 65_536;
@@ -170,6 +177,21 @@ export interface GatewayVerificationExpectations {
   observedTlsSpkiSha256?: string | null;
   /** Optional DCAP chain verifier. Absent means no hardware-verified verdict. */
   chainVerifier?: TdxChainVerifier;
+  /**
+   * True only when `observedTlsSpkiSha256` was read from the very TLS socket that
+   * fetched this evidence and will carry the content (the SDK's retained
+   * operation sets it). A platform that requires same-connection binding fails
+   * without it, because behind a balancer a certificate seen on another
+   * connection may belong to another node.
+   */
+  observedOnRetainedConnection?: boolean;
+  /**
+   * The caller's explicit, code-level acknowledgement that it is running a pilot
+   * against a platform kind whose native boot chain this SDK release has not
+   * qualified. Without it such a policy fails closed. It never relaxes any
+   * other check, and the gap stays visible as an unmet advisory check.
+   */
+  unqualifiedPlatformPilot?: boolean;
 }
 
 export interface GatewayVerificationResult {
@@ -232,6 +254,33 @@ export function verifyGatewayAttestation(
 ): GatewayVerificationResult {
   const { policy, now } = expectations;
   const checks: AttestationCheck[] = [];
+  const kind = gatewayPolicyPlatformKind(policy);
+  const tupleForm = policy.platformKind !== undefined || policy.releaseTuples !== undefined;
+  const nativeGcp = kind === "gcp-tdx-native";
+
+  // --- 0. Tuple-form policies prove their own floor ---------------------------
+  // Legacy policies are checked exactly as before. A tuple-form policy is held to
+  // its platform's floor HERE as well as at load time, so a hand-built or mutated
+  // policy object cannot quietly drop hardware verification or in-TEE TLS.
+  if (tupleForm) {
+    let floorDetail: string | undefined;
+    try {
+      assertGatewayPlatformSecurityFloor(policy);
+    } catch (error) {
+      floorDetail = error instanceof Error ? error.message : "policy security floor not met";
+    }
+    checks.push(check("policy_security_floor", floorDetail === undefined, true, floorDetail));
+    const qualified = GATEWAY_PLATFORM_QUALIFIED[kind] === true;
+    checks.push(check(
+      "platform_boot_chain_qualified",
+      qualified,
+      !qualified && expectations.unqualifiedPlatformPilot === true ? false : true,
+      qualified
+        ? undefined
+        : `${kind} native boot chain (UKI, command line, verity root, application measurement) is not qualified by this SDK release${
+          expectations.unqualifiedPlatformPilot === true ? "; caller acknowledged an unqualified pilot" : ""}`
+    ));
+  }
 
   // --- 1. Binding -----------------------------------------------------------
   let binding: GatewayAttestationBinding;
@@ -292,12 +341,26 @@ export function verifyGatewayAttestation(
   let events: DstackEventLogEntry[] | null = null;
   try {
     events = parseEventLog(evidence.event_log);
-    const replayed = replayRtmrs(events);
-    const replays = hexEqual(replayed[0], quote.rtmr0)
-      && hexEqual(replayed[1], quote.rtmr1)
-      && hexEqual(replayed[2], quote.rtmr2)
-      && hexEqual(replayed[3], quote.rtmr3);
-    checks.push(check("event_log_replays_rtmrs", replays, true));
+    if (nativeGcp) {
+      // Google's firmware does not emit a dstack boot log. RTMR0..RTMR2 are pinned
+      // EXACTLY from the quote by the release tuple, so only the application
+      // events are replayed; any boot entries present are never consulted.
+      const replayed = replayRtmrs(events.filter((event) => event.imr === 3));
+      checks.push(check("event_log_replays_rtmr3", hexEqual(replayed[3], quote.rtmr3), true));
+      checks.push(check(
+        "firmware_event_log_replayed",
+        false,
+        false,
+        "RTMR0..RTMR2 are pinned directly from the quote; native CCEL/UKI measurement proof is pending qualification"
+      ));
+    } else {
+      const replayed = replayRtmrs(events);
+      const replays = hexEqual(replayed[0], quote.rtmr0)
+        && hexEqual(replayed[1], quote.rtmr1)
+        && hexEqual(replayed[2], quote.rtmr2)
+        && hexEqual(replayed[3], quote.rtmr3);
+      checks.push(check("event_log_replays_rtmrs", replays, true));
+    }
 
     // Replay alone proves only that the DIGESTS are the measured ones. Each RTMR3
     // digest must additionally commit to the human-readable name and payload
@@ -312,7 +375,7 @@ export function verifyGatewayAttestation(
     ));
   } catch (error) {
     const detail = error instanceof Error ? error.message : undefined;
-    checks.push(check("event_log_replays_rtmrs", false, true, detail));
+    checks.push(check(nativeGcp ? "event_log_replays_rtmr3" : "event_log_replays_rtmrs", false, true, detail));
     checks.push(check("event_digests_commit_to_payloads", false, true, detail));
     events = null;
   }
@@ -370,7 +433,19 @@ export function verifyGatewayAttestation(
   // key-provider names who may hold this app's derived keys. A CVM booted under a
   // different key provider is a different trust domain even at the same compose
   // hash, so this is pinned rather than merely reported.
-  if (policy.keyProviderId) {
+  if (tupleForm) {
+    // Exact payload equality against the approved tuples: the tuple form never
+    // substring-matches, and the payload names the kind's own key provider (KMS
+    // for Phala, the ephemeral per-boot provider for GCP), checked at load.
+    const measured = keyProviderEvent?.toLowerCase() ?? null;
+    checks.push(check(
+      "key_provider_pinned",
+      eventLogRead && measured !== null
+        && (policy.releaseTuples ?? []).some((tuple) => tuple.keyProviderPayload === measured),
+      true,
+      measured === null ? "no key-provider event in the log" : undefined
+    ));
+  } else if (policy.keyProviderId) {
     const expected = policy.keyProviderId.toLowerCase();
     // The payload is a JSON blob ({"name":"kms","id":"<k256 pubkey>"}) encoded as
     // hex, so match on the decoded text rather than the whole-field digest.
@@ -394,7 +469,9 @@ export function verifyGatewayAttestation(
   // different OS image than the one it booted would otherwise send an auditor to
   // reproduce the wrong measurements and conclude the quote was forged.
   const vmConfigOsImage = readVmConfigOsImageHash(evidence.vm_config);
-  if (osImageHashEvent !== null && vmConfigOsImage !== null) {
+  if (nativeGcp) {
+    // No dstack OS image on this platform: the OS is whatever RTMR1/RTMR2 pin.
+  } else if (osImageHashEvent !== null && vmConfigOsImage !== null) {
     checks.push(check(
       "vm_config_matches_measured_os_image",
       hexEqual(osImageHashEvent, vmConfigOsImage),
@@ -453,7 +530,47 @@ export function verifyGatewayAttestation(
   checks.push(check("release_pinned", policy.releaseIds.includes(binding.release_id), true));
   checks.push(check("origin_pinned", policy.origins.includes(binding.origin), true));
 
-  if (policy.platform) {
+  if (tupleForm) {
+    // ONE tuple must match EVERY observed value at once. Independent allowlists
+    // would accept an old firmware register beside a new compose hash; a tuple
+    // cannot. Every compared value is either measured by hardware or committed to
+    // by report_data and cross-checked against RTMR3 above.
+    const observed = {
+      releaseId: binding.release_id,
+      appId: binding.app_id,
+      composeHash: binding.compose_hash,
+      mrTd: quote.mrTd.toLowerCase(),
+      mrConfigId: quote.mrConfigId.toLowerCase(),
+      rtmr0: quote.rtmr0.toLowerCase(),
+      rtmr1: quote.rtmr1.toLowerCase(),
+      rtmr2: quote.rtmr2.toLowerCase(),
+      osImageHash: osImageHashEvent?.toLowerCase() ?? null,
+      keyProviderPayload: keyProviderEvent?.toLowerCase() ?? null
+    };
+    const measuredMatch = (tuple: GatewayReleaseTuple) => eventLogRead
+      && tuple.releaseId === observed.releaseId
+      && tuple.appId === observed.appId
+      && tuple.composeHash === observed.composeHash
+      && tuple.mrTd === observed.mrTd
+      && tuple.mrConfigId === observed.mrConfigId
+      && tuple.rtmr0 === observed.rtmr0
+      && tuple.rtmr1 === observed.rtmr1
+      && tuple.rtmr2 === observed.rtmr2
+      && (nativeGcp || tuple.osImageHash === observed.osImageHash)
+      && tuple.keyProviderPayload === observed.keyProviderPayload;
+    const candidates = (policy.releaseTuples ?? []).filter(measuredMatch);
+    const matched = candidates.find((tuple) => tuple.notBeforeMs <= now && now < tuple.expiresAtMs);
+    checks.push(check(
+      "release_tuple_matched",
+      matched !== undefined,
+      true,
+      matched
+        ? `tuple=${matched.tupleId}`
+        : candidates.length > 0
+          ? "the matching release tuple is outside its validity window"
+          : "no single approved release tuple matches every measured value"
+    ));
+  } else if (policy.platform) {
     const { mrTd, mrConfigId, rtmr0, rtmr1, rtmr2, osImageHash } = policy.platform;
     checks.push(check(
       "platform_measurements_pinned",
@@ -475,7 +592,28 @@ export function verifyGatewayAttestation(
   }
 
   // --- 8. Transport binding --------------------------------------------------
-  if (policy.requireInTeeTls) {
+  if (gatewayPolicyRequiresRetainedConnection(policy)) {
+    // Mandatory real-connection key binding. Each node has its own per-boot TLS
+    // key behind a shared name, so the quote is only evidence about the node on
+    // THIS socket: an unobserved certificate, or one observed on any other
+    // connection, is a failure rather than an advisory gap.
+    checks.push(check("transport_terminates_in_tee", binding.transport === "in-tee-tls", true));
+    checks.push(check(
+      "tls_certificate_bound_to_quote",
+      typeof expectations.observedTlsSpkiSha256 === "string"
+        && hexEqual(expectations.observedTlsSpkiSha256, binding.tls_spki_sha256),
+      true,
+      expectations.observedTlsSpkiSha256 === undefined ? "caller did not observe its TLS certificate" : undefined
+    ));
+    checks.push(check(
+      "tls_observed_on_retained_connection",
+      expectations.observedOnRetainedConnection === true,
+      true,
+      expectations.observedOnRetainedConnection === true
+        ? undefined
+        : "the certificate was not observed on the retained connection that carries content"
+    ));
+  } else if (policy.requireInTeeTls) {
     checks.push(check("transport_terminates_in_tee", binding.transport === "in-tee-tls", true));
     if (expectations.observedTlsSpkiSha256 !== undefined) {
       checks.push(check(
@@ -547,11 +685,12 @@ export function verifyGatewayAttestation(
     // Required when the policy demands hardware verification, so a client whose
     // DCAP engine is missing or unbuilt fails loudly instead of quietly accepting
     // at the weaker level and reporting success.
+    const hardwareRequired = policy.requireHardwareVerified || tupleForm;
     checks.push(check(
       "quote_signature_chain",
       false,
-      policy.requireHardwareVerified,
-      policy.requireHardwareVerified
+      hardwareRequired,
+      hardwareRequired
         ? "policy requires hardware verification but no DCAP chain verifier was supplied"
         : "no DCAP chain verifier supplied; verdict capped at provider-attested"
     ));
@@ -561,7 +700,7 @@ export function verifyGatewayAttestation(
     checks.push(check(
       "tcb_status_acceptable",
       false,
-      policy.requireHardwareVerified,
+      hardwareRequired,
       "no chain verifier supplied, so no TCB status was reported to check"
     ));
   }

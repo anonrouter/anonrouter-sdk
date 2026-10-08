@@ -43,6 +43,9 @@ export interface RetainedGatewayOptions {
   preparationDeadlineMs?: number;
   requestTimeoutMs?: number;
   ca?: string;
+  /** Explicit acknowledgement for a platform kind this SDK release has not
+   * qualified (see GATEWAY_PLATFORM_QUALIFIED). It relaxes nothing else. */
+  unqualifiedPlatformPilot?: boolean;
   /** Only policy/approval metadata may change. The quote and socket never do. */
   refreshPolicy?: (signal: AbortSignal) => Promise<{ policy: GatewayMeasurementPolicy; approvalExpiresAtMs?: number }>;
 }
@@ -61,7 +64,7 @@ interface State {
   closedJoined?: boolean;
 }
 const fail = (code: RetainedGatewayError["code"], phase: RetainedGatewayError["dispatchPhase"] = "before_http") => new RetainedGatewayError(code, phase);
-const optionKeys = new Set(["origin", "policy", "chainVerifier", "approvalExpiresAtMs", "signal", "preDispatchBudgetMs", "preparationDeadlineMs", "requestTimeoutMs", "ca", "refreshPolicy"]);
+const optionKeys = new Set(["origin", "policy", "chainVerifier", "approvalExpiresAtMs", "signal", "preDispatchBudgetMs", "preparationDeadlineMs", "requestTimeoutMs", "ca", "refreshPolicy", "unqualifiedPlatformPilot"]);
 const initKeys = new Set(["method", "headers", "body", "signal", "credentials", "cache", "redirect"]);
 function exact(value: object, keys: Set<string>) {
   if (!value || ![Object.prototype, null].includes(Object.getPrototypeOf(value))
@@ -179,6 +182,7 @@ export async function openRetainedGatewayOperation(options: RetainedGatewayOptio
   if (typeof options.origin !== "string" || !options.chainVerifier
       || (options.ca !== undefined && (typeof options.ca !== "string" || !options.ca.trim()))
       || (options.refreshPolicy !== undefined && typeof options.refreshPolicy !== "function")
+      || (options.unqualifiedPlatformPilot !== undefined && typeof options.unqualifiedPlatformPilot !== "boolean")
       || (options.preparationDeadlineMs !== undefined && !Number.isFinite(options.preparationDeadlineMs))
       || (options.approvalExpiresAtMs !== undefined && (!Number.isSafeInteger(options.approvalExpiresAtMs) || options.approvalExpiresAtMs <= 0))) throw fail("configuration");
   let origin: URL;
@@ -346,12 +350,15 @@ export async function openRetainedGatewayOperation(options: RetainedGatewayOptio
         }));
     } else chain = options.chainVerifier;
     state.guard();
+    // The SPKI below was read from THIS socket, which fetched the evidence and is
+    // the only one that may ever carry content: the one place that can say so.
     const verifySameEvidence = () => verifyGatewayAttestation(evidence, { nonce, origin: origin.origin, policy,
-      observedTlsSpkiSha256: state.observedPin, chainVerifier: chain, now: Date.now() });
+      observedTlsSpkiSha256: state.observedPin, chainVerifier: chain, now: Date.now(),
+      observedOnRetainedConnection: true, unqualifiedPlatformPilot: options.unqualifiedPlatformPilot === true });
     let verdict = verifySameEvidence();
     const moved = verdict.status === "failed"
       && verdict.checks.some(check => check.name === "quote_signature_chain" && check.passed)
-      && verdict.checks.some(check => !check.passed && ["app_id_pinned", "compose_hash_pinned", "release_pinned", "platform_measurements_pinned", "os_image_pinned", "key_provider_pinned"].includes(check.name));
+      && verdict.checks.some(check => !check.passed && ["app_id_pinned", "compose_hash_pinned", "release_pinned", "platform_measurements_pinned", "os_image_pinned", "key_provider_pinned", "release_tuple_matched"].includes(check.name));
     if (moved && options.refreshPolicy) {
       const updated = await boundedPreparation(options.refreshPolicy);
       exact(updated, new Set(["policy", "approvalExpiresAtMs"]));

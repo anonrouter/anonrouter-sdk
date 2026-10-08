@@ -239,3 +239,40 @@ export function buildAppCompose(overrides: Record<string, unknown> = {}): { mani
   });
   return { manifest, hash: bytesToHex(sha256(utf8Encode(manifest))) };
 }
+
+/**
+ * The key-provider payload a synthetic gcp-tdx-native guest measures: the
+ * ephemeral per-boot `none` provider. SYNTHETIC: the real adapter's exact bytes
+ * are an open protocol item, and nothing here is a production pin.
+ */
+export const SYNTHETIC_EPHEMERAL_KEY_PROVIDER = bytesToHex(utf8Encode(JSON.stringify({ name: "none", id: "" })));
+
+/** Synthetic GCP hardware registers. Never Google firmware values. */
+export const SYNTHETIC_GCP_REGISTERS = {
+  mrTd: "1a".repeat(48),
+  mrConfigId: "00".repeat(48),
+  rtmr0: "2b".repeat(48),
+  rtmr1: "3c".repeat(48),
+  rtmr2: "4d".repeat(48)
+} as const;
+
+/**
+ * A gcp-tdx-native event log: RTMR3 application events only. Google's firmware
+ * does not produce a dstack boot log, so RTMR0..RTMR2 are pinned directly from
+ * the quote and this log replays only RTMR3.
+ */
+export function buildSyntheticGcpEventLog(options: {
+  appId: string;
+  composeHash: string;
+  instanceId: string;
+  keyProviderPayload?: string;
+}): { events: DstackEventLogEntry[]; rtmr3: string } {
+  const events: DstackEventLogEntry[] = [
+    rtmr3Event("system-preparing", ""),
+    rtmr3Event("app-id", options.appId),
+    rtmr3Event("compose-hash", options.composeHash),
+    rtmr3Event("instance-id", options.instanceId),
+    rtmr3Event("key-provider", options.keyProviderPayload ?? SYNTHETIC_EPHEMERAL_KEY_PROVIDER)
+  ];
+  return { events, rtmr3: replayRegister(events.map((e) => rtmr3EventDigest(e) ?? "ff".repeat(48))) };
+}

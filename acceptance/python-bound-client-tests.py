@@ -32,7 +32,7 @@ import httpx
 from cryptography import x509
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
-from gateway_fixtures import build_app_compose, build_synthetic_event_log, build_synthetic_tdx_quote, build_vm_config, SYNTHETIC_MR_CONFIG_ID, SYNTHETIC_OS_IMAGE_HASH
+from gateway_fixtures import build_app_compose, build_synthetic_event_log, build_synthetic_gcp_event_log, build_synthetic_tdx_quote, build_vm_config, SYNTHETIC_EPHEMERAL_KEY_PROVIDER, SYNTHETIC_GCP_REGISTERS, SYNTHETIC_MR_CONFIG_ID, SYNTHETIC_OS_IMAGE_HASH
 from test_route_binding_negatives import venice_evidence
 from anonrouter_confidential.client import create_client
 from anonrouter_confidential.crypto import venice
@@ -145,8 +145,26 @@ def evidence(origin,nonce,pin):
     return {'binding':binding,'quote':build_synthetic_tdx_quote(report_data_hex=gateway_binding_hash(binding),rtmr0=LOG.rtmr0,rtmr1=LOG.rtmr1,rtmr2=LOG.rtmr2,rtmr3=LOG.rtmr3),
         'event_log':LOG.as_json(),'app_compose':MANIFEST,'vm_config':build_vm_config(),'issued_at_ms':int(time.time()*1000)}
 
+# gcp-tdx-native: synthetic registers and the ephemeral key provider, NOT Google
+# firmware values. The node's per-boot TLS key must be the one on THIS socket.
+GCP_RELEASE='sdk-bound-python@gcp-synthetic'
+GCP_LOG=build_synthetic_gcp_event_log(app_id=APP,instance_id=INSTANCE,compose_hash=COMPOSE)
+def gcp_policy(origin):
+    now=int(time.time()*1000)
+    return load_gateway_policy({'platformKind':'gcp-tdx-native','source':'synthetic-gcp-client-policy','version':'1','origins':[origin],
+        'releaseTuples':[{'tupleId':'synthetic-gcp','releaseId':GCP_RELEASE,'appId':APP,'composeHash':COMPOSE,**SYNTHETIC_GCP_REGISTERS,
+            'keyProviderPayload':SYNTHETIC_EPHEMERAL_KEY_PROVIDER,'notBeforeMs':now-60000,'expiresAtMs':now+3600000}],
+        'requireInTeeTls':True,'requirePrivateLogs':True,'requireDigestPinnedImages':True,'requireHardwareVerified':True,'requireEvidenceExpiry':True,'maxEvidenceAgeMs':300000,'acceptableTcbStatuses':['UpToDate']})
+def gcp_evidence(bound_slot=None,registers=None):
+    def build(server,nonce,slot):
+        binding={'v':1,'nonce':nonce,'app_id':APP,'instance_id':INSTANCE,'compose_hash':COMPOSE,'release_id':GCP_RELEASE,'origin':server.origin,'key_alg':'x25519','public_key':'ab'*32,'transport':'in-tee-tls','tls_spki_sha256':server.pins[bound_slot or slot]}
+        regs={**SYNTHETIC_GCP_REGISTERS,**(registers or {})}
+        return {'binding':binding,'quote':build_synthetic_tdx_quote(report_data_hex=gateway_binding_hash(binding),mr_td=regs['mrTd'],mr_config_id=regs['mrConfigId'],rtmr0=regs['rtmr0'],rtmr1=regs['rtmr1'],rtmr2=regs['rtmr2'],rtmr3=GCP_LOG.rtmr3),
+            'event_log':GCP_LOG.as_json(),'app_compose':MANIFEST,'issued_at_ms':int(time.time()*1000)}
+    return build
+
 class Topology:
-    def __init__(self,fixture,*,start='a',switch=False,hold=False,stream=False,cancel=None,expiry_stage=None,expiry_advance=300001,media_delay=0,paid_close=False,quote_close=False,provider_close=False,dns_switch=False,initial_resets=0,on_initial_connection=None):
+    def __init__(self,fixture,*,evidence_for=None,start='a',switch=False,hold=False,stream=False,cancel=None,expiry_stage=None,expiry_advance=300001,media_delay=0,paid_close=False,quote_close=False,provider_close=False,dns_switch=False,initial_resets=0,on_initial_connection=None):
         self.gateway=0;self.nonces=[];self.att=0;self.paid=0;self.content=[];self.control=[];self.gate=threading.Event();self.gateway_seen=threading.Event();self.stream_seen=threading.Event()
         self.spare=None;self.dns_patch=None;self.lookups=0;self.dns_target='127.0.0.1'
         self.cancel=cancel;self.clock=[time.time()];self.clock_patch=patch('time.time',lambda:self.clock[0]) if expiry_stage else None
@@ -155,7 +173,7 @@ class Topology:
             parsed=urlsplit(path)
             if parsed.path=='/v1/gateway/attestation':
                 self.gateway+=1;nonce=parse_qs(parsed.query)['nonce'][0];self.nonces.append(nonce)
-                doc=evidence(server.origin,nonce,server.pins[slot])
+                doc=evidence_for(server,nonce,slot) if evidence_for else evidence(server.origin,nonce,server.pins[slot])
                 if switch:server.active='b'
                 send(conn,doc,close=quote_close);self.dns_target='::1' if dns_switch else self.dns_target;self.gateway_seen.set();return
             self.content.append((parsed.path,slot,headers,raw))
@@ -554,5 +572,28 @@ class BoundClientTests(unittest.TestCase):
                 client=create_client(**{**t.options,'gateway_policy_updates':Source(),'gateway_connection_binding':{'mode':'required','verification':{'chain_verifier':NativeBoundary()}}});self.addCleanup(client.close)
                 with self.assertRaises(Exception):client.chat(MODEL,'venice',[{'role':'user','content':'synthetic-content-canary'}],32)
                 self.assertEqual(t.gateway,1);self.assertEqual(t.att,0);self.assertEqual(t.paid,0);self.assertEqual(t.content,[])
+
+    def gcp_client(self,t,pilot=True):
+        verification={'policy':gcp_policy(t.content_server.origin),'chain_verifier':NativeBoundary(),**({'unqualified_platform_pilot':True} if pilot else {})}
+        client=create_client(**{**t.options,'gateway_connection_binding':{'mode':'required','verification':verification}});self.addCleanup(client.close)
+        return client
+    def gcp_chat(self,client):return client.chat(MODEL,'venice',[{'role':'user','content':'synthetic-content-canary'}],32)
+    def test_gcp_pilot_retained_socket_key_matches_quote(self):
+        t=self.topology(evidence_for=gcp_evidence())
+        self.assertEqual(self.gcp_chat(self.gcp_client(t))['content'],'Hello E2EE')
+        self.assertEqual(t.gateway,1);self.assertEqual(t.content_server.handshakes,{'a':1,'b':0})
+        self.assertEqual([slot for _,slot,_,_ in t.content],['a','a'])
+    def test_gcp_wrong_key_zero_tickets_zero_content(self):
+        t=self.topology(evidence_for=gcp_evidence(bound_slot='b'))
+        with self.assertRaises(Exception):self.gcp_chat(self.gcp_client(t))
+        self.assertEqual(t.gateway,1);self.assertEqual(t.att,0);self.assertEqual(t.paid,0);self.assertEqual(t.content,[])
+    def test_gcp_wrong_platform_tuple_zero_tickets_zero_content(self):
+        t=self.topology(evidence_for=gcp_evidence(registers={'mrTd':'5e'*48}))
+        with self.assertRaises(Exception):self.gcp_chat(self.gcp_client(t))
+        self.assertEqual(t.att,0);self.assertEqual(t.paid,0);self.assertEqual(t.content,[])
+    def test_gcp_without_pilot_refused_before_any_connection(self):
+        t=self.topology(evidence_for=gcp_evidence())
+        with self.assertRaises(Exception):self.gcp_chat(self.gcp_client(t,pilot=False))
+        self.assertEqual(t.content_server.connections,0);self.assertEqual(t.gateway,0);self.assertEqual(t.att,0);self.assertEqual(t.content,[])
 
 if __name__=='__main__':unittest.main(verbosity=2)
