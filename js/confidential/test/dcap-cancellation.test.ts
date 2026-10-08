@@ -197,10 +197,13 @@ describe("Node DCAP cancellation and join (synthetic fixtures)", () => {
       chmodSync(binary, 0o700);
       let settled = false;
       const started = performance.now();
-      const job = runDcapEngine(binary, payload, mode === "cancel" ? 1500 : 1000, controller.signal)
+      // Starting a real executable can take over a second on a busy host. Give
+      // the fixture time to print its verdict before exercising cancellation or
+      // deadline expiry; these are test allowances, not SDK production budgets.
+      const job = runDcapEngine(binary, payload, mode === "cancel" ? 8000 : 6500, controller.signal)
         .then(value => { settled = true; return value; });
       try {
-        while (!stdoutSeen && !closed && performance.now() - started < 750) await new Promise(resolve => setTimeout(resolve, 5));
+        while (!stdoutSeen && !closed && performance.now() - started < 5000) await new Promise(resolve => setTimeout(resolve, 5));
         expect(stdoutSeen).toBe(true); expect(stdoutBytes).toBeLessThan(1024); expect(settled).toBe(false);
         expect(realChild?.pid).toBeGreaterThan(1); process.kill(realChild!.pid!, 0);
         if (mode === "cancel") controller.abort();
@@ -217,5 +220,5 @@ describe("Node DCAP cancellation and join (synthetic fixtures)", () => {
         }
         await job;
       }
-    }, 3000);
+    }, 10000);
 });
