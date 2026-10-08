@@ -202,13 +202,15 @@ class RetainedTests(unittest.TestCase):
         self.assertEqual(json.loads(json.dumps(op.verdict.as_dict()))['status'],'ok')
         json.dumps(op.raw_evidence);self.assertEqual(self.image(t,op).status_code,200);self.assertEqual(t.spare.bytes['b'],0)
     def test_refresh_downgrade_and_expiry_refused(self):
-        for mode in ['downgrade','expiry','verdict']:
+        for mode in ['downgrade','expiry','verdict','unbounded']:
             with self.subTest(mode=mode):
                 t=self.topology();origin=t.content_server.origin;old=replace(helpers.policy(origin),compose_hashes=['ff'*32])
                 def refresh():
                     if mode=='verdict':return {'policy':helpers.policy(origin),'verdict':{'status':'ok'}}
+                    # 'unbounded': a bounded approval refreshed with no expiry at all.
+                    if mode=='unbounded':return helpers.policy(origin), None
                     return replace(helpers.policy(origin),require_hardware_verified=mode!='downgrade'), time.time()*1000-1 if mode=='expiry' else time.time()*1000+10000
-                with self.assertRaises(Exception):retained.RetainedGatewayConnection(origin=origin,policy=old,chain_verifier=helpers.NativeBoundary(),timeout=3,refresh_policy=refresh)
+                with self.assertRaises(Exception):retained.RetainedGatewayConnection(origin=origin,policy=old,chain_verifier=helpers.NativeBoundary(),timeout=3,refresh_policy=refresh,approval_expires_at_ms=time.time()*1000+60000)
                 self.assertEqual(t.gateway,1);self.assertEqual(t.content,[])
     def test_blocked_verifier_refresh_and_cancel_bounded(self):
         for mode in ['native','refresh','cancel']:

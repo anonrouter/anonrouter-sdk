@@ -363,6 +363,9 @@ export async function openRetainedGatewayOperation(options: RetainedGatewayOptio
       const updated = await boundedPreparation(options.refreshPolicy);
       exact(updated, new Set(["policy", "approvalExpiresAtMs"]));
       if (updated.approvalExpiresAtMs !== undefined && (!Number.isSafeInteger(updated.approvalExpiresAtMs) || updated.approvalExpiresAtMs <= 0)) throw fail("configuration");
+      // A refresh replaces approval metadata; it can never make a bounded
+      // approval unbounded by simply omitting the expiry.
+      if (updated.approvalExpiresAtMs === undefined && approvalExpiry !== Infinity) throw fail("configuration");
       policy = snapshotPolicy(updated.policy); approvalExpiry = updated.approvalExpiresAtMs ?? Infinity;
       state.guard(); verdict = verifySameEvidence();
     }

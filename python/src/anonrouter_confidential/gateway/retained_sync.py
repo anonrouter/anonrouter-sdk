@@ -513,6 +513,10 @@ class RetainedGatewayConnection:
                 active = _policy(updated[0]); approval = updated[1]
                 if approval is not None and (type(approval) not in {int, float} or not math.isfinite(approval) or approval <= 0):
                     raise _fail("configuration")
+                # A refresh replaces approval metadata; it can never make a
+                # bounded approval unbounded by simply omitting the expiry.
+                if approval is None and math.isfinite(self._channel.approval):
+                    raise _fail("configuration")
                 self._channel.approval = approval if approval is not None else float("inf")
                 self._channel.guard(); verdict = self._bounded(verify)
             binding = verdict.binding
