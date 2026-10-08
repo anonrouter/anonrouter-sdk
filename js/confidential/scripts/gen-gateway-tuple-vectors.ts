@@ -67,7 +67,7 @@ const FW2 = { ...SYNTHETIC_GCP_REGISTERS, mrTd: "5e".repeat(48), rtmr0: "6f".rep
 function gcpTuple(id: string, release: string, root: string, compose: { hash: string }, fw: typeof FW1, window = { notBeforeMs: NOW - DAY, expiresAtMs: NOW + DAY }) {
   return {
     tupleId: id, releaseId: release, appId: root, composeHash: compose.hash,
-    mrTd: fw.mrTd, rtmr0: fw.rtmr0, rtmr1: fw.rtmr1, rtmr2: fw.rtmr2, tdAttributes: fw.tdAttributes, ...window
+    mrTd: fw.mrTd, rtmr0: fw.rtmr0, rtmr1: fw.rtmr1, rtmr2: fw.rtmr2, tdAttributes: fw.tdAttributes, xfam: fw.xfam, ...window
   };
 }
 
@@ -141,6 +141,9 @@ const loadCases: { name: string; policy: unknown; accepted: boolean }[] = [
   { name: "gcp tuple must not carry a key provider", policy: withTuple({ keyProviderPayload: NONE_PAYLOAD }), accepted: false },
   { name: "gcp tuple must not carry MRCONFIGID (it is required zero)", policy: withTuple({ mrConfigId: "00".repeat(48) }), accepted: false },
   { name: "gcp tuple requires tdAttributes", policy: withTuple({ tdAttributes: undefined }), accepted: false },
+  { name: "gcp tuple requires xfam", policy: withTuple({ xfam: undefined }), accepted: false },
+  { name: "gcp tuple with a short xfam", policy: withTuple({ xfam: "e71806" }), accepted: false },
+  { name: "phala tuple must not carry xfam", policy: { ...phalaPolicy, releaseTuples: [{ ...phalaPolicy.releaseTuples[0]!, xfam: FW1.xfam }] }, accepted: false },
   { name: "gcp tuple with debug tdAttributes", policy: withTuple({ tdAttributes: "0100001000000000" }), accepted: false },
   { name: "gcp app id must be a 32-byte verity root", policy: withTuple({ appId: APP_ID }), accepted: false },
   { name: "phala tuple requires osImageHash", policy: { ...phalaPolicy, releaseTuples: [(({ osImageHash: _o, ...rest }) => rest)(phalaPolicy.releaseTuples[0]!)] }, accepted: false },
@@ -190,6 +193,8 @@ const verifyInputs: VerifyCase[] = [
     policy: gcpPolicy, evidence: gcpEvidence({ ...releaseA, quote: { rtmr1: "77".repeat(48) } }), expectations: retained, chainVerifier: chainOk },
   { name: "WRONG PLATFORM: TD attributes differ", why: "The exact TD attributes are part of the tuple.",
     policy: gcpPolicy, evidence: gcpEvidence({ ...releaseA, quote: { tdAttributes: "0000000000000000" } }), expectations: retained, chainVerifier: chainOk },
+  { name: "WRONG PLATFORM: XFAM differs (extra CPU state enabled)", why: "XFAM selects the extended CPU state the TD may use; a boot with a different feature set matches no tuple.",
+    policy: gcpPolicy, evidence: gcpEvidence({ ...releaseA, quote: { xfam: "e71a060000000000" } }), expectations: retained, chainVerifier: chainOk },
   { name: "WRONG PLATFORM: MRCONFIGID set", why: "Owner-supplied configuration registers must be zero.",
     policy: gcpPolicy, evidence: gcpEvidence({ ...releaseA, quote: { mrConfigId: "01".repeat(48) } }), expectations: retained, chainVerifier: chainOk },
   { name: "WRONG PLATFORM: MROWNER set", why: "Owner-supplied configuration registers must be zero.",

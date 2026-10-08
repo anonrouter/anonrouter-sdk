@@ -51,6 +51,8 @@ export interface SyntheticQuoteOptions {
   mrOwnerConfig?: string;
   /** td_attributes, 8 bytes hex (zero when omitted). */
   tdAttributes?: string;
+  /** XFAM, 8 bytes hex (zero when omitted). */
+  xfam?: string;
   teeType?: number;
   debug?: boolean;
 }
@@ -72,6 +74,7 @@ export function buildSyntheticTdxQuote(options: SyntheticQuoteOptions): string {
   };
 
   if (options.tdAttributes) write(OFF_TD_ATTRIBUTES, options.tdAttributes, 8);
+  if (options.xfam) write(OFF_TD_ATTRIBUTES + 8, options.xfam, 8);
   if (options.debug) buf[OFF_TD_ATTRIBUTES] |= 0x01;
 
   write(OFF_MR_TD, options.mrTd ?? ZERO_48, 48);
@@ -260,7 +263,8 @@ export const SYNTHETIC_GCP_REGISTERS = {
   rtmr0: "2b".repeat(48),
   rtmr1: "3c".repeat(48),
   rtmr2: "4d".repeat(48),
-  tdAttributes: "0000001000000000"
+  tdAttributes: "0000001000000000",
+  xfam: "e718060000000000"
 } as const;
 export const SYNTHETIC_GCP_VERITY_ROOT = "5a".repeat(32);
 export const SYNTHETIC_GCP_BOOT_KEY = "e7".repeat(32);

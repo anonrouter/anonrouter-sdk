@@ -31,6 +31,8 @@ export interface ParsedTdxQuote {
   reportData: string;
   /** td_attributes (8 bytes), lowercase hex. */
   tdAttributes: string;
+  /** XFAM (8 bytes), lowercase hex: the extended CPU state the TD may use. */
+  xfam: string;
   /** True when the TUD.DEBUG bit (td_attributes bit 0) is set. */
   debugEnabled: boolean;
 }
@@ -85,6 +87,7 @@ export function parseTdxQuote(input: unknown): ParsedTdxQuote | null {
     rtmr3: hex(OFF_RTMR0 + 144, 48),
     reportData: hex(OFF_REPORT_DATA, 64),
     tdAttributes: hex(OFF_TD_ATTRIBUTES, 8),
+    xfam: hex(OFF_TD_ATTRIBUTES + 8, 8),
     // TUD.DEBUG is bit 0 of the first td_attributes byte.
     debugEnabled: (buf[OFF_TD_ATTRIBUTES] & 0x01) === 0x01
   };

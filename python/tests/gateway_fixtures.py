@@ -63,6 +63,7 @@ def build_synthetic_tdx_quote(
     mr_owner: str = _ZERO_48,
     mr_owner_config: str = _ZERO_48,
     td_attributes: str | None = None,
+    xfam: str | None = None,
     tee_type: int = TEE_TYPE_TDX,
     debug: bool = False,
 ) -> str:
@@ -80,6 +81,8 @@ def build_synthetic_tdx_quote(
 
     if td_attributes is not None:
         write(OFF_TD_ATTRIBUTES, td_attributes, 8)
+    if xfam is not None:
+        write(OFF_TD_ATTRIBUTES + 8, xfam, 8)
     if debug:
         buf[OFF_TD_ATTRIBUTES] |= 0x01
 
@@ -275,6 +278,7 @@ SYNTHETIC_GCP_REGISTERS = {
     "rtmr1": "3c" * 48,
     "rtmr2": "4d" * 48,
     "tdAttributes": "0000001000000000",
+    "xfam": "e718060000000000",
 }
 SYNTHETIC_GCP_VERITY_ROOT = "5a" * 32
 SYNTHETIC_GCP_BOOT_KEY = "e7" * 32
@@ -286,7 +290,7 @@ def build_synthetic_gcp_quote(report_data_hex: str, **registers: str) -> str:
     regs = {**SYNTHETIC_GCP_REGISTERS, **registers}
     return build_synthetic_tdx_quote(
         report_data_hex=report_data_hex, mr_td=regs["mrTd"], rtmr0=regs["rtmr0"],
-        rtmr1=regs["rtmr1"], rtmr2=regs["rtmr2"], td_attributes=regs["tdAttributes"],
+        rtmr1=regs["rtmr1"], rtmr2=regs["rtmr2"], td_attributes=regs["tdAttributes"], xfam=regs["xfam"],
         mr_config_id=regs.get("mrConfigId", _ZERO_48), mr_owner=regs.get("mrOwner", _ZERO_48),
         mr_owner_config=regs.get("mrOwnerConfig", _ZERO_48), rtmr3=regs.get("rtmr3", _ZERO_48),
     )

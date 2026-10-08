@@ -62,6 +62,8 @@ class ParsedTdxQuote:
     # MROWNER and MROWNERCONFIG (48 bytes each), lowercase hex.
     mr_owner: str = ""
     mr_owner_config: str = ""
+    # XFAM (8 bytes), lowercase hex: the extended CPU state the TD may use.
+    xfam: str = ""
 
 
 def _is_canonical_base64(value: str) -> bool:
@@ -119,6 +121,7 @@ def parse_tdx_quote(raw: object) -> ParsedTdxQuote | None:
         debug_enabled=(buf[_OFF_TD_ATTRIBUTES] & 0x01) == 0x01,
         mr_owner=hexat(_OFF_MR_CONFIG_ID + 48, 48),
         mr_owner_config=hexat(_OFF_MR_CONFIG_ID + 96, 48),
+        xfam=hexat(_OFF_TD_ATTRIBUTES + 8, 8),
     )
 
 

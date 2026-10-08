@@ -117,6 +117,12 @@ export interface GatewayReleaseTuple {
   keyProviderPayload?: string;
   /** gcp-tdx-native only: the quote's exact td_attributes, 16 lowercase hex. */
   tdAttributes?: string;
+  /**
+   * gcp-tdx-native only: the quote's exact XFAM, 16 lowercase hex. It selects
+   * which extended CPU state (AVX-512, AMX, PKS, CET, ...) the TD may use, so a
+   * node launched with a different feature set is a different boot.
+   */
+  xfam?: string;
   /** Validity window, epoch ms: notBeforeMs <= now < expiresAtMs. */
   notBeforeMs: number;
   expiresAtMs: number;
@@ -268,7 +274,7 @@ const KIND_TUPLE_FIELDS: Readonly<Record<GatewayPlatformKind, readonly string[]>
   "phala-dstack-kms": ["mrConfigId", "osImageHash", "keyProviderPayload"],
   // No MRCONFIGID (required zero), OS image or key provider: the application is
   // the verity root in RTMR1, and the node has no KMS and no RTMR3 events.
-  "gcp-tdx-native": ["tdAttributes"]
+  "gcp-tdx-native": ["tdAttributes", "xfam"]
 };
 
 /** The platform a parsed policy describes; the legacy form is phala-dstack-kms. */
@@ -353,7 +359,7 @@ export function validateGatewayReleaseTuple(kind: GatewayPlatformKind, input: un
     if ((parseInt(tdAttributes.slice(0, 2), 16) & 0x01) !== 0) {
       throw new GatewayPolicyError(`${at}.tdAttributes must not enable debug`);
     }
-    kindFields = { tdAttributes };
+    kindFields = { tdAttributes, xfam: exactHex(`${at}.xfam`, raw.xfam, 16) };
   }
   const notBeforeMs = tupleTime(`${at}.notBeforeMs`, raw.notBeforeMs);
   const expiresAtMs = tupleTime(`${at}.expiresAtMs`, raw.expiresAtMs);

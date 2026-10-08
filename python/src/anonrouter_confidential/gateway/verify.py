@@ -587,7 +587,11 @@ def verify_gateway_attestation(
                 and t.rtmr2 == quote.rtmr2.lower()
             )
             if native_gcp:
-                return common and t.td_attributes == quote.td_attributes.lower()
+                return (
+                    common
+                    and t.td_attributes == quote.td_attributes.lower()
+                    and t.xfam == quote.xfam.lower()
+                )
             return (
                 common
                 and event_log_read

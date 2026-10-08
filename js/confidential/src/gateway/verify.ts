@@ -570,6 +570,7 @@ export function verifyGatewayAttestation(
       rtmr1: quote.rtmr1.toLowerCase(),
       rtmr2: quote.rtmr2.toLowerCase(),
       tdAttributes: quote.tdAttributes.toLowerCase(),
+      xfam: quote.xfam.toLowerCase(),
       osImageHash: osImageHashEvent?.toLowerCase() ?? null,
       keyProviderPayload: keyProviderEvent?.toLowerCase() ?? null
     };
@@ -581,7 +582,7 @@ export function verifyGatewayAttestation(
       && tuple.rtmr1 === observed.rtmr1
       && tuple.rtmr2 === observed.rtmr2
       && (nativeGcp
-        ? tuple.tdAttributes === observed.tdAttributes
+        ? tuple.tdAttributes === observed.tdAttributes && tuple.xfam === observed.xfam
         : eventLogRead
           && tuple.mrConfigId === observed.mrConfigId
           && tuple.osImageHash === observed.osImageHash

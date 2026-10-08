@@ -112,6 +112,10 @@ class GatewayReleaseTuple:
     key_provider_payload: str | None = None
     #: gcp-tdx-native only: the quote's exact td_attributes, 16 lowercase hex.
     td_attributes: str | None = None
+    #: gcp-tdx-native only: the quote's exact XFAM, 16 lowercase hex. It selects
+    #: the extended CPU state the TD may use, so a different feature set is a
+    #: different boot.
+    xfam: str | None = None
 
 
 @dataclass(frozen=True)
@@ -228,7 +232,7 @@ _COMMON_TUPLE_FIELDS = (
 # is the verity root in RTMR1, and the node has no KMS and no RTMR3 events.
 _KIND_TUPLE_FIELDS = {
     "phala-dstack-kms": ("mrConfigId", "osImageHash", "keyProviderPayload"),
-    "gcp-tdx-native": ("tdAttributes",),
+    "gcp-tdx-native": ("tdAttributes", "xfam"),
 }
 _LOWER_HEX = re.compile(r"^[0-9a-f]+$")
 
@@ -280,6 +284,7 @@ def _tuple_document(value: Any) -> Any:
         for key, field_value in (
             ("mrConfigId", value.mr_config_id), ("osImageHash", value.os_image_hash),
             ("keyProviderPayload", value.key_provider_payload), ("tdAttributes", value.td_attributes),
+            ("xfam", value.xfam),
         ):
             if field_value is not None:
                 doc[key] = field_value
@@ -333,7 +338,7 @@ def validate_gateway_release_tuple(kind: str, raw: Any, index: int) -> GatewayRe
         # TUD.DEBUG is bit 0 of the first byte. A debug TD is never approvable.
         if int(td_attributes[:2], 16) & 0x01:
             raise GatewayPolicyError(f"{at}.tdAttributes must not enable debug")
-        kind_fields = {"td_attributes": td_attributes}
+        kind_fields = {"td_attributes": td_attributes, "xfam": _exact_hex(f"{at}.xfam", raw["xfam"], 16)}
     not_before = _tuple_time(f"{at}.notBeforeMs", raw["notBeforeMs"])
     expires_at = _tuple_time(f"{at}.expiresAtMs", raw["expiresAtMs"])
     if expires_at <= not_before or expires_at - not_before > MAX_RELEASE_TUPLE_LIFETIME_MS:

@@ -69,10 +69,11 @@ export function bootEvents(uki) {
 }
 
 /** A structurally valid TDX v4 quote. No Intel signature. */
-export function buildQuote({ reportData, mrTd, rtmr, tdAttributes, mrConfigId = "00".repeat(48), mrOwner = "00".repeat(48), mrOwnerConfig = "00".repeat(48) }) {
+export function buildQuote({ reportData, mrTd, rtmr, tdAttributes, xfam = "00".repeat(8), mrConfigId = "00".repeat(48), mrOwner = "00".repeat(48), mrOwnerConfig = "00".repeat(48) }) {
   const q = Buffer.alloc(632);
   q.writeUInt16LE(4, 0); q.writeUInt16LE(2, 2); q.writeUInt32LE(0x81, 4);
   Buffer.from(tdAttributes, "hex").copy(q, 168);
+  Buffer.from(xfam, "hex").copy(q, 176);
   Buffer.from(mrTd, "hex").copy(q, 184);
   Buffer.from(mrConfigId, "hex").copy(q, 232);
   Buffer.from(mrOwner, "hex").copy(q, 280);
@@ -84,7 +85,7 @@ export function buildQuote({ reportData, mrTd, rtmr, tdAttributes, mrConfigId = 
 
 export const SYNTHETIC = Object.freeze({
   origin: "https://content.gcp.example", releaseId: "content@synthetic-a", verityRoot: "5a".repeat(32),
-  mrTd: "1a".repeat(48), tdAttributes: "0000001000000000", bootKey: "e7".repeat(32), spki: "cc".repeat(32),
+  mrTd: "1a".repeat(48), tdAttributes: "0000001000000000", xfam: "e718060000000000", bootKey: "e7".repeat(32), spki: "cc".repeat(32),
   nonce: "7".repeat(64), compose: Buffer.from('{"services":{"relay":{"image":"ghcr.io/example/relay@sha256:' + "1".repeat(64) + '"}}}\n')
 });
 
@@ -102,9 +103,9 @@ export function writeReferenceBoot(dir, mutate = {}) {
     release_id: SYNTHETIC.releaseId, origin: SYNTHETIC.origin, key_alg: "ed25519", public_key: SYNTHETIC.bootKey,
     transport: "in-tee-tls", tls_spki_sha256: SYNTHETIC.spki, ...mutate.binding };
   const quote = buildQuote({ reportData: gatewayBindingHash(binding), mrTd: SYNTHETIC.mrTd, rtmr,
-    tdAttributes: SYNTHETIC.tdAttributes, ...mutate.quote });
+    tdAttributes: SYNTHETIC.tdAttributes, xfam: SYNTHETIC.xfam, ...mutate.quote });
   const tuple = { tupleId: "synthetic-a@c4-standard-2", releaseId: SYNTHETIC.releaseId, appId: SYNTHETIC.verityRoot,
-    composeHash, mrTd: SYNTHETIC.mrTd, rtmr0: rtmr[0], rtmr1: rtmr[1], rtmr2: rtmr[2], tdAttributes: SYNTHETIC.tdAttributes,
+    composeHash, mrTd: SYNTHETIC.mrTd, rtmr0: rtmr[0], rtmr1: rtmr[1], rtmr2: rtmr[2], tdAttributes: SYNTHETIC.tdAttributes, xfam: SYNTHETIC.xfam,
     notBeforeMs: 1_791_000_000_000, expiresAtMs: 1_792_000_000_000, ...mutate.tuple };
   const policy = { platformKind: "gcp-tdx-native", source: "synthetic-gcp-qualification", version: "1", origins: [SYNTHETIC.origin],
     releaseTuples: [tuple], requireInTeeTls: true, requirePrivateLogs: true, requireDigestPinnedImages: true,
