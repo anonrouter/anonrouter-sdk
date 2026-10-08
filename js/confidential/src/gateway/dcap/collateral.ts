@@ -241,6 +241,7 @@ async function getText(
   signal: AbortSignal | undefined,
   accept?: string
 ): Promise<TextResponse> {
+  if (signal?.aborted) throw new CollateralError("collateral acquisition cancelled");
   let response: Response;
   try {
     response = await fetchImpl(url, {
@@ -256,6 +257,7 @@ async function getText(
     throw new CollateralError(`${new URL(url).host} returned ${response.status} for ${new URL(url).pathname}`);
   }
   const body = await response.text();
+  if (signal?.aborted) throw new CollateralError("collateral acquisition cancelled");
   if (body.length > MAX_RESPONSE_CHARS) {
     throw new CollateralError(`response from ${new URL(url).host} exceeds the maximum size`);
   }
@@ -267,6 +269,7 @@ async function getDerHex(
   fetchImpl: FetchLike,
   signal: AbortSignal | undefined
 ): Promise<TextResponse> {
+  if (signal?.aborted) throw new CollateralError("collateral acquisition cancelled");
   let response: Response;
   try {
     response = await fetchImpl(url, { method: "GET", cache: "no-store", signal });
@@ -277,6 +280,7 @@ async function getDerHex(
     throw new CollateralError(`${new URL(url).host} returned ${response.status} for ${new URL(url).pathname}`);
   }
   const bytes = new Uint8Array(await response.arrayBuffer());
+  if (signal?.aborted) throw new CollateralError("collateral acquisition cancelled");
   if (bytes.length > MAX_RESPONSE_CHARS) {
     throw new CollateralError(`response from ${new URL(url).host} exceeds the maximum size`);
   }
@@ -310,6 +314,7 @@ export async function fetchIntelCollateral(
   quote: string,
   options: FetchCollateralOptions = {}
 ): Promise<AcquiredCollateral> {
+  if (options.signal?.aborted) throw new CollateralError("collateral acquisition cancelled");
   const quoteHex = normalizeQuoteHex(quote);
   if (quoteHex === null) throw new CollateralError("quote is neither hex nor base64");
 
@@ -331,16 +336,18 @@ export async function fetchIntelCollateral(
   const onAbort = () => controller.abort();
   options.signal?.addEventListener("abort", onAbort, { once: true });
   const signal = controller.signal;
+  if (options.signal?.aborted) controller.abort();
+  if (signal.aborted) { clearTimeout(timer); options.signal?.removeEventListener("abort", onAbort); throw new CollateralError("collateral acquisition cancelled"); }
 
+  const requests = [
+    getText(`${pcsBase}/tdx/certification/v4/tcb?fmspc=${fmspc}`, fetchImpl, signal, "application/json"),
+    getText(`${pcsBase}/tdx/certification/v4/qe/identity`, fetchImpl, signal, "application/json"),
+    getDerHex(`${pcsBase}/sgx/certification/v4/pckcrl?ca=platform&encoding=der`, fetchImpl, signal),
+    getDerHex(`${certBase}/IntelSGXRootCA.der`, fetchImpl, signal)
+  ];
   try {
-    const [tcb, qe, pckCrl, rootCaCrl] = await Promise.all([
-      getText(`${pcsBase}/tdx/certification/v4/tcb?fmspc=${fmspc}`, fetchImpl, signal, "application/json"),
-      getText(`${pcsBase}/tdx/certification/v4/qe/identity`, fetchImpl, signal, "application/json"),
-      // `encoding=der` returns raw binary, not hex text.
-      getDerHex(`${pcsBase}/sgx/certification/v4/pckcrl?ca=platform&encoding=der`, fetchImpl, signal),
-      // IntelSGXRootCA.der is the root CA's CRL, despite the name.
-      getDerHex(`${certBase}/IntelSGXRootCA.der`, fetchImpl, signal)
-    ]);
+    const [tcb, qe, pckCrl, rootCaCrl] = await Promise.all(requests);
+    if (signal.aborted) throw new CollateralError("collateral acquisition cancelled or timed out");
 
     const tcbInfo = sliceSignedDocument(tcb.body, "tcbInfo");
     const qeIdentity = sliceSignedDocument(qe.body, "enclaveIdentity");
@@ -362,6 +369,14 @@ export async function fetchIntelCollateral(
       nextUpdateMs: readNextUpdateMs(tcbInfo),
       fetchedAtMs: Date.now()
     };
+  } catch (error) {
+    // Abort and join every request, including response-body consumption. A
+    // cancelled caller must not leave sibling network work behind. Custom
+    // fetch implementations must honor AbortSignal; we never pretend a
+    // noncooperative implementation has joined.
+    const wasAborted = signal.aborted; controller.abort(); await Promise.allSettled(requests);
+    if (wasAborted) throw new CollateralError("collateral acquisition cancelled or timed out");
+    throw error instanceof CollateralError ? error : new CollateralError("collateral acquisition failed");
   } finally {
     clearTimeout(timer);
     options.signal?.removeEventListener("abort", onAbort);
@@ -380,12 +395,13 @@ export class CollateralCache {
   private readonly entries = new Map<string, AcquiredCollateral>();
 
   constructor(
-    private readonly fetcher: (quote: string) => Promise<AcquiredCollateral> = (quote) =>
-      fetchIntelCollateral(quote)
+    private readonly fetcher: (quote: string, signal?: AbortSignal) => Promise<AcquiredCollateral> = (quote, signal) =>
+      fetchIntelCollateral(quote, { ...(signal ? { signal } : {}) })
   ) {}
 
   /** Cached collateral for this quote's platform, fetching only when needed. */
-  async get(quote: string, now: number = Date.now()): Promise<AcquiredCollateral> {
+  async get(quote: string, now: number = Date.now(), signal?: AbortSignal): Promise<AcquiredCollateral> {
+    if (signal?.aborted) throw new CollateralError("collateral acquisition cancelled");
     const quoteHex = normalizeQuoteHex(quote);
     const pckChain = quoteHex === null ? null : extractPckChain(quoteHex);
     const fmspc = pckChain ? extractFmspc(pckChain) : null;
@@ -393,7 +409,10 @@ export class CollateralCache {
       const hit = this.entries.get(fmspc);
       if (hit && hit.nextUpdateMs > now) return hit;
     }
-    const fresh = await this.fetcher(quote);
+    // In-flight requests are deliberately not coalesced: cancellation belongs
+    // to this borrower only, not another verifier sharing the completed cache.
+    const fresh = await this.fetcher(quote, signal);
+    if (signal?.aborted) throw new CollateralError("collateral acquisition cancelled");
     this.entries.set(fresh.fmspc, fresh);
     return fresh;
   }

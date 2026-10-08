@@ -321,19 +321,43 @@ export function describeDcapInstallation(
 
 // ---- Running the engine -------------------------------------------------------
 
-/** Run the engine once over a fully-formed request. Never throws. */
+/** Run the reviewed single-process engine once. Cancellation/deadlines kill
+ * with SIGKILL and wait for child close AND the bounded execFile callback.
+ * No abort/timeout/overflow can turn late stdout into an accepted verdict.
+ * An OS failure to join may keep this promise pending; returning is not proof
+ * of a killed process. Alternate caller-selected executables must preserve
+ * the reviewed engine's no-child-launch contract. Never throws. */
 export async function runDcapEngine(
   binaryPath: string,
   request: DcapEngineRequestV1,
-  timeoutMs: number = DEFAULT_TIMEOUT_MS
+  timeoutMs: number = DEFAULT_TIMEOUT_MS,
+  signal?: AbortSignal
 ): Promise<DcapEngineVerdictV1> {
-  const payload = JSON.stringify(request);
+  const refused = (reason: string): DcapEngineVerdictV1 => ({ verified: false, tcbStatus: null,
+    qeTcbStatus: null, platformTcbStatus: null, advisoryIds: [], report: null,
+    error: `engine produced no usable verdict (${reason})`, engine: "unavailable" });
+  if (signal?.aborted) return refused("cancelled");
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) return refused("configuration");
+  let payload: string;
+  try { payload = JSON.stringify(request); } catch { return refused("configuration"); }
   const outcome = await new Promise<{ stdout: string; failure: string | null }>((resolve) => {
-    let settled = false;
-    const done = (value: { stdout: string; failure: string | null }) => {
-      if (!settled) { settled = true; resolve(value); }
+    let settled = false, closed = false;
+    let result: { stdout: string; failure: string | null } | undefined;
+    let refusal: string | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const complete = () => {
+      if (settled || !closed || !result) return;
+      settled = true; if (timer) clearTimeout(timer); signal?.removeEventListener("abort", abort);
+      resolve(refusal ? { stdout: "", failure: refusal } : result);
     };
-    let child;
+    let child: ReturnType<typeof execFile>;
+    const cancel = (reason: string) => {
+      refusal ??= reason;
+      // Do not settle on kill success, failure, `exit`, or `error`. `close`
+      // joins stdio and the child; the callback must also have completed.
+      try { child.kill("SIGKILL"); } catch { /* retain custody until close */ }
+    };
+    const abort = () => cancel("cancelled");
     try {
       // execFile, not exec: no shell, so nothing in the request can be
       // interpreted as a command. The request travels on stdin, never argv, so a
@@ -341,29 +365,33 @@ export async function runDcapEngine(
       child = execFile(
         binaryPath,
         [],
-        { timeout: timeoutMs, maxBuffer: MAX_OUTPUT_BYTES, encoding: "utf8" },
-        (error, stdout) => done({
-          stdout: String(stdout ?? ""),
-          failure: error ? String(error.code ?? "error") : null
-        })
+        { maxBuffer: MAX_OUTPUT_BYTES, encoding: "utf8", killSignal: "SIGKILL" },
+        (error, stdout) => {
+          if (error?.killed || error?.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") refusal ??= "execution";
+          result = { stdout: refusal ? "" : String(stdout ?? ""), failure: error ? "execution" : null };
+          complete();
+        }
       );
     } catch {
-      done({ stdout: "", failure: "spawn" });
+      resolve({ stdout: "", failure: "spawn" });
       return;
     }
-    child.on("error", () => done({ stdout: "", failure: "spawn" }));
-    child.stdin?.on("error", () => {
-      /* the child may exit before the write drains; the callback reports it */
-    });
+    child.once("close", () => { closed = true; complete(); });
+    child.on("error", () => { refusal ??= "spawn"; });
+    child.stdin?.on("error", () => cancel("stdin"));
+    timer = setTimeout(() => cancel("timeout"), timeoutMs);
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) abort();
     try {
-      child.stdin?.end(payload);
+      if (!refusal) child.stdin?.end(payload);
     } catch {
-      done({ stdout: "", failure: "stdin" });
+      cancel("stdin");
     }
   });
 
   // A non-zero exit is EXPECTED for "not verified", and the engine still prints
   // a verdict, so the exit code is not the answer. Parse first.
+  if (signal?.aborted) return refused("cancelled");
   const verdict = parseDcapEngineVerdict(outcome.stdout.trim());
   if (verdict) return verdict;
   return {
@@ -448,14 +476,17 @@ export function createAnonRouterDcapVerifier(
   options: AnonRouterDcapVerifierOptions = {}
 ): TdxChainVerifierFactory {
   const cache = options.collateralCache
-    ?? new CollateralCache((quote) => fetchIntelCollateral(quote, {
+    ?? new CollateralCache((quote, signal) => fetchIntelCollateral(quote, {
       pcsBase: options.pcsBase,
       certBase: options.certBase,
+      ...(signal ? { signal } : {}),
       ...(options.fetch ? { fetch: options.fetch as never } : {})
     }));
 
   return {
     async prepare(quote: string, context: TdxChainVerifierContext = {}): Promise<TdxChainVerifier> {
+      const cancelled = () => refusingVerifier(quote, "verification cancelled", options.implementation ?? "unavailable");
+      if (context.signal?.aborted) return cancelled();
       const quoteHex = normalizeQuoteHex(quote);
       if (quoteHex === null) {
         return refusingVerifier(quote, "quote is neither hex nor base64", options.implementation ?? "unavailable");
@@ -483,15 +514,18 @@ export function createAnonRouterDcapVerifier(
           return refusingVerifier(quoteHex, "no collateral supplied and fetching is disabled", options.implementation ?? `subprocess:${resolved.path}`);
         }
         try {
-          collateral = (await cache.get(quoteHex, context.nowMs ?? Date.now())).collateral;
-        } catch (error) {
+          collateral = (await cache.get(quoteHex, context.nowMs ?? Date.now(), context.signal)).collateral;
+        } catch {
+          if (context.signal?.aborted) return cancelled();
           return refusingVerifier(
             quoteHex,
-            error instanceof Error ? `collateral unavailable: ${error.message}` : "collateral unavailable",
+            "collateral unavailable",
             options.implementation ?? `subprocess:${resolved.path}`
           );
         }
       }
+
+      if (context.signal?.aborted) return cancelled();
 
       const nowMs = context.nowMs ?? Date.now();
       const request = buildDcapEngineRequest(
@@ -500,7 +534,8 @@ export function createAnonRouterDcapVerifier(
         Math.floor(nowMs / 1000),
         context.acceptedTcbStatuses
       );
-      const verdict = await runDcapEngine(resolved.path, request, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+      const verdict = await runDcapEngine(resolved.path, request, options.timeoutMs ?? DEFAULT_TIMEOUT_MS, context.signal);
+      if (context.signal?.aborted) return cancelled();
 
       // The engine read the same bytes we did. If it reports a different TD, one
       // of us is not looking at the quote about to be trusted.
