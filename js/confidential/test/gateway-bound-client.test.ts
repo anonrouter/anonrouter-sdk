@@ -232,8 +232,12 @@ describe("required gateway content connection wiring — synthetic native port, 
     expect(attempts).toBe(1); expect(t.observed.attTickets).toBe(0); expect(t.observed.content).toHaveLength(0);
   });
   it("one absolute preparation deadline prevents a fresh attempt after initial reset", async () => {
-    const began = performance.now();
-    const t = await topology({ initialResets: 1, onInitialConnection: () => vi.spyOn(performance, "now").mockReturnValue(began + 180_001) });
+    const t = await topology({ initialResets: 1, onInitialConnection: () => {
+      // The deadline starts after topology setup. Advance from the actual
+      // connection callback so setup time cannot leave the budget unexpired.
+      const expired = performance.now() + 180_001;
+      vi.spyOn(performance, "now").mockReturnValue(expired);
+    } });
     await expect(t.client.chat(chat())).rejects.toThrow();
     expect(t.observed.connections).toBe(1); expect(t.observed.gateway).toBe(0);
     expect(t.observed.attTickets).toBe(0); expect(t.observed.content).toHaveLength(0);
