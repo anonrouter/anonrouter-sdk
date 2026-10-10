@@ -82,7 +82,10 @@ export interface CreateClientOptions {
   };
   /** Follow independently signed gateway approvals. Defaults to the packaged
    * authority's activation flag. false retains exact bundled/caller pins.
-   * A source can supply durable sequence storage; it receives no API key. */
+   * A source can supply durable sequence storage; it receives no API key.
+   * For GCP-native content nodes pass `createReleasePolicyV3Source(...)`: an
+   * owner-signed release policy v3 with no expiry, verified against the owner
+   * root you pin, usable only with required connection binding. */
   gatewayPolicyUpdates?: boolean | GatewayPolicySource;
   /** Confidential inference origin, e.g. "https://api.anonrouter.ai".
    *  Gateway/provider evidence and encrypted request content all use this exact
@@ -325,7 +328,7 @@ async function prepareChainVerifier(
 
 /** Where the policy used for a gateway verdict came from. */
 export interface GatewayPolicyProvenance {
-  origin: "caller-supplied" | "package-pinned" | "signed-release-authority";
+  origin: "caller-supplied" | "package-pinned" | "signed-release-authority" | "signed-release-policy-v3";
   source: string;
   version: string;
   /** Only set for a package-pinned policy. */
@@ -333,7 +336,14 @@ export interface GatewayPolicyProvenance {
   authority?: string;
   sequence?: number;
   payloadSha256?: string;
+  /**
+   * Signed gateway policy: its signed expiry. Release policy v3 has no expiry;
+   * this is the end of the offline window for the cached policy.
+   */
   expiresAtMs?: number;
+  /** Release policy v3 only: the pinned owner root and deployment. */
+  ownerRootSha256?: string;
+  deploymentId?: string;
 }
 
 export interface VerifyGatewayResult {
@@ -1028,7 +1038,9 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
   ): void {
     const kind = gatewayPolicyPlatformKind(resolved.policy);
     if (!GATEWAY_PLATFORM_QUALIFIED[kind]) {
-      if (resolved.provenance.origin !== "caller-supplied") {
+      // A release policy v3 source is always caller-constructed around an owner
+      // root the caller pinned; the package ships no v3 root.
+      if (resolved.provenance.origin !== "caller-supplied" && resolved.provenance.origin !== "signed-release-policy-v3") {
         throw new ConfidentialError("measurement_untrusted", `A ${kind} policy can only be supplied explicitly by the caller.`);
       }
       if (input.unqualifiedPlatformPilot !== true) {
@@ -1051,6 +1063,15 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
     }
     if (gatewayPolicySource) {
       const approved = await gatewayPolicySource.resolve(origin, signal, forceRefresh);
+      if ("format" in approved && approved.format === "release-policy-v3") {
+        return { policy: approved.policy, provenance: {
+          origin: "signed-release-policy-v3", source: approved.policy.source, version: approved.policy.version,
+          authority: approved.authority, sequence: approved.sequence, payloadSha256: approved.payloadSha256,
+          expiresAtMs: approved.expiresAtMs, ownerRootSha256: approved.release.ownerRootSha256,
+          deploymentId: approved.release.deploymentId
+        } };
+      }
+      if ("format" in approved) throw new ConfidentialError("measurement_untrusted", "Unknown gateway approval format.");
       return { policy: approved.policy, provenance: {
         origin: "signed-release-authority", source: approved.policy.source, version: approved.policy.version,
         authority: approved.authority, sequence: approved.sequence, payloadSha256: approved.payloadSha256,

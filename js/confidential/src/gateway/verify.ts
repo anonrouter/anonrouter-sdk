@@ -62,6 +62,7 @@ import {
   type GatewayMeasurementPolicy,
   type GatewayReleaseTuple
 } from "./policy.js";
+import { RELEASE_MEASURED_REGISTER_FIELDS, releaseTupleDigest, type ReleaseMeasuredRegisters } from "./release-v3-canonical.js";
 
 /** A vm_config blob is bounded so a hostile response cannot pin the CPU parsing it. */
 const MAX_VM_CONFIG_CHARS = 65_536;
@@ -260,6 +261,9 @@ export function verifyGatewayAttestation(
   const kind = gatewayPolicyPlatformKind(policy);
   const tupleForm = policy.platformKind !== undefined || policy.releaseTuples !== undefined;
   const nativeGcp = kind === "gcp-tdx-native";
+  // An owner-signed release policy v3 pins exact quote registers with no expiry;
+  // its floor (policy_security_floor below) refuses it on any other kind.
+  const releaseV3 = policy.releasePolicyV3;
 
   // --- 0. Tuple-form policies prove their own floor ---------------------------
   // Legacy policies are checked exactly as before. A tuple-form policy is held to
@@ -546,16 +550,49 @@ export function verifyGatewayAttestation(
   }
 
   // --- 7. Locally pinned identity -------------------------------------------
-  checks.push(check("app_id_pinned", policy.appIds.some((id) => hexEqual(id, binding.app_id)), true));
-  checks.push(check(
-    "compose_hash_pinned",
-    policy.composeHashes.some((hash) => hexEqual(hash, binding.compose_hash)),
-    true
-  ));
-  checks.push(check("release_pinned", policy.releaseIds.includes(binding.release_id), true));
+  // A release policy v3 has no app, compose or release allowlists: the exact
+  // register tuple below (RTMR1 measures the UKI that names the verity root)
+  // pins the image, and the binding's identity fields are its own claims.
+  if (!releaseV3) {
+    checks.push(check("app_id_pinned", policy.appIds.some((id) => hexEqual(id, binding.app_id)), true));
+    checks.push(check(
+      "compose_hash_pinned",
+      policy.composeHashes.some((hash) => hexEqual(hash, binding.compose_hash)),
+      true
+    ));
+    checks.push(check("release_pinned", policy.releaseIds.includes(binding.release_id), true));
+  }
   checks.push(check("origin_pinned", policy.origins.includes(binding.origin), true));
 
-  if (tupleForm) {
+  if (releaseV3) {
+    // The observed tuple is every register a v3 tuple pins, read from the quote.
+    const observed = {} as ReleaseMeasuredRegisters;
+    for (const field of RELEASE_MEASURED_REGISTER_FIELDS) observed[field] = quote[field].toLowerCase();
+    let observedDigest: string | null = null;
+    try {
+      observedDigest = releaseTupleDigest(observed);
+    } catch {
+      observedDigest = null;
+    }
+    const revoked = observedDigest === null || (Array.isArray(releaseV3.revokedTuples) && releaseV3.revokedTuples.includes(observedDigest));
+    checks.push(check(
+      "release_tuple_not_revoked",
+      !revoked,
+      true,
+      observedDigest === null ? "the quote registers have no tuple digest" : `tuple_digest=${observedDigest}`
+    ));
+    const matched = (Array.isArray(releaseV3.tuples) ? releaseV3.tuples : [])
+      .find((tuple) => tuple !== null && typeof tuple === "object"
+        && RELEASE_MEASURED_REGISTER_FIELDS.every((field) => tuple[field] === observed[field]));
+    checks.push(check(
+      "release_tuple_matched",
+      matched !== undefined,
+      true,
+      matched
+        ? `tuple=${matched.tupleId} policy_sequence=${releaseV3.sequence}`
+        : "no tuple in the signed release policy matches every quote register"
+    ));
+  } else if (tupleForm) {
     // ONE tuple must match EVERY observed value at once. Independent allowlists
     // would accept an old firmware register beside a new compose hash; a tuple
     // cannot. Every compared value is either measured by hardware or committed to

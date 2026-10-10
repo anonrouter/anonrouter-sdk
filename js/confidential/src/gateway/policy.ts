@@ -13,6 +13,7 @@
 import registryJson from "./gateway-policies.json" with { type: "json" };
 import { hexToBytes, utf8Decode } from "../bytes.js";
 import { canonicalGatewayOrigin } from "./binding.js";
+import { RELEASE_MEASURED_REGISTER_FIELDS, releaseTupleDigest } from "./release-v3-canonical.js";
 
 /** Platform-level measurements (firmware + OS image), when pinned. */
 export interface GatewayPlatformMeasurements {
@@ -133,6 +134,51 @@ export const MAX_RELEASE_TUPLE_LIFETIME_MS = 31_622_400_000;
 /** At most this many tuples, so a hostile policy cannot pin the CPU. */
 export const MAX_RELEASE_TUPLES = 64;
 
+/**
+ * One measured tuple of an owner-signed release policy v3: the exact quote
+ * registers of an approved image, matched all at once. It carries no release
+ * id, app id, compose hash or validity window. On gcp-tdx-native the
+ * application is the dm-verity root named on the UKI command line, which RTMR1
+ * measures, so the registers already pin it.
+ */
+export interface GatewayMeasuredTupleV3 {
+  /** Operator label, `^[a-z0-9][a-z0-9_.-]{0,127}$`. Not part of the digest. */
+  tupleId: string;
+  /** 96 lowercase hex each. */
+  mrTd: string;
+  mrConfigId: string;
+  mrOwner: string;
+  mrOwnerConfig: string;
+  rtmr0: string;
+  rtmr1: string;
+  rtmr2: string;
+  rtmr3: string;
+  /** 16 lowercase hex each. */
+  tdAttributes: string;
+  xfam: string;
+}
+
+/**
+ * The verified facts of an owner-signed release policy v3 that a verdict needs.
+ * Only `release-v3.ts` builds this, from an envelope whose two owner signatures
+ * verified against a pinned owner root; `loadGatewayPolicy` never accepts it.
+ */
+export interface GatewayReleasePolicyV3 {
+  /** The pinned owner root the envelope was verified against. */
+  ownerRootSha256: string;
+  deploymentId: string;
+  sequence: number;
+  /** SHA-256 of the canonical payload bytes. */
+  policySha256: string;
+  /** 1..16 approved tuples, unique tupleId, none revoked. */
+  tuples: GatewayMeasuredTupleV3[];
+  /** Revoked tuple digests, sorted ascending and unique. */
+  revokedTuples: string[];
+}
+
+export const MAX_RELEASE_V3_TUPLES = 16;
+export const MAX_RELEASE_V3_REVOKED_TUPLES = 4096;
+
 export interface GatewayMeasurementPolicy {
   /**
    * Explicit platform discriminator. Absent means the legacy phala-dstack-kms
@@ -143,6 +189,12 @@ export interface GatewayMeasurementPolicy {
   platformKind?: GatewayPlatformKind;
   /** Tuple form only: the approved releases, evaluated as OR of whole tuples. */
   releaseTuples?: GatewayReleaseTuple[];
+  /**
+   * gcp-tdx-native only, instead of `releaseTuples`: an owner-signed release
+   * policy v3. Tuples are exact quote registers with no expiry, a quote whose
+   * tuple digest is revoked fails, and the identity lists below stay empty.
+   */
+  releasePolicyV3?: GatewayReleasePolicyV3;
   /** Where this policy came from, for the audit trail. Never a gateway URL. */
   source: string;
   /** Policy version so a stale pin is visible in output. */
@@ -381,6 +433,77 @@ export function validateGatewayReleaseTuple(kind: GatewayPlatformKind, input: un
   };
 }
 
+const RELEASE_V3_IDENTIFIER = /^[a-z0-9][a-z0-9_.-]{0,127}$/;
+const RELEASE_V3_TUPLE_FIELDS = ["tupleId", ...RELEASE_MEASURED_REGISTER_FIELDS];
+const RELEASE_V3_POLICY_FIELDS = ["ownerRootSha256", "deploymentId", "sequence", "policySha256", "tuples", "revokedTuples"];
+
+function exactFields(at: string, raw: Record<string, unknown>, expected: readonly string[]): void {
+  const keys = Object.keys(raw);
+  if (keys.length !== expected.length || keys.some((key) => !expected.includes(key))) {
+    throw new GatewayPolicyError(`${at} must have exactly the fields ${expected.join(", ")}`);
+  }
+}
+
+/** Validate one release policy v3 measured tuple. Idempotent over its output. */
+export function validateGatewayMeasuredTupleV3(input: unknown, index: number): GatewayMeasuredTupleV3 {
+  const at = `releasePolicyV3.tuples[${index}]`;
+  if (!input || typeof input !== "object" || Array.isArray(input)) throw new GatewayPolicyError(`${at} must be an object`);
+  const raw = input as Record<string, unknown>;
+  exactFields(at, raw, RELEASE_V3_TUPLE_FIELDS);
+  if (typeof raw.tupleId !== "string" || !RELEASE_V3_IDENTIFIER.test(raw.tupleId)) {
+    throw new GatewayPolicyError(`${at}.tupleId must match ${RELEASE_V3_IDENTIFIER.source}`);
+  }
+  const register = (field: keyof GatewayMeasuredTupleV3, chars: number) => exactHex(`${at}.${field}`, raw[field], chars);
+  return {
+    tupleId: raw.tupleId,
+    mrTd: register("mrTd", 96), mrConfigId: register("mrConfigId", 96),
+    mrOwner: register("mrOwner", 96), mrOwnerConfig: register("mrOwnerConfig", 96),
+    rtmr0: register("rtmr0", 96), rtmr1: register("rtmr1", 96), rtmr2: register("rtmr2", 96), rtmr3: register("rtmr3", 96),
+    tdAttributes: register("tdAttributes", 16), xfam: register("xfam", 16)
+  };
+}
+
+/**
+ * Validate the release policy v3 facts carried in a gateway policy. The owner
+ * signatures were checked when the envelope was verified; this re-checks the
+ * shape and the revocation rule on every use, so a mutated or hand-built object
+ * cannot approve a revoked tuple.
+ */
+export function validateGatewayReleasePolicyV3(input: unknown): GatewayReleasePolicyV3 {
+  if (!input || typeof input !== "object" || Array.isArray(input)) throw new GatewayPolicyError("releasePolicyV3 must be an object");
+  const raw = input as Record<string, unknown>;
+  exactFields("releasePolicyV3", raw, RELEASE_V3_POLICY_FIELDS);
+  const ownerRootSha256 = exactHex("releasePolicyV3.ownerRootSha256", raw.ownerRootSha256, 64);
+  const policySha256 = exactHex("releasePolicyV3.policySha256", raw.policySha256, 64);
+  if (typeof raw.deploymentId !== "string" || !RELEASE_V3_IDENTIFIER.test(raw.deploymentId)) {
+    throw new GatewayPolicyError("releasePolicyV3.deploymentId is invalid");
+  }
+  if (typeof raw.sequence !== "number" || !Number.isSafeInteger(raw.sequence) || raw.sequence < 1) {
+    throw new GatewayPolicyError("releasePolicyV3.sequence must be a positive safe integer");
+  }
+  if (!Array.isArray(raw.tuples) || raw.tuples.length === 0 || raw.tuples.length > MAX_RELEASE_V3_TUPLES) {
+    throw new GatewayPolicyError(`releasePolicyV3.tuples must contain 1..${MAX_RELEASE_V3_TUPLES} tuples`);
+  }
+  const tuples = raw.tuples.map((entry, index) => validateGatewayMeasuredTupleV3(entry, index));
+  if (new Set(tuples.map((tuple) => tuple.tupleId)).size !== tuples.length) {
+    throw new GatewayPolicyError("releasePolicyV3.tuples tupleIds must be unique");
+  }
+  if (!Array.isArray(raw.revokedTuples) || raw.revokedTuples.length > MAX_RELEASE_V3_REVOKED_TUPLES) {
+    throw new GatewayPolicyError(`releasePolicyV3.revokedTuples must contain at most ${MAX_RELEASE_V3_REVOKED_TUPLES} digests`);
+  }
+  const revokedTuples = raw.revokedTuples.map((entry, index) => exactHex(`releasePolicyV3.revokedTuples[${index}]`, entry, 64));
+  for (let index = 1; index < revokedTuples.length; index++) {
+    if (revokedTuples[index - 1]! >= revokedTuples[index]!) {
+      throw new GatewayPolicyError("releasePolicyV3.revokedTuples must be sorted ascending and unique");
+    }
+  }
+  const revoked = new Set(revokedTuples);
+  if (tuples.some((tuple) => revoked.has(releaseTupleDigest(tuple)))) {
+    throw new GatewayPolicyError("releasePolicyV3 approves a tuple it also revokes");
+  }
+  return { ownerRootSha256, deploymentId: raw.deploymentId, sequence: raw.sequence, policySha256, tuples, revokedTuples };
+}
+
 function validateReleaseTuples(kind: GatewayPlatformKind, value: unknown): GatewayReleaseTuple[] {
   if (!Array.isArray(value) || value.length === 0 || value.length > MAX_RELEASE_TUPLES) {
     throw new GatewayPolicyError(`policy.releaseTuples must contain 1..${MAX_RELEASE_TUPLES} tuples`);
@@ -409,12 +532,27 @@ export function assertGatewayPlatformSecurityFloor(policy: GatewayMeasurementPol
     || policy.acceptableTcbStatuses[0] !== "UpToDate") refuse("policy weakens mandatory security requirements");
   if (policy.platformKind === undefined) {
     if (policy.releaseTuples !== undefined) refuse("release tuples require an explicit platformKind");
+    if (policy.releasePolicyV3 !== undefined) refuse("a release policy v3 requires platformKind gcp-tdx-native");
     if (!policy.keyProviderId || !policy.platform) refuse("policy weakens mandatory security requirements");
     return;
   }
   if (!GATEWAY_PLATFORM_KINDS.includes(policy.platformKind)) refuse("unknown platformKind");
   if (policy.keyProviderId !== undefined || policy.platform !== undefined) {
     refuse("a tuple-form policy cannot also carry independent platform or key-provider allowlists");
+  }
+  if (policy.releasePolicyV3 !== undefined) {
+    if (policy.platformKind !== "gcp-tdx-native") refuse("a release policy v3 requires platformKind gcp-tdx-native");
+    if (policy.releaseTuples !== undefined) refuse("a release policy v3 cannot also carry release tuples");
+    if (policy.appIds.length !== 0 || policy.composeHashes.length !== 0 || policy.releaseIds.length !== 0) {
+      refuse("a release policy v3 pins quote registers only; the identity lists must be empty");
+    }
+    try {
+      validateGatewayReleasePolicyV3(policy.releasePolicyV3);
+    } catch (error) {
+      if (error instanceof GatewayPolicyError) refuse(error.message);
+      throw error;
+    }
+    return;
   }
   try {
     const tuples = validateReleaseTuples(policy.platformKind, policy.releaseTuples);

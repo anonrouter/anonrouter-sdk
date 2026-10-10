@@ -79,6 +79,18 @@ export {
   type GatewayPolicyCheckpoint, type VerifiedGatewayPolicy, type SignedGatewayPolicySourceOptions
 } from "./gateway/authority.js";
 export { createBrowserGatewayPolicyStateStore } from "./gateway/state.js";
+// Owner-signed release policy v3 for GCP-native content nodes: no expiry, a
+// pinned owner root, a monotonic checkpoint and revoked-tuple refusal.
+export {
+  createReleasePolicyV3Source, verifyReleasePolicyV3, verifyReleaseEnvelopeV3,
+  validateReleasePolicyV3Trust, checkReleasePolicyV3Successor, releasePolicyV3GatewayPolicy,
+  releaseOwnerRootSha256, releaseTupleDigest, releaseEnvelopeV3Message, ReleasePolicyV3Error,
+  RELEASE_V3_ENVELOPE_PROTOCOL, RELEASE_V3_SIGNATURE_DOMAIN_PREFIX, RELEASE_V3_KEY_IDS, RELEASE_V3_ROLES,
+  MAX_RELEASE_V3_OFFLINE_MS, MAX_RELEASE_POLICY_V3_BYTES,
+  type ReleasePolicyV3Trust, type ReleaseOwnerKeyV3, type ReleasePolicyV3Checkpoint,
+  type VerifiedReleasePolicyV3, type VerifiedReleasePolicyV3Approval, type ReleasePolicyV3Source,
+  type ReleasePolicyV3SourceOptions, type ReleasePolicyV3RefusalCode, type ReleaseV3Role
+} from "./gateway/release-v3.js";
 // Verifying the provider's enclave says nothing about who routed the request to
 // it. These verify the other half: that the AnonRouter data plane you connected
 // to is the exact reviewed build, running in an Intel TDX confidential VM, bound
@@ -123,6 +135,10 @@ export {
   gatewayPolicyPlatformKind,
   gatewayPolicyRequiresRetainedConnection,
   validateGatewayReleaseTuple,
+  validateGatewayMeasuredTupleV3,
+  validateGatewayReleasePolicyV3,
+  type GatewayMeasuredTupleV3,
+  type GatewayReleasePolicyV3,
   type GatewayPlatformKind,
   type GatewayReleaseTuple,
   type GatewayMeasurementPolicy,

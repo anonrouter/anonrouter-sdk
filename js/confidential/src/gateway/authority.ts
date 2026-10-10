@@ -10,6 +10,7 @@ import {
 } from "./policy.js";
 import roots from "./gateway-policy-authority.json" with { type: "json" };
 import { createDefaultGatewayPolicyStateStore } from "./state.js";
+import type { VerifiedReleasePolicyV3Approval } from "./release-v3.js";
 
 export const GATEWAY_POLICY_DOMAIN = "anonrouter.gateway-policy-signature/v1\n";
 export const MAX_GATEWAY_POLICY_BYTES = 262_144;
@@ -41,8 +42,10 @@ export interface VerifiedGatewayPolicy extends GatewayPolicyCheckpoint {
   expiresAtMs: number;
   acceptedKeyIds: string[];
 }
+/** Resolves the approval for an origin: a signed gateway policy (v1), or an
+ * owner-signed release policy v3 from `createReleasePolicyV3Source`. */
 export interface GatewayPolicySource {
-  resolve(origin: string, signal?: AbortSignal, forceRefresh?: boolean): Promise<VerifiedGatewayPolicy>;
+  resolve(origin: string, signal?: AbortSignal, forceRefresh?: boolean): Promise<VerifiedGatewayPolicy | VerifiedReleasePolicyV3Approval>;
 }
 function reject(why: string): never { throw new GatewayPolicyError(`signed gateway policy: ${why}`); }
 function record(value: unknown): Record<string, unknown> {

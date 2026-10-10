@@ -38,6 +38,13 @@ environment on each CI run, so every published format is exercised.
   (none yet).
 - A retained operation's policy refresh can no longer make a bounded approval
   unbounded by omitting its expiry (JavaScript and Python).
+- JavaScript: owner-signed release policy v3 for GCP-native content nodes
+  (`createReleasePolicyV3Source`). No policy expiry; both owner signatures are
+  verified against a caller-pinned owner root, the connection-bound quote must
+  match an approved register tuple and not a revoked one, and a monotonic
+  checkpoint refuses rollback, forks and revocation reversal. An unreachable
+  feed may reuse the last verified policy for under one hour. Python parity is
+  pending.
 
 ## [0.1.2] - 2026-09-12
 

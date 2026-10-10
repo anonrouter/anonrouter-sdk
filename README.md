@@ -493,3 +493,6 @@ Apache-2.0. See `LICENSE`.
 Signed gateway-policy updates are staged in the unpublished candidate; see
 [the approval contract and activation gates](docs/gateway-policy-updates.md).
 Default clients still use the bundled exact policy until activation.
+GCP-native content nodes verify against an owner-signed release policy v3 with
+no expiry and a caller-pinned owner root; see
+[release policy v3](docs/gateway-policy-updates.md#release-policy-v3-gcp-native-content-nodes).

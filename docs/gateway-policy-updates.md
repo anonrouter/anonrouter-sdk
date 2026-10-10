@@ -51,6 +51,60 @@ must belong to the independently configured authority.
 Tuple-form policies (explicit `platformKind`, whole release tuples) are
 described in [gateway-platform-tuples.md](gateway-platform-tuples.md). The feed
 accepts them only for a qualified platform kind; `gcp-tdx-native` is refused.
+GCP-native content nodes use the owner-signed release policy v3 below instead.
+
+## Release policy v3 (GCP-native content nodes)
+
+The v1 approval above expires (at most seven days), so keeping it valid needs a
+recurring owner signature. Release policy v3 has no expiry: the owner signs it
+once per release or revocation, and it stays valid until a higher sequence
+replaces it. `createReleasePolicyV3Source` verifies it; pass the source as
+`gatewayPolicyUpdates`. The package ships no v3 root, so the caller pins one.
+
+The caller pins `deploymentId`, `groupId`, the two Ed25519 owner keys
+(`custodian.prod.usb`, then `custodian.prod.laptop`) and
+`ownerRootSha256 = digest("release-owner-root", {deploymentId, groupId, keys})`.
+`digest(d, v)` is SHA-256 of ASCII `anonrouter-content-node-bootstrap-v1/` + `d`
++ NUL, followed by the canonical JSON of `v` (sorted keys, printable ASCII,
+non-negative safe integers). A root that does not match its own fields refuses.
+
+The envelope has exactly `protocol`
+(`anonrouter-content-release-envelope-v3`), `role` (`release-policy`),
+`groupId`, `ownerRootSha256`, `payload` and `signatures`. Both owners sign the
+same 32 bytes, SHA-256 of ASCII `anonrouter-content-release-v3/authority/` +
+role + NUL followed by canonical `{groupId, ownerRootSha256, payload}`. Both
+signatures are required, in that key order, as 128-character lowercase hex.
+v1 and v2 envelopes are refused, and the v1 verifier refuses v3.
+
+The payload is strict: `protocol`, `kind` (`content-node-release-policy`),
+`deploymentId`, `sequence`, `issuedAtMs`, 1 to 16 measured `tuples` (every TDX
+register: MRTD, MRCONFIGID, MROWNER, MROWNERCONFIG, RTMR0 to RTMR3, TD
+attributes, XFAM), sorted unique `revokedTuples`, `revokedGenerations`,
+`minimumGenerationRevision`, `maxEvidenceAgeMs` (at most five minutes) and
+`tcbStatus` (`UpToDate`). There is no expiry field. A policy that approves a
+tuple it also revokes is refused. The verdict requires one approved tuple to
+match every register of the connection-bound quote, and refuses a quote whose
+`digest("measured-tuple", registers)` is revoked. The fixed `gcp-tdx-native`
+floor still applies: native DCAP with `UpToDate` TCB, in-TEE TLS observed on the
+retained connection, zero RTMR3 and owner registers, and the explicit
+`unqualifiedPlatformPilot` opt-in until a reviewed SDK release qualifies the
+platform.
+
+Checkpoint rules: a sequence below the pinned minimum or the held one refuses
+(`policy_rollback`); a different policy at the held sequence refuses
+(`policy_fork`); a successor that drops a held revocation refuses
+(`revocation_reversed`). The sequence and policy hash persist through the same
+durable store as v1 under `anonrouter.release-policy-v3/<ownerRootSha256>`, so
+rollback and forks are refused across restarts. Revocation reversal is checked
+against the policy held in the current process.
+
+By default the feed is checked on every resolve. A network failure or 5xx may
+reuse the last verified policy for less than one hour after the feed last
+served it, then every resolve refuses (`cache_stale`). A 4xx, malformed answer,
+bad signature, rollback, fork or reversal refuses at once and never falls back
+to the cache or to bundled pins. Results report `signed-release-policy-v3`,
+the owner root, deployment, sequence and policy hash; `expiresAtMs` there is
+the end of that offline window, not a policy expiry.
 
 ## Resolution and rollback
 
