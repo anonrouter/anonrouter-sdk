@@ -33,7 +33,7 @@ from __future__ import annotations
 import base64
 import binascii
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import unquote
@@ -380,6 +380,15 @@ def _get(client: Any, url: str, *, json: bool = False) -> Any:
     return response
 
 
+def _bind_collateral_to_quote(quote: str, cached: AcquiredCollateral) -> AcquiredCollateral:
+    """Rebind quote-specific PCK, preserving signed platform input; no verification."""
+    chain = extract_pck_chain(quote)
+    fmspc = extract_fmspc(chain) if chain else None
+    if not chain or not fmspc or fmspc != cached.fmspc:
+        raise CollateralError("quote PCK platform does not match cached collateral")
+    return replace(cached, collateral=replace(cached.collateral, pck_certificate_chain=chain))
+
+
 class CollateralCache:
     """An in-process cache keyed by FMSPC, expiring at the collateral's own signed
     ``nextUpdate``.
@@ -403,10 +412,11 @@ class CollateralCache:
         if fmspc:
             hit = self._entries.get(fmspc)
             if hit and hit.next_update_ms > moment:
-                return hit
+                return _bind_collateral_to_quote(quote, hit)
         fresh = self._fetcher(quote)
-        self._entries[fresh.fmspc] = fresh
-        return fresh
+        bound = _bind_collateral_to_quote(quote, fresh)
+        self._entries[fresh.fmspc] = replace(fresh, collateral=replace(fresh.collateral, pck_certificate_chain=None))
+        return bound
 
     def peek(self, fmspc: str) -> AcquiredCollateral | None:
         return self._entries.get(fmspc)

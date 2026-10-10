@@ -220,6 +220,13 @@ by building the same source yourself with `scripts/build-dcap-verifier.sh
 --reproduce` and comparing digests. Put it on PATH or name it in
 `ANONROUTER_DCAP_VERIFIER_BIN`, and hop 1 can reach `hardware_verified`:
 
+The collateral cache shares only platform-wide Intel documents between nodes
+with the same FMSPC. Each returned input gets the PCK chain from its own quote.
+When preparing the native verifier, the adapter omits any supplied PCK-chain
+override so the engine parses that chain directly from the current quote.
+Signed TCB documents, revocation lists, freshness and quote signatures are still
+checked by the same pinned engine. A malformed or mismatched quote fails closed.
+
 ```ts
 import { createAnonRouterDcapVerifier, describeDcapInstallation } from "@anonrouter/confidential/dcap";
 

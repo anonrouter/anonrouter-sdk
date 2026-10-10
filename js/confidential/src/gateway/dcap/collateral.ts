@@ -383,6 +383,19 @@ export async function fetchIntelCollateral(
   }
 }
 
+/** Bind cached platform material to this quote's PCK; not a verification. */
+function bindCollateralToQuote(quote: string, cached: AcquiredCollateral): AcquiredCollateral {
+  const chain = extractPckChain(quote), fmspc = chain ? extractFmspc(chain) : null;
+  if (!chain || !fmspc || fmspc !== cached.fmspc) {
+    throw new CollateralError("quote PCK platform does not match cached collateral");
+  }
+  return { ...cached, collateral: { ...cached.collateral, pck_certificate_chain: chain } };
+}
+function platformOnly(cached: AcquiredCollateral): AcquiredCollateral {
+  const { pck_certificate_chain: _quoteSpecific, ...collateral } = cached.collateral;
+  return { ...cached, collateral };
+}
+
 /**
  * An in-process cache keyed by FMSPC, expiring at the collateral's own signed
  * `nextUpdate`.
@@ -407,14 +420,15 @@ export class CollateralCache {
     const fmspc = pckChain ? extractFmspc(pckChain) : null;
     if (fmspc) {
       const hit = this.entries.get(fmspc);
-      if (hit && hit.nextUpdateMs > now) return hit;
+      if (hit && hit.nextUpdateMs > now) return bindCollateralToQuote(quote, hit);
     }
     // In-flight requests are deliberately not coalesced: cancellation belongs
     // to this borrower only, not another verifier sharing the completed cache.
     const fresh = await this.fetcher(quote, signal);
     if (signal?.aborted) throw new CollateralError("collateral acquisition cancelled");
-    this.entries.set(fresh.fmspc, fresh);
-    return fresh;
+    const bound = bindCollateralToQuote(quote, fresh);
+    this.entries.set(fresh.fmspc, platformOnly(fresh));
+    return bound;
   }
 
   peek(fmspc: string): AcquiredCollateral | undefined {

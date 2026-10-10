@@ -529,9 +529,13 @@ class AnonRouterDcapVerifier:
             except CollateralError as exc:
                 return _refusing_verifier(quote_hex, f"collateral unavailable: {exc}", label)
 
+        # The pinned native engine parses the PCK from this quote's cert data.
+        # Never substitute a cached/supplied other-host leaf or mutate input.
+        platform_collateral = collateral.as_dict() if isinstance(collateral, DcapCollateral) else dict(collateral)
+        platform_collateral.pop("pck_certificate_chain", None)
         moment = time.time() * 1000.0 if now_ms is None else now_ms
         request = build_dcap_engine_request(
-            quote_hex, collateral, int(moment // 1000), accepted_tcb_statuses
+            quote_hex, platform_collateral, int(moment // 1000), accepted_tcb_statuses
         )
         verdict = run_dcap_engine(resolved.path, request, self.timeout_seconds)
 

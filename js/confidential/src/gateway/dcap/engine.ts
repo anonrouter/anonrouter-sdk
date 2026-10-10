@@ -528,9 +528,13 @@ export function createAnonRouterDcapVerifier(
       if (context.signal?.aborted) return cancelled();
 
       const nowMs = context.nowMs ?? Date.now();
+      // A supplied/cache PCK may belong to another host with the same FMSPC.
+      // The pinned native engine obtains the PCK from this quote's cert data.
+      // Keep signed platform documents unchanged; never mutate caller input.
+      const { pck_certificate_chain: _quoteSpecific, ...platformCollateral } = collateral;
       const request = buildDcapEngineRequest(
         quoteHex,
-        collateral,
+        platformCollateral,
         Math.floor(nowMs / 1000),
         context.acceptedTcbStatuses
       );
