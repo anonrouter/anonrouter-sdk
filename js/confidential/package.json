@@ -58,7 +58,7 @@
     "@noble/post-quantum": "^0.7.0"
   },
   "optionalDependencies": {
-    "tinfoil": "^1.2.1"
+    "tinfoil": "^1.2.2"
   },
   "devDependencies": {
     "@anonrouter/client": "*",
