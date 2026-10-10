@@ -463,7 +463,9 @@ export interface AnonRouterClient {
    * what this SDK promises to keep.
    */
   verifyRoute(input: VerifyRouteInput): Promise<RouteVerdict>;
-  /** Hop 1: independently verify AnonRouter's own confidential routing plane. */
+  /** Hop 1: independently verify AnonRouter's own confidential routing plane.
+   * Required connection binding uses its configured policy and fresh native
+   * nonce; only a per-call signal is accepted in that mode. */
   verifyGateway(input?: VerifyGatewayInput): Promise<VerifyGatewayResult>;
   /** Hop 2: independently verify the downstream provider route. */
   verifyAttestation(input: VerifyAttestationInput): Promise<VerifyAttestationResult>;
@@ -1166,6 +1168,12 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
   }
 
   async function verifyGateway(input: VerifyGatewayInput = {}): Promise<VerifyGatewayResult> {
+    if (requiredGatewayVerification) {
+      if (Object.keys(input).some(key => key !== "signal")) {
+        throw new ConfidentialError("unsupported_request", "Per-call gateway options cannot replace required connection binding; only signal is accepted.");
+      }
+      return withBoundOperation(input.signal, async operation => operation.result);
+    }
     const nonce = (input.nonce ?? freshNonce()).toLowerCase();
     if (nonce.length !== GATEWAY_NONCE_HEX_LENGTH || !/^[0-9a-f]+$/.test(nonce)) {
       throw new ConfidentialError(

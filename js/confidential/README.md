@@ -110,7 +110,14 @@ Both attempts share one 180-second preparation/admission deadline beginning
 before initial policy resolution. Certificate, quote, policy and verification
 failures are refused, and inference is never retried.
 
-`verifyGateway()` by itself verifies evidence; it does not bind a later generic
+With `gatewayConnectionBinding.mode: "required"`, `verifyGateway()`
+uses the configured policy and native retained TLS connection, returns that
+connection's independent verdict, and closes it when the operation finishes.
+Only `{ signal }` is accepted per call in this mode: nonce, policy, verifier and
+other replacements are refused before connecting. Use the configured bound
+client methods for later operations; each establishes its own fresh connection.
+
+`verifyGateway()` without required binding still does not bind a later generic
 HTTP connection. The default transport, `@anonrouter/client` and external OpenAI
 clients do not inherit this Node option. Python has a separate synchronous
 binding option described in its [README](../../python/README.md).

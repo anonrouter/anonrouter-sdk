@@ -505,6 +505,35 @@ function gcpClient(t: Awaited<ReturnType<typeof topology>>, pilot = true) {
 }
 
 describe("gcp-tdx-native mandatory real-connection key binding — synthetic native port, real TLS", () => {
+  it("public verifyGateway uses the configured native retained binding without ticket calls", async () => {
+    const t = await topology(); evidenceOverride = gcpEvidence();
+    const result = await gcpClient(t).verifyGateway({ signal: AbortSignal.timeout(5000) });
+    expect(result.verdict.status).toBe("ok");
+    expect(result.verdict.verificationLevel).toBe("hardware-verified");
+    expect(result.verdict.binding?.tls_spki_sha256).toBe(pins.a);
+    expect(t.observed.handshakes).toEqual({ a: 1, b: 0 });
+    expect(t.observed.connections).toBe(1); expect(t.observed.gateway).toBe(1);
+    expect(t.observed.attTickets).toBe(0); expect(t.observed.paidTickets).toBe(0);
+    expect(t.observed.content).toHaveLength(0);
+  });
+  it("public verifyGateway rejects per-call replacements before any connection", async () => {
+    const t = await topology(); evidenceOverride = gcpEvidence();
+    const client = gcpClient(t);
+    for (const input of [{ nonce: "ab".repeat(32) }, { policy: gcpPolicy(t.contentOrigin) },
+      { chainVerifier: syntheticNativeBoundary }, { unqualifiedPlatformPilot: true },
+      { observedTlsSpkiSha256: pins.a }, { allowCandidatePolicy: true }]) {
+      await expect(client.verifyGateway(input)).rejects.toMatchObject({ code: "unsupported_request" });
+    }
+    expect(t.observed.connections).toBe(0); expect(t.observed.gateway).toBe(0);
+    expect(t.observed.attTickets).toBe(0); expect(t.observed.paidTickets).toBe(0);
+    expect(t.observed.content).toHaveLength(0);
+  });
+  it("public verifyGateway refuses a quote for another TLS key", async () => {
+    const t = await topology(); evidenceOverride = gcpEvidence("b");
+    await expect(gcpClient(t).verifyGateway()).rejects.toMatchObject({ code: "attestation_untrusted" });
+    expect(t.observed.connections).toBe(1); expect(t.observed.gateway).toBe(1);
+    expect(t.observed.attTickets).toBe(0); expect(t.observed.content).toHaveLength(0);
+  });
   it("pilot: the per-boot key on the retained socket matches the quote, and content uses that socket", async () => {
     const t = await topology(); evidenceOverride = gcpEvidence();
     expect((await gcpClient(t).chat(chat())).content).toBe("Hello E2EE");
