@@ -45,6 +45,15 @@ environment on each CI run, so every published format is exercised.
   checkpoint refuses rollback, forks and revocation reversal. An unreachable
   feed may reuse the last verified policy for under one hour. Python parity is
   pending.
+- JavaScript: release policy v3 tuples may carry the owner-signed MROWNER rule
+  `mrOwnerRule: {kind: "gce-pzid", projectNumber, zones}` with the zero
+  `mrOwner` placeholder (GCE C3, where MROWNER is SHA-384 of the VM's PZID).
+  The rule is part of the tuple digest; rule-less tuples keep their digests and
+  still require MROWNER zero. A matching quote reports `instanceIdentity`:
+  `verified` when the evidence carries a `gce_pzid` whose SHA-384 is the quoted
+  MROWNER, in the rule's project and zones; `unverified` when it carries none
+  (every other register still matches exactly); `not-applicable` for the zero
+  rule. A presented PZID that does not verify refuses.
 
 ## [0.1.2] - 2026-09-12
 

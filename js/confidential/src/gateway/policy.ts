@@ -13,6 +13,7 @@
 import registryJson from "./gateway-policies.json" with { type: "json" };
 import { hexToBytes, utf8Decode } from "../bytes.js";
 import { canonicalGatewayOrigin } from "./binding.js";
+import { GCE_ZERO_MR_OWNER, GcePzidError, validateGceMrOwnerRule, type GceMrOwnerRule } from "./gce-pzid.js";
 import { RELEASE_MEASURED_REGISTER_FIELDS, releaseTupleDigest } from "./release-v3-canonical.js";
 
 /** Platform-level measurements (firmware + OS image), when pinned. */
@@ -140,6 +141,11 @@ export const MAX_RELEASE_TUPLES = 64;
  * id, app id, compose hash or validity window. On gcp-tdx-native the
  * application is the dm-verity root named on the UKI command line, which RTMR1
  * measures, so the registers already pin it.
+ *
+ * MROWNER: without `mrOwnerRule` (the zero rule) the quote's MROWNER must be
+ * zero and equal `mrOwner` (GCE C4). With `mrOwnerRule` kind "gce-pzid" the
+ * tuple carries the zero placeholder and the quote's MROWNER must be the
+ * SHA-384 of a GCE PZID in the rule's project and zones (GCE C3, gce-pzid.ts).
  */
 export interface GatewayMeasuredTupleV3 {
   /** Operator label, `^[a-z0-9][a-z0-9_.-]{0,127}$`. Not part of the digest. */
@@ -156,6 +162,8 @@ export interface GatewayMeasuredTupleV3 {
   /** 16 lowercase hex each. */
   tdAttributes: string;
   xfam: string;
+  /** Optional owner-signed MROWNER rule (GCE C3). Absent is the zero rule. */
+  mrOwnerRule?: GceMrOwnerRule;
 }
 
 /**
@@ -449,18 +457,28 @@ export function validateGatewayMeasuredTupleV3(input: unknown, index: number): G
   const at = `releasePolicyV3.tuples[${index}]`;
   if (!input || typeof input !== "object" || Array.isArray(input)) throw new GatewayPolicyError(`${at} must be an object`);
   const raw = input as Record<string, unknown>;
-  exactFields(at, raw, RELEASE_V3_TUPLE_FIELDS);
+  exactFields(at, raw, raw.mrOwnerRule === undefined ? RELEASE_V3_TUPLE_FIELDS : [...RELEASE_V3_TUPLE_FIELDS, "mrOwnerRule"]);
   if (typeof raw.tupleId !== "string" || !RELEASE_V3_IDENTIFIER.test(raw.tupleId)) {
     throw new GatewayPolicyError(`${at}.tupleId must match ${RELEASE_V3_IDENTIFIER.source}`);
   }
-  const register = (field: keyof GatewayMeasuredTupleV3, chars: number) => exactHex(`${at}.${field}`, raw[field], chars);
-  return {
+  const register = (field: Exclude<keyof GatewayMeasuredTupleV3, "mrOwnerRule">, chars: number) => exactHex(`${at}.${field}`, raw[field], chars);
+  const tuple: GatewayMeasuredTupleV3 = {
     tupleId: raw.tupleId,
     mrTd: register("mrTd", 96), mrConfigId: register("mrConfigId", 96),
     mrOwner: register("mrOwner", 96), mrOwnerConfig: register("mrOwnerConfig", 96),
     rtmr0: register("rtmr0", 96), rtmr1: register("rtmr1", 96), rtmr2: register("rtmr2", 96), rtmr3: register("rtmr3", 96),
     tdAttributes: register("tdAttributes", 16), xfam: register("xfam", 16)
   };
+  if (raw.mrOwnerRule !== undefined) {
+    try {
+      tuple.mrOwnerRule = validateGceMrOwnerRule(raw.mrOwnerRule, `${at}.mrOwnerRule`);
+    } catch (error) {
+      throw new GatewayPolicyError(error instanceof GcePzidError ? error.message : `${at}.mrOwnerRule is invalid`);
+    }
+    // One encoding per rule: the MROWNER a rule admits is never the tuple's own field.
+    if (tuple.mrOwner !== GCE_ZERO_MR_OWNER) throw new GatewayPolicyError(`${at}.mrOwner must be the zero placeholder under a gce-pzid rule`);
+  }
+  return tuple;
 }
 
 /**

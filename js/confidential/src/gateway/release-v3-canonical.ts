@@ -75,13 +75,27 @@ export const RELEASE_MEASURED_REGISTER_FIELDS: readonly (keyof ReleaseMeasuredRe
   "mrTd", "mrConfigId", "mrOwner", "mrOwnerConfig", "rtmr0", "rtmr1", "rtmr2", "rtmr3", "tdAttributes", "xfam"
 ];
 
+/** The owner-signed MROWNER rule a v3 tuple may carry (see gce-pzid.ts). */
+export interface ReleaseMrOwnerRule {
+  kind: string;
+  projectNumber: string;
+  zones: readonly string[];
+}
+
 /**
- * tupleDigest = digest("measured-tuple", tuple without tupleId). Only the ten
- * register fields are encoded, so a label never changes a tuple's identity.
+ * tupleDigest = digest("measured-tuple", tuple without tupleId). The ten
+ * register fields are encoded, plus `mrOwnerRule` when the tuple carries one,
+ * so a label never changes a tuple's identity, a rule-less tuple keeps the
+ * digest it always had, and revoking a gce-pzid tuple names exactly that
+ * rule's project and zones.
  */
-export function releaseTupleDigest(registers: ReleaseMeasuredRegisters): string {
-  const unlabeled: Record<string, string> = {};
+export function releaseTupleDigest(registers: ReleaseMeasuredRegisters & { mrOwnerRule?: ReleaseMrOwnerRule }): string {
+  const unlabeled: Record<string, unknown> = {};
   for (const field of RELEASE_MEASURED_REGISTER_FIELDS) unlabeled[field] = registers[field];
+  const rule = registers.mrOwnerRule;
+  if (rule !== undefined) {
+    unlabeled.mrOwnerRule = { kind: rule.kind, projectNumber: rule.projectNumber, zones: [...rule.zones] };
+  }
   return releaseDigestHex("measured-tuple", unlabeled);
 }
 

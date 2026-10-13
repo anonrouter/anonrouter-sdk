@@ -63,6 +63,13 @@ import {
   type GatewayReleaseTuple
 } from "./policy.js";
 import { RELEASE_MEASURED_REGISTER_FIELDS, releaseTupleDigest, type ReleaseMeasuredRegisters } from "./release-v3-canonical.js";
+import {
+  GCE_PZID_RULE_KIND,
+  gceInstanceFromMrOwner,
+  gceInstanceResource,
+  gcePzidRuleAdmits,
+  type GceInstance
+} from "./gce-pzid.js";
 
 /** A vm_config blob is bounded so a hostile response cannot pin the CPU parsing it. */
 const MAX_VM_CONFIG_CHARS = 65_536;
@@ -161,7 +168,32 @@ export interface GatewayAttestationEvidence {
   issued_at_ms?: unknown;
   /** VM configuration blob, passed through for independent inspection. */
   vm_config?: unknown;
+  /**
+   * gcp-tdx-native on GCE C3: the VM's PZID payload, exactly the string whose
+   * SHA-384 Google wrote into MROWNER
+   * (`{"instanceId":N,"numericalProjectId":N,"zone":"z"}`). It sits outside
+   * report_data on purpose: the quoted MROWNER is what binds it. Absent or
+   * null means not presented; anything else must verify or the verdict fails.
+   */
+  gce_pzid?: unknown;
 }
+
+/**
+ * Whether the quote's GCE VM identity was checked, under a release policy v3
+ * tuple's MROWNER rule.
+ *
+ *   verified        a gce-pzid tuple matched, and the evidence carried a PZID
+ *                   whose SHA-384 is the quoted MROWNER, in the rule's project
+ *                   and one of its zones (`gceInstance` names the VM).
+ *   unverified      a gce-pzid tuple matched every other register, but the
+ *                   evidence carried no PZID, so the SDK did not show MROWNER
+ *                   names a VM in the rule's project and zones. The image is
+ *                   the approved one; WHERE it runs is unchecked, exactly as on
+ *                   a C4 node, whose MROWNER is zero and names no VM at all.
+ *   not-applicable  the matched tuple has the zero rule (MROWNER zero), or the
+ *                   policy is not a release policy v3.
+ */
+export type GatewayInstanceIdentity = "verified" | "unverified" | "not-applicable";
 
 export interface GatewayVerificationExpectations {
   /** The exact nonce this client generated and sent. */
@@ -219,6 +251,10 @@ export interface GatewayVerificationResult {
   } | null;
   /** TCB status reported by the chain verifier, when one ran. */
   tcbStatus: string | null;
+  /** How far the GCE VM identity was checked (see GatewayInstanceIdentity). Null when verification failed. */
+  instanceIdentity: GatewayInstanceIdentity | null;
+  /** The digest-verified GCE VM, only when `instanceIdentity` is "verified". */
+  gceInstance: GceInstance | null;
   policySource: string;
   policyVersion: string;
   verifiedAtMs: number;
@@ -243,7 +279,9 @@ function failed(
     policySource: policy.source,
     policyVersion: policy.version,
     verifiedAtMs: now,
-    ...partial
+    ...partial,
+    instanceIdentity: null,
+    gceInstance: null
   };
 }
 
@@ -356,10 +394,23 @@ export function verifyGatewayAttestation(
       quote.rtmr3.toLowerCase() === ZERO_REGISTER ? undefined : "RTMR3 was extended; this platform measures no runtime events"
     ));
     // Owner-supplied registers can carry configuration the tuple does not pin.
+    // MROWNER is the one exception, and only under a release policy v3 that
+    // carries an owner-signed gce-pzid rule: GCE C3 writes SHA-384(PZID) there.
+    // Which tuple (if any) admits a nonzero MROWNER is decided at the tuple
+    // match below; a zero-rule tuple never does.
+    const mrOwnerZero = quote.mrOwner.toLowerCase() === ZERO_REGISTER;
+    const ownerRuleInPolicy = releaseV3 !== undefined && Array.isArray(releaseV3.tuples)
+      && releaseV3.tuples.some((tuple) => tuple !== null && typeof tuple === "object" && tuple.mrOwnerRule !== undefined);
     checks.push(check(
       "owner_config_registers_zero",
-      [quote.mrConfigId, quote.mrOwner, quote.mrOwnerConfig].every((value) => value.toLowerCase() === ZERO_REGISTER),
-      true
+      [quote.mrConfigId, quote.mrOwnerConfig].every((value) => value.toLowerCase() === ZERO_REGISTER)
+        && (mrOwnerZero || ownerRuleInPolicy),
+      true,
+      mrOwnerZero
+        ? undefined
+        : ownerRuleInPolicy
+          ? "MROWNER is nonzero; only a tuple's owner-signed gce-pzid rule may admit it (release_tuple_matched)"
+          : "MROWNER is nonzero and no owner-signed gce-pzid rule applies"
     ));
     // instance_id names the boot: SHA-256 of the per-boot Ed25519 boot key the
     // binding also carries, so a per-boot identity cannot be detached from it.
@@ -564,6 +615,8 @@ export function verifyGatewayAttestation(
   }
   checks.push(check("origin_pinned", policy.origins.includes(binding.origin), true));
 
+  let instanceIdentity: GatewayInstanceIdentity = "not-applicable";
+  let gceInstance: GceInstance | null = null;
   if (releaseV3) {
     // The observed tuple is every register a v3 tuple pins, read from the quote.
     const observed = {} as ReleaseMeasuredRegisters;
@@ -574,24 +627,102 @@ export function verifyGatewayAttestation(
     } catch {
       observedDigest = null;
     }
-    const revoked = observedDigest === null || (Array.isArray(releaseV3.revokedTuples) && releaseV3.revokedTuples.includes(observedDigest));
+
+    // A presented PZID binds only through the quoted MROWNER. One that does not
+    // hash to it (or is not canonical) refuses outright: it never degrades to
+    // "unverified", or a node could opt out of the check by sending garbage.
+    const pzidPresented = evidence.gce_pzid !== undefined && evidence.gce_pzid !== null;
+    const presentedInstance = pzidPresented ? gceInstanceFromMrOwner(evidence.gce_pzid, observed.mrOwner) : null;
+    if (pzidPresented) {
+      checks.push(check(
+        "gce_pzid_matches_mrowner",
+        presentedInstance !== null,
+        true,
+        presentedInstance
+          ? gceInstanceResource(presentedInstance)
+          : "the presented GCE PZID is not canonical, or its SHA-384 is not the quoted MROWNER"
+      ));
+    }
+
+    // Every register but MROWNER is compared exactly. MROWNER follows the
+    // tuple's rule: the zero rule needs MROWNER zero (GCE C4); a gce-pzid rule
+    // needs a nonzero MROWNER that a valid PZID in its project and zones
+    // explains, or, with no PZID presented, is accepted as "unverified".
+    const tuples = (Array.isArray(releaseV3.tuples) ? releaseV3.tuples : [])
+      .filter((tuple) => tuple !== null && typeof tuple === "object");
+    const sameImage = tuples.filter((tuple) => RELEASE_MEASURED_REGISTER_FIELDS
+      .every((field) => field === "mrOwner" || tuple[field] === observed[field]));
+    const matches: { tuple: (typeof tuples)[number]; identity: GatewayInstanceIdentity }[] = [];
+    for (const tuple of sameImage) {
+      const rule = tuple.mrOwnerRule;
+      if (rule === undefined) {
+        if (tuple.mrOwner === ZERO_REGISTER && observed.mrOwner === ZERO_REGISTER) matches.push({ tuple, identity: "not-applicable" });
+      } else if (rule !== null && typeof rule === "object" && rule.kind === GCE_PZID_RULE_KIND
+        && tuple.mrOwner === ZERO_REGISTER && observed.mrOwner !== ZERO_REGISTER) {
+        if (presentedInstance !== null) {
+          if (gcePzidRuleAdmits(rule, presentedInstance)) matches.push({ tuple, identity: "verified" });
+        } else if (!pzidPresented) {
+          matches.push({ tuple, identity: "unverified" });
+        }
+      }
+    }
+    // Exactly one tuple, as control and the node require: tuples are
+    // correlated, never chosen between.
+    const matched = matches.length === 1 ? matches[0]! : undefined;
+    let matchedDigest: string | null = null;
+    if (matched) {
+      try {
+        matchedDigest = releaseTupleDigest(matched.tuple);
+      } catch {
+        matchedDigest = null;
+      }
+    }
+    const revokedList = Array.isArray(releaseV3.revokedTuples) ? releaseV3.revokedTuples : [];
+    // Both the quote's raw registers and the matched tuple (rule included) must
+    // be unrevoked: a gce-pzid tuple's identity is its rule, not the per-VM MROWNER.
+    const revoked = observedDigest === null || revokedList.includes(observedDigest)
+      || (matched !== undefined && (matchedDigest === null || revokedList.includes(matchedDigest)));
     checks.push(check(
       "release_tuple_not_revoked",
       !revoked,
       true,
-      observedDigest === null ? "the quote registers have no tuple digest" : `tuple_digest=${observedDigest}`
+      observedDigest === null
+        ? "the quote registers have no tuple digest"
+        : `tuple_digest=${observedDigest}${matchedDigest !== null && matchedDigest !== observedDigest ? ` matched_tuple_digest=${matchedDigest}` : ""}`
     ));
-    const matched = (Array.isArray(releaseV3.tuples) ? releaseV3.tuples : [])
-      .find((tuple) => tuple !== null && typeof tuple === "object"
-        && RELEASE_MEASURED_REGISTER_FIELDS.every((field) => tuple[field] === observed[field]));
+    let unmatched = "no tuple in the signed release policy matches every quote register";
+    if (matches.length > 1) unmatched = "more than one tuple in the signed release policy matches the quote";
+    else if (sameImage.length > 0) {
+      unmatched = observed.mrOwner === ZERO_REGISTER
+        ? "every other register matches, but MROWNER is zero and no matching tuple has the zero MROWNER rule"
+        : presentedInstance !== null
+          ? `every other register matches, but the GCE VM ${gceInstanceResource(presentedInstance)} is outside every matching gce-pzid rule`
+          : pzidPresented
+            ? "every other register matches, but the presented GCE PZID does not verify"
+            : "every other register matches, but MROWNER is nonzero and no matching tuple has a gce-pzid rule";
+    }
     checks.push(check(
       "release_tuple_matched",
       matched !== undefined,
       true,
       matched
-        ? `tuple=${matched.tupleId} policy_sequence=${releaseV3.sequence}`
-        : "no tuple in the signed release policy matches every quote register"
+        ? `tuple=${matched.tuple.tupleId} policy_sequence=${releaseV3.sequence}${
+          matched.identity === "not-applicable" ? "" : ` mrowner_rule=${GCE_PZID_RULE_KIND} instance_identity=${matched.identity}`}`
+        : unmatched
     ));
+    if (matched && matched.identity !== "not-applicable") {
+      const rule = matched.tuple.mrOwnerRule!;
+      instanceIdentity = matched.identity;
+      gceInstance = matched.identity === "verified" ? { ...presentedInstance! } : null;
+      checks.push(check(
+        "gce_instance_identity",
+        matched.identity === "verified",
+        matched.identity === "verified",
+        matched.identity === "verified"
+          ? gceInstanceResource(presentedInstance!)
+          : `the evidence carries no GCE PZID, so MROWNER was not shown to name a VM in project ${rule.projectNumber} zones ${Array.isArray(rule.zones) ? rule.zones.join(",") : "?"}; every other register matches the approved tuple`
+      ));
+    }
   } else if (tupleForm) {
     // ONE tuple must match EVERY observed value at once. Independent allowlists
     // would accept an old firmware register beside a new compose hash; a tuple
@@ -785,8 +916,11 @@ export function verifyGatewayAttestation(
     appCompose,
     measurements,
     tcbStatus,
+    instanceIdentity,
+    gceInstance,
     policySource: policy.source,
     policyVersion: policy.version,
     verifiedAtMs: now
   };
 }
+

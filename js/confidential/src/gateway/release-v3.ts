@@ -294,7 +294,7 @@ export function releasePolicyV3GatewayPolicy(verified: VerifiedReleasePolicyV3, 
       deploymentId: verified.deploymentId,
       sequence: verified.sequence,
       policySha256: verified.policySha256,
-      tuples: verified.tuples.map(({ tupleDigest: _digest, ...tuple }) => ({ ...tuple })),
+      tuples: verified.tuples.map(({ tupleDigest: _digest, ...tuple }) => structuredClone(tuple)),
       revokedTuples: [...verified.revokedTuples]
     },
     source: `anonrouter-release-policy-v3:${verified.deploymentId}:${verified.policySha256}`,

@@ -1,0 +1,136 @@
+{
+  "protocol": "anonrouter-gce-pzid-vectors-v1",
+  "note": "Google writes MR_OWNER = SHA-384(PZID) on GCE C3 TDX. PZID is go-tdx-guest gce/pzid.go PZIDPayload: {\"instanceId\":%d,\"numericalProjectId\":%d,\"zone\":strconv.Quote(zone)} after validateZone (non-empty, [a-z0-9-] only). Every payload and digest here was also produced by a Go harness running that exact code (go1.27.1, 2026-10-12). Shared by src/contentNodes/bootstrap/gcePzid.ts and native/gcp-content-guest/src/gce_pzid.rs.",
+  "vectors": [
+    {
+      "name": "router-506119 production control VM (c3-standard-4); its quotes carried MROWNER 52ed63d3... from 2026-08-27 to 2026-10-11",
+      "projectNumber": "1066448738612",
+      "zone": "us-west1-a",
+      "instanceId": "32079702166802581",
+      "payload": "{\"instanceId\":32079702166802581,\"numericalProjectId\":1066448738612,\"zone\":\"us-west1-a\"}",
+      "mrOwner": "52ed63d3c298da6fe2aefcde574e4dcec375b23cec85fc130838962d1426735c225d85b38852bd8aaefc930d2d9ef8fe"
+    },
+    {
+      "name": "release 1060 c3-standard-4 reference boot ar-cg-n2-20261012-71511375-good (deleted); equals MROWNER of its quote.bin, sha256 603d73a7845659bd3141cdc02db660ad0f82ede3e9e5019489970008d39e1bb6",
+      "projectNumber": "1066448738612",
+      "zone": "us-west1-a",
+      "instanceId": "1849812915283100931",
+      "payload": "{\"instanceId\":1849812915283100931,\"numericalProjectId\":1066448738612,\"zone\":\"us-west1-a\"}",
+      "mrOwner": "88a1526b00351b16fdb1cc290925eef894eeb34a036c52a36b91e1816abd7b7e2b7ffb3ea81ec3a149d8cb6d2214cacf"
+    },
+    {
+      "name": "go-tdx-guest gce/pzid_test.go TestPZIDPayload",
+      "projectNumber": "123456789012",
+      "zone": "us-central1-a",
+      "instanceId": "112233445566778899",
+      "payload": "{\"instanceId\":112233445566778899,\"numericalProjectId\":123456789012,\"zone\":\"us-central1-a\"}",
+      "mrOwner": "c9f79053aed02b9c4a2012fd7af9905c62e5790a9181f23bdedab6405b2a5866c8a68db6e565956d8b4844a3241059f2"
+    },
+    {
+      "name": "uint64 maximum in both numbers (far above 2^53: a JavaScript number would round it)",
+      "projectNumber": "18446744073709551615",
+      "zone": "us-west1-c",
+      "instanceId": "18446744073709551615",
+      "payload": "{\"instanceId\":18446744073709551615,\"numericalProjectId\":18446744073709551615,\"zone\":\"us-west1-c\"}",
+      "mrOwner": "6c9ce98ee60c4214b8f4025d4eab6eb7b5d19a16765e26da10ada6da139a549407b213e98956cc71f0b38c0f0e6f7139"
+    },
+    {
+      "name": "2^53 + 1 instance id and a one-character zone",
+      "projectNumber": "1",
+      "zone": "a",
+      "instanceId": "9007199254740993",
+      "payload": "{\"instanceId\":9007199254740993,\"numericalProjectId\":1,\"zone\":\"a\"}",
+      "mrOwner": "e172311c7c86cb2ad65605f79cc1492fe18adf1f3a93b26ac594d9d4bde68e20badb722cfd91d8e3de5f7853adca3ab7"
+    },
+    {
+      "name": "zero numbers (Go prints 0) and a zone of only digits and hyphens (validateZone accepts it)",
+      "projectNumber": "0",
+      "zone": "-0-",
+      "instanceId": "0",
+      "payload": "{\"instanceId\":0,\"numericalProjectId\":0,\"zone\":\"-0-\"}",
+      "mrOwner": "e4a64ad8d3596cd729f707851f079c591573d3a22c8438e4224fa25b10e8eeecee7b7502176c73c3c719fb5fac868333"
+    }
+  ],
+  "refusedZones": [
+    "",
+    "US-west1-a",
+    "us-west1-a\"",
+    "us west1",
+    "us-wést1-a",
+    "us_west1",
+    "us-west1-a\n",
+    "us-west1-a\\",
+    "projects/1/zones/us-west1-a"
+  ],
+  "refusedNumbers": [
+    "",
+    "-1",
+    "+1",
+    "01",
+    "00",
+    " 1",
+    "1 ",
+    "1e3",
+    "0x10",
+    "18446744073709551616",
+    "99999999999999999999",
+    "1.0"
+  ],
+  "policy": {
+    "note": "A release policy v3 payload with one exact (zero MROWNER, C4) tuple and one gce-pzid (C3) tuple. Both lanes must compute these digests; release-a is the native fixture tuple whose digest predates the rule (byte-compatible).",
+    "payload": {
+      "protocol": "anonrouter-content-node-bootstrap-v1",
+      "kind": "content-node-release-policy",
+      "deploymentId": "gcp-content-qualification",
+      "sequence": 1,
+      "issuedAtMs": 1791000000001,
+      "tuples": [
+        {
+          "tupleId": "release-a",
+          "mrTd": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "mrConfigId": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "mrOwner": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "mrOwnerConfig": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "rtmr0": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "rtmr1": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "rtmr2": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "rtmr3": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "tdAttributes": "0000000000000000",
+          "xfam": "0000000000000000"
+        },
+        {
+          "tupleId": "release-c3",
+          "mrTd": "0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+          "mrConfigId": "0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+          "mrOwner": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "mrOwnerConfig": "0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+          "rtmr0": "0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+          "rtmr1": "0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+          "rtmr2": "0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+          "rtmr3": "0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+          "tdAttributes": "0000000000000000",
+          "xfam": "0000000000000000",
+          "mrOwnerRule": {
+            "kind": "gce-pzid",
+            "projectNumber": "1066448738612",
+            "zones": [
+              "us-west1-a",
+              "us-west1-b",
+              "us-west1-c"
+            ]
+          }
+        }
+      ],
+      "revokedTuples": [],
+      "revokedGenerations": [],
+      "minimumGenerationRevision": 1,
+      "maxEvidenceAgeMs": 120000,
+      "tcbStatus": "UpToDate"
+    },
+    "policySha256": "db37fc4248012685c37571e5ada86dc6c58d2c21bb5ee2ac6de7092daa6883e1",
+    "tupleDigests": {
+      "release-a": "7cadb5a47377a57e9452af735ffdd3dda1ef5e5597779c7786b7db18c7494dfe",
+      "release-c3": "dbf8027be9f4aabfb26f8bd88bcf454faeff89b8a1f1d110278b5ea664354f07"
+    }
+  }
+}

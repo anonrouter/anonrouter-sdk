@@ -91,6 +91,12 @@ export {
   type VerifiedReleasePolicyV3, type VerifiedReleasePolicyV3Approval, type ReleasePolicyV3Source,
   type ReleasePolicyV3SourceOptions, type ReleasePolicyV3RefusalCode, type ReleaseV3Role
 } from "./gateway/release-v3.js";
+// GCE C3: MROWNER = SHA-384(PZID); the owner-signed gce-pzid tuple rule.
+export {
+  GCE_PZID_RULE_KIND, GCE_ZERO_MR_OWNER, gcePzidPayload, gcePzidDigestHex, parseGcePzid, gceInstanceFromMrOwner,
+  gcePzidRuleAdmits, gceInstanceResource, validateGceMrOwnerRule, GcePzidError,
+  type GceMrOwnerRule, type GceInstance
+} from "./gateway/gce-pzid.js";
 // Verifying the provider's enclave says nothing about who routed the request to
 // it. These verify the other half: that the AnonRouter data plane you connected
 // to is the exact reviewed build, running in an Intel TDX confidential VM, bound
@@ -100,6 +106,7 @@ export {
   type GatewayAttestationEvidence,
   type GatewayVerificationExpectations,
   type GatewayVerificationResult,
+  type GatewayInstanceIdentity,
   type TdxChainVerifier,
   type TdxChainVerifierFactory,
   type TdxChainVerifierContext,

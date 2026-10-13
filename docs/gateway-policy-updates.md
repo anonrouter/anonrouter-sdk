@@ -90,6 +90,32 @@ retained connection, zero RTMR3 and owner registers, and the explicit
 `unqualifiedPlatformPilot` opt-in until a reviewed SDK release qualifies the
 platform.
 
+### MROWNER rule (GCE C3)
+
+On Google Cloud C3 TDX VMs Google writes MROWNER = SHA-384 of the VM's PZID,
+the ASCII JSON `{"instanceId":N,"numericalProjectId":N,"zone":"z"}` (go-tdx-guest
+`gce/pzid.go`), so it differs on every VM; C4 leaves it zero. A tuple without
+`mrOwnerRule` is the zero rule: the quote's MROWNER must be zero. A tuple may
+instead carry the owner-signed rule `mrOwnerRule: {kind: "gce-pzid",
+projectNumber: "<uint64>", zones: [1 to 8, sorted, unique]}` with `mrOwner`
+set to 48 zero bytes. The rule is inside `digest("measured-tuple", ...)`, so a
+revocation names its project and zones; a rule-less tuple's digest is
+unchanged. Every other register still matches exactly, and exactly one tuple
+must match.
+
+Under a gce-pzid tuple the quote's MROWNER must be nonzero. If the evidence
+document carries `gce_pzid` (the PZID payload string, outside `report_data`,
+because the quoted MROWNER already binds it), its SHA-384 must equal MROWNER
+and its project and zone must satisfy the rule: the verdict reports
+`instanceIdentity: "verified"` and `gceInstance`. A presented PZID that is not
+canonical or does not hash to MROWNER refuses; it never downgrades. If the
+evidence carries no PZID, the quote is accepted with `instanceIdentity:
+"unverified"` and an unmet advisory check `gce_instance_identity`: the image is
+the approved one, but where it runs (project and zone) was not checked, which is
+no weaker than a C4 node, whose zero MROWNER names no VM at all. Callers that
+need the VM identity require `instanceIdentity === "verified"`. Shared vectors:
+`shared/vectors/gce-pzid.json`.
+
 Checkpoint rules: a sequence below the pinned minimum or the held one refuses
 (`policy_rollback`); a different policy at the held sequence refuses
 (`policy_fork`); a successor that drops a held revocation refuses
