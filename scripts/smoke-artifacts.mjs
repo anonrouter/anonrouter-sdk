@@ -321,8 +321,21 @@ from anonrouter_confidential.gateway.dcap import (create_anonrouter_dcap_verifie
                                                   build_dcap_engine_request)
 from anonrouter_confidential.cli import run_cli
 from anonrouter_confidential.gateway.policy import GATEWAY_PLATFORM_QUALIFIED
+from anonrouter_confidential import (ReleasePolicyV3Source, packaged_release_policy_v3_authority,
+                                     verify_content_node, verify_release_policy_v3, __version__)
+from anonrouter_confidential.gateway.release_v3 import release_owner_root_sha256
 
 print(json.dumps({
+    # The fixed release-v3 owner root is package data: without it the default
+    # api.anonrouter.ai verification has no trust anchor on the user's disk.
+    "releaseV3Root": (
+        packaged_release_policy_v3_authority()["trust"]["ownerRootSha256"]
+        == "10034ad2b11e9ef9f300da180a794010da369f2f14b2a896df42ceaf47077acb"
+        and release_owner_root_sha256(packaged_release_policy_v3_authority()["trust"])
+        == packaged_release_policy_v3_authority()["trust"]["ownerRootSha256"]
+        and all(callable(f) for f in (ReleasePolicyV3Source, verify_content_node, verify_release_policy_v3))
+    ),
+    "version": __version__,
     "coreExports": all(callable(f) for f in (create_client, verify_gateway_attestation,
                                              load_gateway_policy, at_least, SignedGatewayPolicySource,
                                              verify_signed_gateway_policy, FileGatewayPolicyStateStore)),
@@ -370,6 +383,8 @@ print(json.dumps({
         assert(probeOutput.gatewayPinPresent, "the published pin did not resolve by default");
         assert(probeOutput.providerPinsPresent, "no provider measurement pins found after install");
         assert(probeOutput.platformGate, "platform qualification gate or legacy pin form changed in the artifact");
+        assert(probeOutput.releaseV3Root, "release-v3 owner root or API missing after install");
+        assert(probeOutput.version === "0.1.3", `installed __version__ is ${probeOutput.version}`);
       });
 
       const doctor = runAllowingFailure(join(venv, "bin", "anonrouter-verify"), ["doctor", "--compact"]);
