@@ -1,9 +1,8 @@
 # Gateway platform kinds and release tuples
 
 GCP-native boot-chain qualification is enabled for the unpublished 0.1.3
-candidate. JavaScript defaults to the owner-signed release-v3 feed for
-`api.anonrouter.ai`, with fixed owner keys and no node image pins. Python
-supports exact tuple policies but has no v3 feed support. See
+candidate. JavaScript and Python default to the owner-signed release-v3 feed
+for `api.anonrouter.ai`, with fixed owner keys and no node image pins. See
 [gateway-policy-updates.md](gateway-policy-updates.md) for current production
 resolution, optional PZID and read-only verification. The qualification tooling
 and dated review history below describe how the earlier candidate was prepared.
@@ -109,11 +108,12 @@ Refusals happen during policy resolution, before evidence, tickets or content:
 
 | Path | gcp-tdx-native result |
 |---|---|
-| Packaged registry entry | No GCP image pins ship; JS defaults to release-v3 owner roots |
-| Signed feed approval | Qualified GCP accepts independently verified approvals; JS production uses release-v3 |
+| Packaged registry entry | No GCP image pins ship; both languages default to release-v3 owner roots |
+| Signed feed approval | Qualified GCP accepts independently verified approvals; production uses release-v3 |
 | `verifyGateway` / `verify_gateway` (separate connection) | `unsupported_request`, no request sent |
 | Unbound `chat`/`verify` with `requireGateway` | `unsupported_request`, no ticket or content |
-| CLI separate-connection SPKI observation | Fails `tls_observed_on_retained_connection` |
+| CLI `gateway` on a release-v3 origin | Verified on the retained socket with `--dcap`; without it, `unavailable` |
+| CLI separate-connection SPKI observation (caller `--policy`) | Fails `tls_observed_on_retained_connection` |
 | Python async, browsers, custom fetch | Already cannot use required binding; refused |
 | Required binding without pilot opt-in | `unsupported_request` before any connection |
 | Required binding, caller policy, pilot opt-in | Verified on the retained socket; wrong key, platform or tuple refuses before any ticket |
@@ -209,8 +209,10 @@ that agreement and its provenance.
 
 ### Promotion gate
 
-A candidate is `promotable` only when every gate is `satisfied`. Today P8 is
-unmet by construction, so nothing produced by the tool can be promoted.
+A candidate is `promotable` only when every gate is `satisfied`. P5 to P7 are
+external by construction, so nothing produced by the tool can be promoted. P8 is
+satisfied since 0.1.3 qualifies `gcp-tdx-native`; production GCP approval comes
+from the owner-signed release policy v3, not from this tool.
 
 | Gate | Status source |
 |---|---|
@@ -221,7 +223,7 @@ unmet by construction, so nothing produced by the tool can be promoted.
 | P5 `ar-guest-verify release-check` accepts the exact UKI, rootfs, app manifest, compose and images, and its verity root equals each app id | external; the candidate lists the verity root and compose digest it must name |
 | P6 a Google-signed launch endorsement for every MRTD | external; the candidate lists the MRTDs |
 | P7 an independent rebuild reproduces each UKI Authenticode digest | external; the candidate lists the digests |
-| P8 a reviewed SDK release sets `GATEWAY_PLATFORM_QUALIFIED["gcp-tdx-native"]` and defines tuple-form signed approval for GCP | unmet |
+| P8 a reviewed SDK release sets `GATEWAY_PLATFORM_QUALIFIED["gcp-tdx-native"]` and defines tuple-form signed approval for GCP | satisfied in 0.1.3 |
 
 ## Same-socket streaming review
 

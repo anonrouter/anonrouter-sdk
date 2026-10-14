@@ -11,6 +11,9 @@ workflow, change publishing variables, or create registry credentials until the
 owner explicitly gives the go. Preparing and installing local tarballs/wheels
 is not registry publication.
 
+The exact 0.1.3 publish, verification, deprecation and rollback commands are in
+[release-readiness.md](release-readiness.md#publish-commands-owner-go-only).
+
 After approval, verify the current release workflow and publisher configuration
 for each ecosystem. The repository supports npm trusted publishing through
 GitHub Actions OIDC, but the npm publisher settings have not been inspected in

@@ -76,9 +76,19 @@ await client.verifyGateway(); // fresh read-only evidence, no credential sent
 
 Hardware DCAP, `UpToDate` TCB, fresh nonce and retained-socket TLS binding stay
 required. `gce_pzid` is optional: absence reports machine identity as
-`unverified`, while malformed/mismatched presented identity fails. A future
-signed `requireGcePzid: true` policy can require it. Browser hardware/socket
-verification remains unavailable. See
+`unverified`, while malformed/mismatched presented identity fails. A signed
+`requireGcePzid: true` can require it later; it is SDK-local until the backend
+schema carries the field, and it also excludes C4 (zero MROWNER) tuples. A signed
+`tcbGrace` is accepted but never relaxes the SDK's `UpToDate` check. Browser
+hardware/socket verification remains unavailable.
+
+From a terminal: `npx anonrouter-verify gateway --origin https://api.anonrouter.ai
+--dcap --require hardware_verified` uses the same retained-socket path. Without
+`--dcap` it reports `unavailable`. Without connection binding, `verifyGateway()`,
+`verify()`, `verifyRoute({ gateway: true })` and gateway-requiring `chat()` refuse
+`api.anonrouter.ai` with `unsupported_request` before any request: see the
+[migration note](../../docs/migrating-to-0.1.3.md). `api.private.anonrouter.ai`
+(Phala rollback name) is deprecated and loses its pin at Phala retirement. See
 [signed policy updates](../../docs/gateway-policy-updates.md) for roots,
 rollback protection, cache limits and the Python support boundary.
 

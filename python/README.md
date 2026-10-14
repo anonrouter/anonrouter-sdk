@@ -2,8 +2,21 @@
 
 Independently verify AnonRouter TEE / E2EE routes and run confidential inference
 from Python. This package shares the provider verification/E2EE vectors with JavaScript.
-Exact GCP tuple verification is qualified, but release-v3 feed support is
-JavaScript-only; Python does not verify current GCP production by default.
+It verifies the current GCP production content nodes behind `api.anonrouter.ai`
+against the owner-signed release-v3 feed, exactly as the JavaScript package does
+(shared vectors, including the backend's own signed envelopes). That needs the
+`connection-binding` extra and the native DCAP engine:
+
+```python
+from anonrouter_confidential import verify_content_node
+
+result = verify_content_node()  # credential-free, read-only, one retained TLS socket
+print(result["policy"]["sequence"], result["verdict"].verification_level)
+```
+
+For inference pass `gateway_connection_binding={"mode": "required", "verification":
+{"chain_verifier": create_anonrouter_dcap_verifier()}}` to `create_client`. Upgrading
+from 0.1.2: see [the migration note](../docs/migrating-to-0.1.3.md).
 
 "Don't trust us, verify." The verifier is pure over its inputs and fails closed.
 
@@ -19,7 +32,7 @@ built and installed into clean virtualenvs on every CI run.
 git clone https://github.com/anonrouter/anonrouter-sdk
 cd anonrouter-sdk
 
-pip install ./python                  # verify + NEAR/Venice E2EE + TDX
+pip install "./python[connection-binding]"  # verify (incl. GCP) + NEAR/Venice E2EE + TDX
 pip install "./python[mlkem]"         # adds the Chutes ML-KEM-768 transport
 ```
 

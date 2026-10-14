@@ -17,15 +17,91 @@ other, so they are separate checks with separate verdicts.
 A verified hop 2 says nothing about who routed the request to it. A verified hop 1
 says nothing about where inference actually ran.
 
+## GCP content nodes (api.anonrouter.ai)
+
+Since 2026-10-14 `api.anonrouter.ai` is served by Google Cloud Intel TDX content
+nodes behind a passthrough load balancer. TLS terminates inside each node, and
+each node has its own per-boot TLS key. Hop 1 for this origin works like this:
+
+1. **Trust root, packaged.** The SDK ships the owner's two Ed25519 public keys
+   (`custodian.prod.usb`, `custodian.prod.laptop`), the deployment
+   `gcp-content-production`, the owner root
+   `10034ad2b11e9ef9f300da180a794010da369f2f14b2a896df42ceaf47077acb` and the
+   minimum policy sequence 6 (`shared/release-policy-v3-authority.json`). It
+   ships **no node image measurements**.
+2. **Approved images, signed.** The owner signs a release policy v3 listing the
+   exact quote registers (MRTD, RTMR0..3, MRCONFIGID, MROWNER, MROWNERCONFIG, TD
+   attributes, XFAM) of each approved node image, plus revoked tuples. It is
+   published at `https://anonrouter.ai/.well-known/anonrouter-content-release-v3.json`,
+   a host separate from the API. The SDK verifies both signatures against the
+   packaged root, never takes keys from the feed, and refuses a lower sequence,
+   a different policy at the same sequence, or a successor that drops a
+   revocation. The highest sequence seen persists in
+   `~/.cache/anonrouter/gateway-policy-v1` (IndexedDB in a browser). A new image
+   approved by a newly signed policy needs no SDK release.
+3. **One socket.** The SDK opens a normally validated TLS connection, reads the
+   certificate key on that socket, fetches `/v1/gateway/attestation` with a fresh
+   nonce over the same socket, and requires the quote to bind that key, the
+   nonce and the origin. A certificate observed on any other connection proves
+   nothing behind a load balancer, so this is only possible through required
+   connection binding, `verifyContentNode()` / `verify_content_node()`, or
+   `anonrouter-verify gateway --dcap`.
+4. **Hardware.** The native DCAP engine must chain the quote to Intel with TCB
+   `UpToDate`. Exactly one approved tuple must match every register, and neither
+   the quote's tuple digest nor the matched tuple may be revoked.
+
+What a passing verdict carries: `verificationLevel: "hardware-verified"`, policy
+provenance `signed-release-policy-v3` with its sequence and digest, and two
+expected advisory gaps:
+
+- `firmware_event_log_replayed`: RTMR0..2 are matched exactly, but the SDK does
+  not replay Google's CCEL, so UKI and dm-verity provenance rest on the owner's
+  release review.
+- `gce_instance_identity`: see below.
+
+**Machine identity (PZID).** On GCE C3, MROWNER is SHA-384 of the VM's canonical
+`{"instanceId","numericalProjectId","zone"}` JSON, so it differs per VM. A tuple
+may carry an owner-signed `mrOwnerRule` (`gce-pzid`, project, zones). When the
+evidence carries `gce_pzid`, the SDK requires it to be canonical, to hash to the
+quoted MROWNER and to sit in the rule's project and zones, and reports
+`instanceIdentity: "verified"` with `gceInstance`. When it is absent (current node
+image e4524606 does not publish it) the verdict passes with
+`instanceIdentity: "unverified"`: the image is the approved one, but which VM in
+which zone is not shown. A malformed or mismatched PZID always fails.
+
+**`requireGcePzid` is SDK-local.** A signed payload with `requireGcePzid: true`
+makes a verified PZID required. The SDK supports it now, but the backend schema,
+signer, control and nodes refuse the field until the backend adds it, so the owner
+cannot sign it yet. Under it, a C4 node (MROWNER zero, no PZID) also fails: use it
+only when every approved tuple is a C3 gce-pzid tuple whose image publishes the PZID.
+
+**`tcbGrace`.** The backend may sign a bounded, self-expiring TCB grace for control
+and nodes during an Intel TCB recovery. The SDK validates and accepts the field, so
+the feed keeps verifying, but it keeps requiring `UpToDate`: during a grace window
+a node on a listed older TCB fails customer verification closed.
+
+**Phala.** The previous Phala/dstack plane stays available explicitly: pass your
+own policy, or `gatewayPolicyUpdates: false` / `gateway_policy_updates=False` to
+use the packaged Phala pin. `https://api.private.anonrouter.ai` (the DNS rollback
+name) keeps its packaged pin while Phala is the rollback target; it is deprecated
+and the pin is removed when the Phala plane is retired. The dstack-specific
+guidance below (`event_log_replays_rtmrs`, `dstack-mr`) applies only to Phala.
+
 ## One call
 
 ```ts
 import { createClient, atLeast } from "@anonrouter/confidential";
+import { createAnonRouterDcapVerifier } from "@anonrouter/confidential/dcap";
 
 const client = createClient({
   baseUrl: "https://api.anonrouter.ai",
   controlBaseUrl: "https://control.anonrouter.ai",
-  apiKey: KEY
+  apiKey: KEY,
+  // Required for hop 1 on api.anonrouter.ai (GCP): verify and retain one socket.
+  gatewayConnectionBinding: {
+    mode: "required",
+    verification: { chainVerifier: createAnonRouterDcapVerifier() }
+  }
 });
 
 const verdict = await client.verifyRoute({
@@ -41,11 +117,17 @@ if (!atLeast(verdict.overallState, "cryptographically_checked")) {
 
 ```python
 from anonrouter_confidential import create_client, at_least
+from anonrouter_confidential.gateway.dcap import create_anonrouter_dcap_verifier
 
+# pip install "anonrouter-confidential[connection-binding]" (from the GitHub release)
 with create_client(
     "https://api.anonrouter.ai",
     api_key=KEY,
     control_base_url="https://control.anonrouter.ai",
+    gateway_connection_binding={
+        "mode": "required",
+        "verification": {"chain_verifier": create_anonrouter_dcap_verifier()},
+    },
 ) as client:
     verdict = client.verify_route(
         model="z-ai/glm-5.2", provider="venice", gateway=True
@@ -145,7 +227,7 @@ required checks that failed.
 | --- | --- | --- |
 | `quote_parsed`, `quote_is_tdx` | Not a structurally valid Intel TDX quote. | The endpoint is not serving TDX evidence. |
 | `quote_not_debug` | The TD has the debug bit set. | Fatal, always. A debug TD lets the host read and modify guest memory, so nothing inside it is confidential. |
-| `event_log_replays_rtmrs` | The event log does not reproduce the quote's registers. | The log does not describe what the hardware measured. |
+| `event_log_replays_rtmrs` | Phala only. The event log does not reproduce the quote's registers. | The log does not describe what the hardware measured. Against `api.anonrouter.ai` this (with a dozen other dstack checks) is what 0.1.2 reports: you are holding the GCP plane to the old Phala pin. Upgrade to 0.1.3. |
 | `event_digests_commit_to_payloads` | An RTMR3 digest does not commit to the payload printed beside it. | Someone re-served a genuine quote with rewritten readable fields. |
 | `compose_hash_measured_in_rtmr3` | The binding names a compose hash the hardware did not measure. | The binding is claiming a configuration that did not run. |
 | `app_compose_matches_measurement` | The returned manifest is not the measured one. | The manifest is decorative; nothing in it is evidence. |
@@ -160,10 +242,29 @@ usually a stale pin after a release, not an attack.
 | --- | --- |
 | `app_id_pinned`, `compose_hash_pinned`, `release_pinned` | The deployment moved to a build you have not reviewed. Review the new release, then update your policy. Do **not** copy the values out of the response: a policy taken from the server it describes is circular. |
 | `origin_pinned` | Your policy does not authorize this origin. |
-| `platform_measurements_pinned`, `os_image_pinned` | The firmware or guest OS changed. Reproduce the new measurements with `dstack-mr` before pinning them. |
+| `platform_measurements_pinned`, `os_image_pinned` | Phala only. The firmware or guest OS changed. Reproduce the new measurements with `dstack-mr` before pinning them. GCP node images are approved by the owner-signed release policy instead, never pinned in the SDK. |
 | `key_provider_pinned` | The CVM's keys come from a different KMS. A different key provider is a different trust domain even at the same compose hash. |
 | `compose_public_logs_disabled` | The attested configuration publishes container logs. |
 | `compose_images_digest_pinned` | An image is referenced by tag, so the compose hash pins something that can be repointed later. |
+
+### Hop 1: GCP release policy v3
+
+| Failed check | What happened | What to do |
+| --- | --- | --- |
+| `release_tuple_matched` | No single approved tuple matches every quote register (or more than one does). | The node runs an image the signed policy does not approve. Not a stale SDK: approval comes from the feed. Treat as untrusted. |
+| `release_tuple_not_revoked` | The quote's tuple, or the matched tuple, is revoked by the signed policy. | The owner withdrew this image. Never accept. |
+| `owner_config_registers_zero` | MRCONFIGID or MROWNERCONFIG is nonzero, or MROWNER is nonzero with no gce-pzid rule in the policy. | Configuration the policy does not pin was injected at launch. |
+| `rtmr3_unextended` | RTMR3 was extended. | GCP content nodes measure no runtime events; something else is running. |
+| `instance_id_derives_from_boot_key` | The binding's instance id is not SHA-256 of its boot key. | The per-boot identity was detached from its key. |
+| `gce_pzid_matches_mrowner` | A presented PZID is not canonical or does not hash to the quoted MROWNER. | Never degraded to "unverified": treat as hostile. |
+| `gce_instance_identity` | Advisory: no PZID presented. Required only under a signed `requireGcePzid: true`. | Expected today; see above. |
+| `tls_observed_on_retained_connection` | The certificate was not observed on the socket that carries content. | Use connection binding, `verifyContentNode()` or the CLI; a separately observed certificate proves nothing behind the load balancer. |
+
+A refusal before any evidence is fetched comes from the feed, with a
+`ReleasePolicyV3Error` code: `signature_invalid`, `wrong_owner_root`,
+`wrong_group`, `policy_rollback`, `policy_fork`, `revocation_reversed`,
+`contract_invalid`, `feed_unavailable` (no verified policy cached, or a 4xx) or
+`cache_stale` (the feed has been unreachable for an hour).
 
 ### Hop 1: transport and hardware
 
@@ -276,7 +377,10 @@ detect for you.
 
 ```bash
 anonrouter-verify doctor  --origin https://api.anonrouter.ai
-anonrouter-verify gateway --origin https://api.anonrouter.ai \
+# GCP: the signed release-v3 feed, one retained socket, native DCAP.
+anonrouter-verify gateway --origin https://api.anonrouter.ai --dcap --require hardware_verified
+# Your own reviewed policy (any origin) is still accepted:
+anonrouter-verify gateway --origin https://your-cvm.example \
   --policy ./reviewed-policy.json --dcap --require hardware_verified
 anonrouter-verify route --origin https://api.anonrouter.ai \
   --control-origin https://control.anonrouter.ai --provider venice --model MODEL \
@@ -292,6 +396,11 @@ echo $?
 
 Keeping 1 and 2 apart is load-bearing: if a mistyped flag exited 1, a job gating on
 the exit code would read its own typo as a verification answer.
+
+For a release-v3 origin without `--policy`, `gateway` reports
+`gateway.policy.origin: "signed-release-policy-v3"` and
+`gateway.tlsSpki.source: "retained-connection"`; without `--dcap` it reports
+`unavailable`, because no lower assurance exists for those nodes.
 
 `gateway` is credential-free. `route` adds hop 2 and reads an API key only from an
 environment variable; `--api-key` is refused by name, because argv is visible in
@@ -314,7 +423,12 @@ Every switch in a policy is required. There are no permissive defaults, so a
 truncated or hand-edited policy fails to parse rather than silently disabling a
 check.
 
-### Refreshing a pin after a release
+`api.anonrouter.ai` is the exception: its policy is the owner-signed release
+policy v3, fetched from a separate host and verified against owner keys that
+ship in the package (see [GCP content nodes](#gcp-content-nodes-apianonrouterai)).
+The feed can approve or revoke node images; it cannot change who signs.
+
+### Refreshing a pin after a release (Phala and caller policies)
 
 Deployments move, and a pin that no longer matches is the system working rather
 than breaking. The refresh is a review, not a copy:
@@ -336,14 +450,18 @@ What each field needs:
 - **`release_id`** is injected at deploy time and carries no measurements. It
   proves what someone set an environment variable to. Confirm it names a build
   you reviewed.
-- **`mrTd`, `rtmr0..2`** should be reproduced offline with `dstack-mr` from the OS
-  image and `vm_config`, not carried over and not read off the machine.
+- **`mrTd`, `rtmr0..2`** (Phala/dstack only) should be reproduced offline with
+  `dstack-mr` from the OS image and `vm_config`, not carried over and not read off
+  the machine. GCP node registers are predicted and approved in the backend's
+  release process and reach the SDK only through the signed release policy.
 - **`tls_spki_sha256`** should be compared against the certificate actually served
   on that origin, observed by you.
 
-The shipped production pin comes from the independently retained release manifest
+The shipped Phala pin comes from the independently retained release manifest
 with SHA-256
-`46da4d4210c21ea76681ef044dd2da29d8a3a4cff135348ef9f168f6a09c6bf4`.
+`5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829`
+(content-plane v1.0.26). It is the legacy Phala policy: by default it applies
+only to the deprecated `api.private.anonrouter.ai` rollback name.
 It binds the production origin, reviewed source, measured app-compose, image,
 app/instance identity, TLS SPKI and platform measurements. The earlier rejected
 refresh is retained in `shared/gateway-policies.json` as review history: it lacked

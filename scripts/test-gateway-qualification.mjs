@@ -124,19 +124,22 @@ process.stdout.write(JSON.stringify({ ok: true, result: { gate_n1_uki_in_rtmr1: 
     const { candidate, gate } = await qualify();
     assert.deepEqual(failed(candidate), []);
     assert.equal(candidate.signable, false);
-    assert.equal(candidate.platformQualified, false);
+    // 0.1.3 qualifies gcp-tdx-native (production is approved through the signed
+    // release policy v3); a tool-run candidate is still never signable/promotable.
+    assert.equal(candidate.platformQualified, true);
     assert.equal(candidate.promotable, false);
     assert.deepEqual(["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8"].map(id => gate(id)),
-      ["satisfied", "unmet", "unmet", "unmet", "external", "external", "external", "unmet"]);
+      ["satisfied", "unmet", "unmet", "unmet", "external", "external", "external", "satisfied"]);
     assert.match(candidate.promotionGate[1].evidence, /is not a reviewed build/);
     assert.equal(candidate.references[0].digests.ukiAuthenticodeSha384, native.uki_authenticode_sha384_edk2);
     assert.equal(candidate.references[0].digests.quoteSha256, native.quote_sha256);
     // The gate logic itself, with the double's digests treated as reviewed: P2-P4
-    // then hold, and the candidate is still not promotable.
+    // then hold (P8 holds since 0.1.3 qualifies GCP), and the candidate is still
+    // not promotable: P5-P7 stay external.
     const policy = loadGatewayPolicy(candidate.policy);
     const reviewed = { dcap: [candidate.engines.dcap], native: [candidate.engines.native] };
     const gates = evaluatePromotionGate(policy, candidate.references, candidate.engines, reviewed);
-    assert.deepEqual(["P2", "P3", "P4", "P8"].map(id => gate(id, gates)), ["satisfied", "satisfied", "satisfied", "unmet"]);
+    assert.deepEqual(["P2", "P3", "P4", "P8"].map(id => gate(id, gates)), ["satisfied", "satisfied", "satisfied", "satisfied"]);
     assert.equal(evaluatePromotionGate(policy, candidate.references, candidate.engines, reviewed, true).every(g => g.status === "satisfied"), false);
     assert.deepEqual([REVIEWED_DCAP_ENGINE_SHA256, REVIEWED_NATIVE_GUEST_VERIFIER_SHA256], [[], []]);
     // Nothing in a candidate is a gateway-policy payload or signing input.

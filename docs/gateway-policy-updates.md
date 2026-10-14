@@ -1,7 +1,7 @@
 # Signed gateway policy updates
 
-JavaScript 0.1.3 selects the GCP release-v3 feed by default for
-`https://api.anonrouter.ai`. This is a local, unpublished SDK candidate.
+JavaScript and Python 0.1.3 select the GCP release-v3 feed by default for
+`https://api.anonrouter.ai`. This is an unpublished SDK candidate.
 No registry publication or production change is part of this preparation.
 
 The SDK packages the fixed USB and laptop owner public keys, deployment
@@ -11,7 +11,8 @@ and minimum sequence 6 in `shared/release-policy-v3-authority.json`.
 It contains no GCP node image measurements. The publication URL is
 `https://anonrouter.ai/.well-known/anonrouter-content-release-v3.json`,
 separate from the content API. The feed cannot replace its signing roots.
-`packagedReleasePolicyV3Authority()` returns a defensive copy of these anchors.
+`packagedReleasePolicyV3Authority()` / `packaged_release_policy_v3_authority()`
+return a copy of these anchors.
 Root changes require an SDK release; approved node images do not.
 
 Signatures establish owner approval, not proof that approved code is benign.
@@ -81,7 +82,18 @@ The payload carries `protocol`, `kind` (`content-node-release-policy`),
 `deploymentId`, `sequence`, `issuedAtMs`, 1..16 measured `tuples`, sorted unique
 `revokedTuples`, `revokedGenerations`, `minimumGenerationRevision`,
 `maxEvidenceAgeMs` (at most five minutes), `tcbStatus` (`UpToDate`), and optionally
-`requireGcePzid` (boolean). It has no expiry. Each tuple pins every TDX register,
+the backend's `tcbGrace` and the SDK-local `requireGcePzid` (boolean). It has no
+expiry.
+
+`tcbGrace` (`{statuses, advisoryIds, notAfterMs}`) is validated exactly as the
+backend schema does: sorted unique statuses from the five Intel grace statuses
+(never `UpToDate` or `Revoked`), 1..64 sorted unique `INTEL-XX-NNNN` advisory ids,
+and `issuedAtMs < notAfterMs <= issuedAtMs + 90 days`. A policy carrying a valid
+grace verifies, so publishing one does not break this SDK's feed. The SDK does
+not relax its own check: a gateway quote must still be `UpToDate`, so during a
+grace window nodes on a listed non-UpToDate TCB fail customer verification
+closed. That is a deliberate customer-side choice; honoring the grace would be
+a separate reviewed SDK change. Each tuple pins every TDX register,
 TD attributes and XFAM together; exactly one complete tuple must match. Mixing
 registers from different approved tuples fails. Approved and observed tuple
 digests must not be revoked.
@@ -100,11 +112,20 @@ the rule's project/zones. Otherwise verification fails. Absence is accepted with
 established. Valid PZID reports `verified` and `gceInstance`; zero-rule tuples
 report `not-applicable`.
 
-A future owner-signed payload may set `requireGcePzid: true` to require verified
-machine identity. Missing PZID and zero-rule tuples then fail the required
-`gce_instance_identity` check. Absent/false keeps identity optional. This is a
-supported SDK tightening option; adopting it also requires backend signer/feed
-support. No policy was changed in this work.
+`requireGcePzid` is **SDK-local** today. The SDK accepts `requireGcePzid: true`
+in a signed payload and then requires a verified PZID, but the backend release
+policy schema (`releasePolicyV3Schema`, `.strict()`), the owner signer purpose,
+control, the nodes and the feed publisher all refuse unknown payload fields. The
+owner therefore cannot sign it until the backend adds the field, in the same
+rollout order as `tcbGrace` (control, node image, signer purpose, then a signed
+policy). Until then identity stays optional, and the switch needs no SDK release
+once the backend supports it.
+
+With `requireGcePzid: true`, a matched gce-pzid tuple without a verified PZID
+fails the required `gce_instance_identity` check, and so does any match on a
+zero-rule tuple: a C4 node (MROWNER zero) has no PZID at all, so the switch
+also excludes every C4 image. Use it only when every approved tuple is a C3
+gce-pzid tuple whose image publishes `gce_pzid` (node image e4524606 does not).
 
 ## Refresh and rollback
 
@@ -129,9 +150,16 @@ Deleting stored checkpoints loses learned history; this is not a transparency lo
 
 ## Python and legacy Phala
 
-Python qualifies exact GCP tuple policies and preserves native DCAP and retained
-TLS requirements. It does not implement release-v3 feed verification yet, so it
-must not be described as verifying current GCP production by default.
+Python implements the same release-v3 verification (`ReleasePolicyV3Source`,
+`verify_release_policy_v3`, `verify_content_node`) and selects it by default
+for `api.anonrouter.ai`. Both languages load `shared/vectors/release-policy-v3.json`
+(policy and attestation cases, check by check, plus the backend's own signed
+envelopes) and the PZID vectors. Retained-socket verification needs the
+`connection-binding` extra (the reviewed HTTPX 0.28.1 / HTTPCore 1.0.9 pair).
+
+`https://api.private.anonrouter.ai` keeps its packaged Phala pin while Phala is
+the DNS rollback target. It is deprecated and the pin is removed when the Phala
+plane is retired.
 
 The earlier Phala v1 authority remains available explicitly. It authorizes exact
 manifest-bound policies with at most seven-day expiry and two custodian

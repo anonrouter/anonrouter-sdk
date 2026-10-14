@@ -1,0 +1,84 @@
+{
+  "schema": "anonrouter-packed-sdk-live-gateway-v1",
+  "verifiedAt": "2026-10-14T09:22:40.319Z",
+  "version": "0.1.3",
+  "engineSha256": "b92a83b44139639f39a4011bca1072adf2fcdf32e9da7ae4a73d86cd551da927",
+  "artifacts": {
+    "anonrouter-confidential-0.1.3.tgz": "dad07741a2948cdfa74e6eceb46aedc95c0c2353bbfc4e7410bd56fd7dbf0e47",
+    "anonrouter-client-0.1.3.tgz": "4c54d465dce87f1a4f84d4c756d79c92a5f2c19e0a5df1a8b553a7be373be3e9",
+    "anonrouter_confidential-0.1.3-py3-none-any.whl": "0b1bd647c8a8ea6eafb60bf9e0b2199f709cd58054dc5bb9b5063f374515c553"
+  },
+  "checks": [
+    {
+      "language": "javascript",
+      "origin": "https://api.anonrouter.ai",
+      "required": true,
+      "passed": true,
+      "exitCode": 0,
+      "state": "hardware_verified",
+      "policyOrigin": "signed-release-policy-v3",
+      "policySource": "anonrouter-release-policy-v3:gcp-content-production:7dbe4b66487662228044b3a7c3448f6920201a925e4a2c0fd48bd066ac5ebe95",
+      "policyVersion": "release-policy-v3/6",
+      "policySequence": 6,
+      "tcbStatus": "UpToDate",
+      "tlsSpkiSource": "retained-connection",
+      "failedChecks": [],
+      "advisoryGaps": [
+        "firmware_event_log_replayed",
+        "gce_instance_identity"
+      ]
+    },
+    {
+      "language": "javascript",
+      "origin": "https://api.private.anonrouter.ai",
+      "required": false,
+      "passed": true,
+      "exitCode": 0,
+      "state": "hardware_verified",
+      "policyOrigin": "package-pinned",
+      "policySource": "anonrouter-release-manifest-sha256:5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829",
+      "policyVersion": "2026-10-06-content-plane-v1.0.26-pool",
+      "policySequence": null,
+      "tcbStatus": "UpToDate",
+      "tlsSpkiSource": "separate-tls-connection",
+      "failedChecks": [],
+      "advisoryGaps": []
+    },
+    {
+      "language": "python",
+      "origin": "https://api.anonrouter.ai",
+      "required": true,
+      "passed": true,
+      "exitCode": 0,
+      "state": "hardware_verified",
+      "policyOrigin": "signed-release-policy-v3",
+      "policySource": "anonrouter-release-policy-v3:gcp-content-production:7dbe4b66487662228044b3a7c3448f6920201a925e4a2c0fd48bd066ac5ebe95",
+      "policyVersion": "release-policy-v3/6",
+      "policySequence": 6,
+      "tcbStatus": "UpToDate",
+      "tlsSpkiSource": "retained-connection",
+      "failedChecks": [],
+      "advisoryGaps": [
+        "firmware_event_log_replayed",
+        "gce_instance_identity"
+      ]
+    },
+    {
+      "language": "python",
+      "origin": "https://api.private.anonrouter.ai",
+      "required": false,
+      "passed": true,
+      "exitCode": 0,
+      "state": "hardware_verified",
+      "policyOrigin": "package-pinned",
+      "policySource": "anonrouter-release-manifest-sha256:5abba136544c2f961072b70e3e0c8ac7c20fad126044ba4dc16c3e9b604b4829",
+      "policyVersion": "2026-10-06-content-plane-v1.0.26-pool",
+      "policySequence": null,
+      "tcbStatus": "UpToDate",
+      "tlsSpkiSource": "separate-tls-connection",
+      "failedChecks": [],
+      "advisoryGaps": []
+    }
+  ],
+  "note": "Local run of scripts/check-live-gateways.mjs against locally packed 0.1.3 artifacts (branch sdk-0.1.3-gcp-release) with the locally built macOS arm64 native engine. Read-only, credential-free, fresh nonces; no ticket, prompt or inference. api.anonrouter.ai is required; api.private.anonrouter.ai (deprecated Phala rollback name) is informational."
+}

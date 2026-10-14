@@ -16,7 +16,7 @@ lives here in the open.
 | --- | --- | --- |
 | `@anonrouter/confidential` | JavaScript / TypeScript (npm) | Independently verify TEE / E2EE routes, run end-to-end-encrypted inference, and generate images / speech over the two-origin ticket exchange. |
 | `@anonrouter/client` | JavaScript / TypeScript (npm) | Thin, dependency-free API client for the public (plaintext / TEE / private) routes. |
-| `anonrouter-confidential` | Python (PyPI) | Python verification, E2EE and media client. Release-v3 feed support is pending. |
+| `anonrouter-confidential` | Python (GitHub release wheel/sdist; not on PyPI) | Python verification, E2EE and media client, with the same release-v3 GCP verification as JavaScript. |
 
 Both `@anonrouter/confidential` and `anonrouter-confidential` also install an
 `anonrouter-verify` command. See [Verify from a terminal](#verify-from-a-terminal).
@@ -26,14 +26,21 @@ This checkout prepares **0.1.3**, which is not published. PyPI returns 404 for
 `anonrouter-confidential`; install Python from source or a checksummed release
 wheel/sdist. No registry publication is authorized by this preparation.
 
-JavaScript 0.1.3 defaults to the owner-signed GCP release-v3 policy feed for
-`api.anonrouter.ai`. It ships fixed owner public keys, not GCP node image
-measurements. Owner-approved image changes need no SDK release. Native DCAP
-and TLS key observation on the retained socket remain mandatory. Machine PZID
-is optional; the verdict reports `instanceIdentity: "unverified"` when absent.
-Python supports exact GCP tuple policies but has no release-v3 feed support yet.
-See [GCP verification](js/confidential/README.md#gcp-content-node-verification)
-and [release readiness](docs/release-readiness.md).
+Since 2026-10-14 `api.anonrouter.ai` is served by Google Cloud Intel TDX
+content nodes. 0.1.3 (JavaScript and Python) verifies them against the
+owner-signed release-v3 policy feed by default. It ships fixed owner public
+keys, not GCP node image measurements, so owner-approved image changes need no
+SDK release. Native DCAP and TLS key observation on the retained socket remain
+mandatory, so hop 1 for `api.anonrouter.ai` works only through required
+connection binding, `verifyContentNode()` / `verify_content_node()`, or
+`anonrouter-verify gateway --dcap`. Machine PZID is optional; the verdict
+reports `instanceIdentity: "unverified"` when absent. 0.1.2 cannot verify the
+current deployment: read the [migration note](docs/migrating-to-0.1.3.md).
+`api.private.anonrouter.ai` (the Phala rollback name) is still pinned but
+deprecated, and its pin is removed when the Phala plane is retired.
+See [GCP verification](js/confidential/README.md#gcp-content-node-verification),
+[VERIFYING.md](VERIFYING.md#gcp-content-nodes-apianonrouterai) and
+[release readiness](docs/release-readiness.md).
 
 Layout:
 

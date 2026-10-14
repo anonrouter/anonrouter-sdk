@@ -14,19 +14,47 @@ environment on each CI run, so every published format is exercised.
 
 ## 0.1.3 (unpublished)
 
-- JavaScript: qualify GCP-native release-v3 content nodes and select the signed
-  production feed by default for `api.anonrouter.ai`. Package fixed owner root
-  public keys and minimum policy sequence 6, with no GCP image measurement pins.
-  Add credential-free `verifyContentNode()` with fresh nonce, native DCAP and
-  retained-socket TLS verification. Required client binding continues to retain
-  that verified socket for inference; legacy Phala remains an explicit option.
-- Keep GCE PZID optional. A future owner-signed `requireGcePzid: true` policy
-  makes machine identity required without an SDK release. Malformed or
-  mismatched presented PZID still fails closed.
+Upgrading from 0.1.2: read [docs/migrating-to-0.1.3.md](docs/migrating-to-0.1.3.md).
+0.1.2 cannot verify `api.anonrouter.ai` since it moved to GCP on 2026-10-14.
+
+- JavaScript and Python: qualify GCP-native release-v3 content nodes and select
+  the owner-signed production feed by default for `api.anonrouter.ai`. Package
+  fixed owner root public keys and minimum policy sequence 6, with no GCP image
+  measurement pins: a node image approved by a newly signed policy needs no SDK
+  release. Rollback, forks and revocation reversal are refused in-session and
+  the highest sequence persists across restarts. Legacy Phala remains an
+  explicit option (`gatewayPolicyUpdates: false` or a caller policy).
+- Breaking for hop 1 on `api.anonrouter.ai`: verification works only on the
+  retained socket (required connection binding, `verifyContentNode()` /
+  `verify_content_node()`, or the CLI). Unbound `verifyGateway`, `verify`,
+  `verifyRoute({ gateway: true })` and gateway-requiring calls refuse with
+  `unsupported_request` before any request.
+- `anonrouter-verify gateway` (both languages) verifies release-v3 origins on
+  the retained socket with native DCAP (`--dcap`), reporting
+  `signed-release-policy-v3` provenance and `tlsSpki.source: "retained-connection"`.
+  Doctor explains which trust root an origin uses.
+- `verifyContentNode()` / `verify_content_node()`: credential-free, read-only,
+  fresh nonce. A judged failure is returned as a failed verdict, not thrown.
+- Python: full release-v3 support (`ReleasePolicyV3Source`,
+  `verify_release_policy_v3`, `verify_content_node`, PZID), with the
+  `connection-binding` extra. `__version__` is now 0.1.3 (it still said 0.1.2).
+- Accept the backend's owner-signed `tcbGrace` field, validated exactly as the
+  backend schema does, so a grace policy does not refuse the whole feed. The SDK
+  still requires `UpToDate`; it does not honor the grace.
+- Keep GCE PZID optional. A presented PZID must verify. `requireGcePzid: true`
+  in a signed payload makes it required (and also excludes C4 zero-MROWNER
+  tuples); it is SDK-local until the backend schema carries the field.
+- `https://api.private.anonrouter.ai` keeps its Phala pin while Phala is the DNS
+  rollback target. Deprecated; removed when Phala is retired.
+- New shared vectors `shared/vectors/release-policy-v3.json` (42 policy and 15
+  attestation cases, check by check) loaded by both suites, including the
+  backend's own signed envelopes and tcbGrace digest as an independent known
+  answer. The release live gate requires release-v3 hardware verification of
+  `api.anonrouter.ai` in both languages; the Phala name is informational.
 - Replace deployed-machine PZID test fixtures with synthetic identities and
   independently computed known answers before release preparation.
-- Update registry notes from read-only checks on 2026-10-14: npm latest is 0.1.2
-  for both packages; the Python project is absent from PyPI. 0.1.3 is unpublished.
+- Registry status from read-only checks on 2026-10-14: npm latest is 0.1.2 for
+  both packages; the Python project is absent from PyPI. 0.1.3 is unpublished.
 
 - Repair W8 gateway pins and NEAR/provider-other compatibility; refuse missing
   GPU evidence and mismatched encryption keys.
