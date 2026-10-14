@@ -27,6 +27,9 @@ import { createClient, type VerifyGatewayInput } from "../client.js";
 import { ConfidentialError } from "../errors.js";
 import { loadGatewayPolicy, pinnedGatewayPolicyFor, type GatewayMeasurementPolicy } from "../gateway/policy.js";
 import { createAnonRouterDcapVerifier, describeDcapInstallation } from "../gateway/dcap/index.js";
+import { canonicalGatewayOrigin } from "../gateway/binding.js";
+import { packagedReleasePolicyV3Authority } from "../gateway/release-v3.js";
+import { verifyContentNode } from "../gateway/content-node.js";
 import type { DcapCollateral } from "../gateway/dcap/collateral.js";
 import { atLeast, describeState, TRUSTED_STATES, type RouteVerificationState } from "../verify/state.js";
 import {
@@ -291,6 +294,37 @@ function resolvePolicy(options: Options): { policy?: GatewayMeasurementPolicy; n
   return { note: "using the pin this package ships for the origin" };
 }
 
+/** The deprecated Phala rollback name: still pinned, removed at Phala retirement. */
+export const DEPRECATED_PHALA_ORIGIN = "https://api.private.anonrouter.ai";
+
+/**
+ * Whether this origin is verified against the packaged owner root's signed
+ * release policy v3 feed (GCP content nodes) rather than a packaged pin.
+ */
+export function releaseV3Origin(origin: string | null): boolean {
+  if (!origin) return false;
+  let canonical: string;
+  try { canonical = canonicalGatewayOrigin(origin); } catch { return false; }
+  return packagedReleasePolicyV3Authority().origins.includes(canonical);
+}
+
+/** Notes shared word for word with the Python command (CLI parity). */
+export function originNotes(origin: string | null): string[] {
+  const notes: string[] = [];
+  if (releaseV3Origin(origin)) {
+    const authority = packagedReleasePolicyV3Authority();
+    notes.push(`${origin} is verified against the owner-signed release policy v3 at ${authority.url} `
+      + `(owner root ${authority.trust.ownerRootSha256}, minimum sequence ${authority.trust.minimumPolicySequence}), `
+      + "with native DCAP on one retained TLS socket; any packaged pin shown is the legacy Phala policy and is not used for this origin");
+  }
+  let canonical: string | null = null;
+  try { canonical = origin ? canonicalGatewayOrigin(origin) : null; } catch { canonical = null; }
+  if (canonical === DEPRECATED_PHALA_ORIGIN) {
+    notes.push(`${DEPRECATED_PHALA_ORIGIN} is the deprecated Phala rollback name; its pin is removed when the Phala plane is retired`);
+  }
+  return notes;
+}
+
 /** Where the command writes. Injectable so a test can read what it printed. */
 export interface CliIo {
   out(text: string): void;
@@ -372,7 +406,8 @@ async function runResolved(options: Options, io: CliIo): Promise<number> {
         engineReport.available
           ? "A DCAP engine is available; hardware_verified is reachable with --dcap."
           : "No DCAP engine found. Verification is capped at cryptographically_checked and a policy requiring hardware verification fails closed.",
-        ...engineReport.instructions
+        ...engineReport.instructions,
+        ...originNotes(options.origin)
       ]
     };
     io.out(`${JSON.stringify(document, null, options.compact ? 0 : 2)}\n`);
@@ -383,7 +418,12 @@ async function runResolved(options: Options, io: CliIo): Promise<number> {
 
   const origin = options.origin!;
   const { policy, note } = resolvePolicy(options);
-  notes.push(note);
+  // A GCP origin with no --policy is held to the signed release policy v3, and
+  // only on the bound path: every node behind the load balancer has its own
+  // per-boot TLS key, so a separately observed certificate proves nothing.
+  const boundReleaseV3 = !policy && releaseV3Origin(origin);
+  notes.push(boundReleaseV3 ? "using the owner-signed release policy v3 feed for this origin" : note);
+  notes.push(...originNotes(origin));
 
   let collateral: DcapCollateral | undefined;
   if (options.collateralFile) {
@@ -405,7 +445,9 @@ async function runResolved(options: Options, io: CliIo): Promise<number> {
   }
 
   let observedSpki: string | null = null;
-  if (options.tlsCheck) {
+  if (boundReleaseV3) {
+    notes.push("the TLS key was read from the same retained socket that fetched the evidence, not from a separate connection");
+  } else if (options.tlsCheck) {
     observedSpki = await observeTlsSpki(origin, options.timeoutMs);
     if (observedSpki === null) {
       notes.push("this origin's TLS certificate could not be observed, so the certificate binding is recorded as an unmet gap rather than assumed");
@@ -457,10 +499,23 @@ async function runResolved(options: Options, io: CliIo): Promise<number> {
     // and a caller who asked about the route deserves the answer to the half that
     // could be established. It still cannot prop the verdict up: an unavailable
     // hop is not a passing hop, and assembleRouteVerdict takes the weakest.
-    let hop1: Awaited<ReturnType<typeof client.verifyGateway>> | null = null;
+    let hop1: { policy: unknown; verdict: Awaited<ReturnType<typeof client.verifyGateway>>["verdict"] } | null = null;
     let gatewayHop;
     try {
-      hop1 = await client.verifyGateway({ ...gatewayOption, signal: controller.signal });
+      if (boundReleaseV3) {
+        if (!chainVerifier) {
+          throw new ConfidentialError("unsupported_request",
+            "GCP content nodes are verified only with the native DCAP engine on a retained connection: rerun with --dcap");
+        }
+        const bound = await verifyContentNode({ origin, chainVerifier, signal: controller.signal });
+        hop1 = { policy: bound.policy, verdict: bound.verdict };
+        if (bound.verdict.binding?.tls_spki_sha256
+          && bound.verdict.checks.some((c) => c.name === "tls_certificate_bound_to_quote" && c.passed)) {
+          observedSpki = bound.verdict.binding.tls_spki_sha256;
+        }
+      } else {
+        hop1 = await client.verifyGateway({ ...gatewayOption, signal: controller.signal });
+      }
       gatewayHop = gatewayHopVerdict(hop1.verdict);
     } catch (error) {
       if (error instanceof ConfidentialError && error.code === "cancelled") throw error;
@@ -554,7 +609,7 @@ async function runResolved(options: Options, io: CliIo): Promise<number> {
         tcbStatus: hop1?.verdict.tcbStatus ?? null,
         tlsSpki: {
           observed: observedSpki,
-          source: options.tlsCheck ? "separate-tls-connection" : "not-observed",
+          source: boundReleaseV3 ? "retained-connection" : options.tlsCheck ? "separate-tls-connection" : "not-observed",
           matchesAttested: observedSpki !== null && binding?.tls_spki_sha256
             ? observedSpki.toLowerCase() === String(binding.tls_spki_sha256).toLowerCase()
             : null

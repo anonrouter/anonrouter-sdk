@@ -19,6 +19,12 @@ export class RetainedGatewayError extends Error {
     super(`Retained gateway operation refused (${code}).`);
     this.name = "RetainedGatewayError";
   }
+  /**
+   * The content-free verdict, when evidence was fetched on the retained socket
+   * and verified but not accepted. Diagnostic only: it never authorizes
+   * anything, and the socket is already closed.
+   */
+  verdict?: GatewayVerificationResult;
 }
 // Ownership, not a public code/dispatchPhase, grants one fresh preparation.
 // Only this module's initial socket failure path can mint these capabilities.
@@ -373,7 +379,11 @@ export async function openRetainedGatewayOperation(options: RetainedGatewayOptio
         || !verdict.binding || verdict.binding.tls_spki_sha256 !== state.observedPin
         || !verdict.checks.some(check => check.name === "quote_signature_chain" && check.passed)
         || verdict.checks.some(check => check.required && !check.passed)
-        || !Number.isSafeInteger(evidence.issued_at_ms)) throw fail("untrusted");
+        || !Number.isSafeInteger(evidence.issued_at_ms)) {
+      const refusal = fail("untrusted");
+      refusal.verdict = deepFreeze(verdict);
+      throw refusal;
+    }
     evidenceExpiry = (evidence.issued_at_ms as number) + policy.maxEvidenceAgeMs;
     if (!Number.isSafeInteger(evidenceExpiry) || evidenceExpiry <= 0) throw fail("untrusted");
     state.authorized = true; state.guard();

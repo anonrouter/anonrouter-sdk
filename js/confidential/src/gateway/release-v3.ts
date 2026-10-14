@@ -98,8 +98,16 @@ export interface ReleasePolicyV3Checkpoint {
 
 /** A release policy whose two owner signatures verified against the pinned root. */
 export interface VerifiedReleasePolicyV3 {
-  /** Optional signed tightening: require a quote-bound GCE machine identity. */
+  /**
+   * Optional signed tightening: require a quote-bound GCE machine identity.
+   * SDK-local: the backend release policy schema does not carry it yet.
+   */
   requireGcePzid?: boolean;
+  /**
+   * The signed TCB grace, when the policy carries one. Informational: this SDK
+   * keeps requiring UpToDate (see ReleasePolicyV3TcbGrace).
+   */
+  tcbGrace?: ReleasePolicyV3TcbGrace;
   deploymentId: string;
   groupId: string;
   ownerRootSha256: string;
@@ -226,6 +234,52 @@ export function verifyReleaseEnvelopeV3(envelope: unknown, trust: ReleasePolicyV
 
 const PAYLOAD_FIELDS = ["protocol", "kind", "deploymentId", "sequence", "issuedAtMs", "tuples", "revokedTuples",
   "revokedGenerations", "minimumGenerationRevision", "maxEvidenceAgeMs", "tcbStatus"];
+/** Optional signed payload fields. Absent leaves the canonical payload and its digest unchanged. */
+const OPTIONAL_PAYLOAD_FIELDS = ["tcbGrace", "requireGcePzid"];
+
+/** Intel TCB statuses an owner-signed grace may list (never UpToDate, never Revoked). */
+export const RELEASE_V3_GRACE_TCB_STATUSES = [
+  "ConfigurationAndSWHardeningNeeded", "ConfigurationNeeded", "OutOfDate", "OutOfDateConfigurationNeeded", "SWHardeningNeeded"
+] as const;
+/** The longest grace one signed policy can grant, from its issuedAtMs (90 days). */
+export const MAX_RELEASE_V3_TCB_GRACE_MS = 90 * 24 * 60 * 60 * 1000;
+export const MAX_RELEASE_V3_TCB_GRACE_ADVISORIES = 64;
+const ADVISORY_ID = /^INTEL-[A-Z]{2,8}-[0-9]{4,8}$/;
+
+/**
+ * An owner-signed, bounded, self-expiring TCB grace (the backend's
+ * `tcbGrace`, src/contentNodes/bootstrap/tcbGrace.ts). Control and the nodes
+ * may accept listed non-UpToDate statuses and advisories while it is active.
+ * This SDK parses and validates it exactly as the backend schema does, so a
+ * policy carrying one does not refuse the whole feed, but it does NOT relax
+ * customer verification: a gateway quote must still be UpToDate. See
+ * VERIFYING.md "TCB grace".
+ */
+export interface ReleasePolicyV3TcbGrace {
+  statuses: (typeof RELEASE_V3_GRACE_TCB_STATUSES)[number][];
+  advisoryIds: string[];
+  notAfterMs: number;
+}
+
+function ascending(values: readonly string[]): boolean {
+  return values.every((value, index) => index === 0 || values[index - 1]! < value);
+}
+
+/** The backend tcbGraceSchema plus its payload window rule. Returns a fresh copy. */
+export function validateReleasePolicyV3TcbGrace(input: unknown, issuedAtMs: number): ReleasePolicyV3TcbGrace {
+  const g = record(input); fields(g, ["statuses", "advisoryIds", "notAfterMs"]);
+  if (!Array.isArray(g.statuses) || g.statuses.length > RELEASE_V3_GRACE_TCB_STATUSES.length
+    || g.statuses.some((status) => typeof status !== "string" || !(RELEASE_V3_GRACE_TCB_STATUSES as readonly string[]).includes(status))
+    || !ascending(g.statuses as string[])) refuse("contract_invalid", "tcbGrace.statuses must be sorted, unique grace statuses");
+  if (!Array.isArray(g.advisoryIds) || g.advisoryIds.length === 0 || g.advisoryIds.length > MAX_RELEASE_V3_TCB_GRACE_ADVISORIES
+    || g.advisoryIds.some((id) => typeof id !== "string" || !ADVISORY_ID.test(id))
+    || !ascending(g.advisoryIds as string[])) refuse("contract_invalid", "tcbGrace.advisoryIds must be 1..64 sorted, unique Intel advisory ids");
+  const notAfterMs = safeInteger(g.notAfterMs, 1);
+  if (notAfterMs <= issuedAtMs || notAfterMs - issuedAtMs > MAX_RELEASE_V3_TCB_GRACE_MS) {
+    refuse("contract_invalid", "tcbGrace must end after issuedAtMs and within 90 days of it");
+  }
+  return { statuses: [...g.statuses as ReleasePolicyV3TcbGrace["statuses"]], advisoryIds: [...g.advisoryIds as string[]], notAfterMs };
+}
 
 /**
  * Verify a `release-policy` envelope and, when a checkpoint is held, that this
@@ -236,12 +290,15 @@ export function verifyReleasePolicyV3(
 ): VerifiedReleasePolicyV3 {
   const payload = verifyReleaseEnvelopeV3(envelope, trust, "release-policy");
   const p = record(payload);
-  fields(p, p.requireGcePzid === undefined ? PAYLOAD_FIELDS : [...PAYLOAD_FIELDS, "requireGcePzid"]);
+  fields(p, [...PAYLOAD_FIELDS, ...OPTIONAL_PAYLOAD_FIELDS.filter((name) => p[name] !== undefined)]);
+  // SDK-local until the backend schema carries it (see VERIFYING.md): the owner
+  // signer and the public feed refuse unknown payload fields today.
   if (p.requireGcePzid !== undefined && typeof p.requireGcePzid !== "boolean") refuse("contract_invalid", "requireGcePzid must be boolean");
   if (p.protocol !== RELEASE_V3_DIGEST_PROTOCOL || p.kind !== RELEASE_V3_POLICY_KIND) refuse("contract_invalid", "not a release policy");
   if (identifier(p.deploymentId) !== trust.deploymentId) refuse("wrong_deployment");
   const sequence = safeInteger(p.sequence, 1);
   const issuedAtMs = safeInteger(p.issuedAtMs, 1);
+  const tcbGrace = p.tcbGrace === undefined ? undefined : validateReleasePolicyV3TcbGrace(p.tcbGrace, issuedAtMs);
   if (!Array.isArray(p.tuples) || p.tuples.length === 0 || p.tuples.length > MAX_RELEASE_V3_TUPLES) refuse("contract_invalid", "invalid tuple count");
   const tuples = (p.tuples as unknown[]).map((entry, index) => {
     let tuple: GatewayMeasuredTupleV3;
@@ -266,6 +323,7 @@ export function verifyReleasePolicyV3(
     deploymentId: trust.deploymentId, groupId: trust.groupId, ownerRootSha256: trust.ownerRootSha256,
     sequence, issuedAtMs, policySha256, tuples, revokedTuples, revokedGenerations, minimumGenerationRevision,
     maxEvidenceAgeMs, tcbStatus: "UpToDate",
+    ...(tcbGrace === undefined ? {} : { tcbGrace }),
     ...(p.requireGcePzid === undefined ? {} : { requireGcePzid: p.requireGcePzid as boolean })
   };
 }
