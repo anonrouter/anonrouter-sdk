@@ -1,9 +1,8 @@
 // GCE C3 MROWNER: the owner-signed gce-pzid tuple rule of release policy v3.
 //
-// shared/vectors/gce-pzid.json is byte-identical to the server's
-// native/gcp-content-guest/tests/vectors/gce-pzid.json (anonrouter commit
-// cab4bf32): Go-produced PZID payloads and digests, plus a policy carrying both
-// MROWNER rules with its server-computed tuple digests and policy SHA-256.
+// Synthetic VM identities and independently computed SHA-384/tuple digests.
+// The original public Go edge-case answers remain for integer/zone coverage.
+// No production control VM or content VM identity is shipped in these fixtures.
 //
 // Quotes are the shared synthetic GCP quotes with only the MROWNER bytes
 // replaced. MROWNER is outside report_data, so the binding still verifies; the
@@ -56,8 +55,7 @@ function refusal(run: () => unknown): string {
   throw new Error("expected a refusal");
 }
 
-// The release 1060 C3 reference boot (vector 1) and the production control VM
-// (vector 0): same project and zone, different instances.
+// Two synthetic VMs in the same project and zone, with different identities.
 const reference = pzidVectors.vectors[1]!;
 const otherVm = pzidVectors.vectors[0]!;
 const PROJECT = reference.projectNumber;
@@ -99,7 +97,7 @@ const c3QuoteA = withMrOwner(caseA.evidence.quote, reference.mrOwner);
 const failedRequired = (result: ReturnType<typeof attest>) => result.checks.filter((c) => c.required && !c.passed).map((c) => c.name);
 const checkNamed = (result: ReturnType<typeof attest>, name: string) => result.checks.find((c) => c.name === name);
 
-describe("shared PZID vectors (Go-produced)", () => {
+describe("shared PZID vectors (independent known answers)", () => {
   it("reproduces every payload and MROWNER digest byte for byte", () => {
     for (const vector of pzidVectors.vectors) {
       const payload = gcePzidPayload(vector);
@@ -196,7 +194,7 @@ describe("the owner-signed gce-pzid rule in a release policy", () => {
     ]) expect(signed(bad)).toBe("contract_invalid");
     // A float or negative project number has no canonical encoding, so it cannot be signed.
     expect(refusal(() => sign({ ...basePayload, tuples: [{ ...tupleA, mrOwnerRule: { ...RULE, projectNumber: -1 } }] }))).toBe("contract_invalid");
-    expect(() => validateGceMrOwnerRule({ ...RULE, projectNumber: 1066448738612 })).toThrow(/projectNumber/);
+    expect(() => validateGceMrOwnerRule({ ...RULE, projectNumber: 111222333444 })).toThrow(/projectNumber/);
   });
 
   it("refuses a policy that approves a gce-pzid tuple it also revokes", () => {
@@ -209,6 +207,16 @@ describe("a C3 quote against a gce-pzid tuple", () => {
   const policy = policyWith([c3A]);
   const c3Case = { ...caseA, evidence: { ...caseA.evidence, quote: c3QuoteA } };
 
+  it("a signed policy can require PZID later without changing image tuples", () => {
+    const required = policyWith([c3A], { requireGcePzid: true });
+    expect(attest(c3Case, required).status).toBe("failed");
+    expect(failedRequired(attest(c3Case, required))).toEqual(["gce_instance_identity"]);
+    expect(attest(c3Case, required, { gce_pzid: reference.payload }).status).toBe("ok");
+    expect(attest(caseA, policyWith([tupleA], { requireGcePzid: true })).status).toBe("failed");
+    expect(attest(c3Case, policyWith([c3A], { requireGcePzid: false })).status).toBe("ok");
+    expect(() => policyWith([c3A], { requireGcePzid: "true" })).toThrow(/boolean/);
+  });
+
   it("without a PZID: accepted with instanceIdentity unverified, every other register matching", () => {
     const result = attest(c3Case, policy);
     expect(failedRequired(result)).toEqual([]);
@@ -220,7 +228,7 @@ describe("a C3 quote against a gce-pzid tuple", () => {
       .toBe("tuple=release-a.c3 policy_sequence=1 mrowner_rule=gce-pzid instance_identity=unverified");
     const identity = checkNamed(result, "gce_instance_identity");
     expect(identity).toMatchObject({ passed: false, required: false });
-    expect(identity?.detail).toMatch(/project 1066448738612 zones us-west1-a,us-west1-b,us-west1-c/);
+    expect(identity?.detail).toMatch(/project 111222333444 zones us-west1-a,us-west1-b,us-west1-c/);
     expect(attest(c3Case, policy, { gce_pzid: null }).instanceIdentity).toBe("unverified");
   });
 

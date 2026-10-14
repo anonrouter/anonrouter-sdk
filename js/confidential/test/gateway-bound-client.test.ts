@@ -551,10 +551,10 @@ describe("gcp-tdx-native mandatory real-connection key binding — synthetic nat
     await expect(gcpClient(t).chat(chat())).rejects.toMatchObject({ code: "attestation_untrusted" });
     expect(t.observed.attTickets).toBe(0); expect(t.observed.paidTickets).toBe(0); expect(t.observed.content).toHaveLength(0);
   });
-  it("no pilot opt-in: refused before any connection", async () => {
+  it("qualified platform: works without a pilot opt-in", async () => {
     const t = await topology(); evidenceOverride = gcpEvidence();
-    await expect(gcpClient(t, false).chat(chat())).rejects.toMatchObject({ code: "unsupported_request" });
-    expect(t.observed.connections).toBe(0); expect(t.observed.gateway).toBe(0);
-    expect(t.observed.attTickets).toBe(0); expect(t.observed.content).toHaveLength(0);
+    expect((await gcpClient(t, false).chat(chat())).content).toBe("Hello E2EE");
+    expect(t.observed.connections).toBe(1); expect(t.observed.gateway).toBe(1);
+    expect(t.observed.content.map(c => c.slot)).toEqual(["a", "a"]);
   });
 });

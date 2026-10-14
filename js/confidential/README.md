@@ -14,7 +14,7 @@ For the plaintext API surface, see `@anonrouter/client`.
 ```bash
 npm install @anonrouter/confidential
 
-# Before registry propagation, build from a clone of the monorepo:
+# For the unpublished 0.1.3 candidate, build from its prepared checkout:
 git clone https://github.com/anonrouter/anonrouter-sdk
 cd anonrouter-sdk/js && npm ci && npm run build
 ```
@@ -42,6 +42,45 @@ certificate, which no browser exposes, so in a browser it fails closed with
 `tinfoil_tls_observation_unsupported` rather than returning a verdict that
 skipped the pin. Use the Node.js SDK or `anonrouter-verify` CLI when you need
 that proof.
+
+## GCP content-node verification
+
+This checkout prepares 0.1.3; npm latest is 0.1.2 as checked 2026-10-14.
+Build/install this candidate locally to use these APIs. Publication awaits the
+owner's go.
+
+GCP-native is the default qualified platform for `api.anonrouter.ai`.
+The SDK fixes the owner root public keys and follows the independently signed
+[release-v3 feed](https://anonrouter.ai/.well-known/anonrouter-content-release-v3.json).
+It ships no GCP node image measurements; approved images need no SDK release.
+Legacy Phala is available explicitly.
+
+```typescript
+import { verifyContentNode, createClient } from "@anonrouter/confidential";
+import { createAnonRouterDcapVerifier } from "@anonrouter/confidential/dcap";
+
+// Native verifier on PATH or ANONROUTER_DCAP_VERIFIER_BIN. No API key or cost.
+const result = await verifyContentNode();
+console.log(result.policy.sequence, result.verdict.verificationLevel);
+
+// Inference must retain its own verified connection.
+const client = createClient({
+  apiKey: process.env.ANONROUTER_API_KEY!,
+  gatewayConnectionBinding: {
+    mode: "required",
+    verification: { chainVerifier: createAnonRouterDcapVerifier() }
+  }
+});
+await client.verifyGateway(); // fresh read-only evidence, no credential sent
+```
+
+Hardware DCAP, `UpToDate` TCB, fresh nonce and retained-socket TLS binding stay
+required. `gce_pzid` is optional: absence reports machine identity as
+`unverified`, while malformed/mismatched presented identity fails. A future
+signed `requireGcePzid: true` policy can require it. Browser hardware/socket
+verification remains unavailable. See
+[signed policy updates](../../docs/gateway-policy-updates.md) for roots,
+rollback protection, cache limits and the Python support boundary.
 
 ## Quickstart
 

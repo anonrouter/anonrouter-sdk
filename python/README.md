@@ -1,9 +1,9 @@
 # anonrouter-confidential
 
 Independently verify AnonRouter TEE / E2EE routes and run confidential inference
-from Python. This package mirrors the JS `@anonrouter/confidential` surface and
-passes the SAME shared known-answer-test (KAT) vectors, so Python and JS agree
-bit-for-bit.
+from Python. This package shares the provider verification/E2EE vectors with JavaScript.
+Exact GCP tuple verification is qualified, but release-v3 feed support is
+JavaScript-only; Python does not verify current GCP production by default.
 
 "Don't trust us, verify." The verifier is pure over its inputs and fails closed.
 
@@ -11,8 +11,8 @@ bit-for-bit.
 
 **Not on PyPI yet.** Install from a clone of the
 [monorepo](https://github.com/anonrouter/anonrouter-sdk), or use the checksummed
-wheel/sdist attached to the GitHub release while PyPI organization approval is
-pending. JavaScript registry publication is independent. The wheel and sdist are
+wheel/sdist attached to the GitHub release. PyPI returns 404 for this project
+as of 2026-10-14. JavaScript registry publication is separate. The wheel/sdist are
 built and installed into clean virtualenvs on every CI run.
 
 ```bash

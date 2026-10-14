@@ -16,19 +16,24 @@ lives here in the open.
 | --- | --- | --- |
 | `@anonrouter/confidential` | JavaScript / TypeScript (npm) | Independently verify TEE / E2EE routes, run end-to-end-encrypted inference, and generate images / speech over the two-origin ticket exchange. |
 | `@anonrouter/client` | JavaScript / TypeScript (npm) | Thin, dependency-free API client for the public (plaintext / TEE / private) routes. |
-| `anonrouter-confidential` | Python (PyPI) | The Python twin of `@anonrouter/confidential`: same verification, same E2EE, same media surface. |
+| `anonrouter-confidential` | Python (PyPI) | Python verification, E2EE and media client. Release-v3 feed support is pending. |
 
 Both `@anonrouter/confidential` and `anonrouter-confidential` also install an
 `anonrouter-verify` command. See [Verify from a terminal](#verify-from-a-terminal).
 
-The JavaScript packages are released independently from the Python registry
-package. If npm has not propagated the current release yet, install its
-checksummed tarballs from the GitHub release or build from this repository. The
-Python wheel and sdist remain available from the GitHub release while PyPI
-organization approval is pending. Every tarball, wheel and sdist is installed
-into an empty environment before release. npm serves v0.1.2; this v0.1.3
-repair is a release candidate until separately published. See
-[release readiness](docs/release-readiness.md) for the exact validation and limits.
+Registry status checked 2026-10-14: both npm packages serve **0.1.2**.
+This checkout prepares **0.1.3**, which is not published. PyPI returns 404 for
+`anonrouter-confidential`; install Python from source or a checksummed release
+wheel/sdist. No registry publication is authorized by this preparation.
+
+JavaScript 0.1.3 defaults to the owner-signed GCP release-v3 policy feed for
+`api.anonrouter.ai`. It ships fixed owner public keys, not GCP node image
+measurements. Owner-approved image changes need no SDK release. Native DCAP
+and TLS key observation on the retained socket remain mandatory. Machine PZID
+is optional; the verdict reports `instanceIdentity: "unverified"` when absent.
+Python supports exact GCP tuple policies but has no release-v3 feed support yet.
+See [GCP verification](js/confidential/README.md#gcp-content-node-verification)
+and [release readiness](docs/release-readiness.md).
 
 Layout:
 
@@ -284,7 +289,11 @@ import { createAnonRouterDcapVerifier } from "@anonrouter/confidential/dcap";
 const client = createClient({
   baseUrl: "https://api.anonrouter.ai",
   controlBaseUrl: "https://control.anonrouter.ai",
-  apiKey: process.env.ANONROUTER_API_KEY!
+  apiKey: process.env.ANONROUTER_API_KEY!,
+  gatewayConnectionBinding: {
+    mode: "required",
+    verification: { chainVerifier: createAnonRouterDcapVerifier() }
+  }
 });
 
 // Verify BOTH hops and gate on the result. This is the stable contract; see
@@ -292,7 +301,7 @@ const client = createClient({
 const verdict = await client.verifyRoute({
   model: "google/gemma-4-26b-a4b-uncensored",
   provider: "venice",
-  gateway: { chainVerifier: createAnonRouterDcapVerifier() }
+  gateway: true
 });
 if (!atLeast(verdict.overallState, "cryptographically_checked")) {
   throw new Error(`route not established: ${verdict.reason}`);
@@ -306,22 +315,21 @@ const reply = await client.chat({
   provider: "venice",
   messages: [{ role: "user", content: "Draft a private message." }],
   maxOutputTokens: 512,
-  requireGateway: { chainVerifier: createAnonRouterDcapVerifier() }
+  requireGateway: true
 });
 console.log(reply.content);
 ```
 
-The unpublished connection-binding candidate adds required socket checks in
+The 0.1.3 candidate supports required socket checks in
 Node and synchronous Python. See the [Node package instructions](js/confidential/README.md)
 and [Python package instructions](python/README.md) for opt-in setup and limits.
-Standalone gateway evidence verification in the examples above does not bind a
-later content connection. Operational continuity and publication remain pending.
+Required client mode verifies and retains a fresh socket for each operation. Operational continuity and publication remain pending.
 
 ## Quickstart: `anonrouter-confidential` (Python)
 
 > **Not on PyPI yet.** Install the Python package from this repository or from the
-> checksummed wheel/sdist attached to the GitHub release while PyPI organization
-> approval is pending. JavaScript registry publication is independent. Every
+> checksummed wheel/sdist attached to the GitHub release. PyPI returns 404 for
+> this project as of 2026-10-14; JavaScript registry publication is separate. Every
 > artifact is installed into an empty environment by
 > `scripts/smoke-artifacts.mjs` before release.
 

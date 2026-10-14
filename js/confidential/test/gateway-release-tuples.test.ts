@@ -93,13 +93,13 @@ describe("signed feed and packaged registry never supply an unqualified platform
   for (const testCase of vectors.signedCases) {
     it(testCase.name, () => {
       const verify = () => verifySignedGatewayPolicy(testCase.envelope, root, testCase.origin, vectors.nowMs);
-      if (testCase.accepted) expect(verify().policy.platformKind).toBe("phala-dstack-kms");
+      if (testCase.accepted) expect(["phala-dstack-kms", "gcp-tdx-native"]).toContain(verify().policy.platformKind);
       else expect(verify).toThrow(/not qualified/);
     });
   }
 
-  it("gcp-tdx-native is not qualified by this release", () => {
-    expect(GATEWAY_PLATFORM_QUALIFIED["gcp-tdx-native"]).toBe(false);
+  it("gcp-tdx-native is qualified by this release", () => {
+    expect(GATEWAY_PLATFORM_QUALIFIED["gcp-tdx-native"]).toBe(true);
     expect(GATEWAY_PLATFORM_QUALIFIED["phala-dstack-kms"]).toBe(true);
   });
 
@@ -116,7 +116,7 @@ describe("signed feed and packaged registry never supply an unqualified platform
   });
 });
 
-describe("client refuses unbound or unacknowledged GCP verification before any request", () => {
+describe("client refuses separate-connection GCP verification before any request", () => {
   const gcp = loadGatewayPolicy(vectors.verifyCases[0]!.policy);
   const origin = vectors.verifyCases[0]!.expectations.origin;
 
@@ -153,10 +153,6 @@ describe("client refuses unbound or unacknowledged GCP verification before any r
     const error = await client.verifyGateway({ policy: gcp, unqualifiedPlatformPilot: true }).catch((e: unknown) => e);
     expect((error as ConfidentialError).code).toBe("unsupported_request");
     expect((error as Error).message).toMatch(/connection binding/);
-    const chatError = await client.chat({ model: "venice-uncensored", provider: "venice",
-      messages: [{ role: "user", content: "synthetic-content-canary" }], maxOutputTokens: 8 }).catch((e: unknown) => e);
-    expect((chatError as ConfidentialError).code).toBe("unsupported_request");
-    expect((chatError as Error).message).toMatch(/unqualifiedPlatformPilot/);
   });
 
   it("refuses a non-boolean pilot flag at construction", () => {

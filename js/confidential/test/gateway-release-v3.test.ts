@@ -15,6 +15,7 @@ import { describe, expect, it, vi } from "vitest";
 import vectors from "../../../shared/vectors/gateway-release-tuples.json" with { type: "json" };
 import { bytesToHex } from "../src/bytes.js";
 import { createClient } from "../src/client.js";
+import { packagedReleasePolicyV3Authority } from "../src/gateway/release-v3.js";
 import { ConfidentialError } from "../src/errors.js";
 import { packagedGatewayPolicyAuthority, verifySignedGatewayPolicy, type GatewayPolicyStateStore } from "../src/gateway/authority.js";
 import { assertGatewayPlatformSecurityFloor, loadGatewayPolicy, type GatewayMeasurementPolicy } from "../src/gateway/policy.js";
@@ -385,6 +386,32 @@ describe("policy feed, offline window and durable checkpoint", () => {
 });
 
 describe("client wiring", () => {
+  it("packages owner keys and a sequence floor, without node image measurements", () => {
+    const root = packagedReleasePolicyV3Authority();
+    expect(releaseOwnerRootSha256(root.trust)).toBe(root.trust.ownerRootSha256);
+    expect(root.trust.minimumPolicySequence).toBe(6);
+    expect(root.origins).toEqual(["https://api.anonrouter.ai"]);
+    expect(Object.keys(root.trust).sort()).toEqual(["deploymentId", "groupId", "keys", "minimumPolicySequence", "ownerRootSha256"]);
+    root.trust.keys[0]!.publicKey = "00".repeat(32);
+    expect(packagedReleasePolicyV3Authority().trust.keys[0]!.publicKey).not.toBe(root.trust.keys[0]!.publicKey);
+  });
+
+  it("the production client selects the fixed release-v3 feed by default and refuses a test owner", async () => {
+    const feedMock = feed([envelope1]);
+    vi.stubGlobal("fetch", feedMock);
+    try {
+      const gatewayMock = vi.fn(async () => { throw new Error("no content request expected"); });
+      const c = createClient({ apiKey: "synthetic-key", fetch: gatewayMock as unknown as typeof fetch });
+      await expect(c.verifyGateway()).rejects.toThrow(/wrong_group|wrong_owner_root/);
+      expect(feedMock).toHaveBeenCalledTimes(1);
+      const [url, init] = feedMock.mock.calls[0]!;
+      expect(url).toBe(packagedReleasePolicyV3Authority().url);
+      expect(init).toMatchObject({ method: "GET", credentials: "omit", redirect: "error" });
+      expect(JSON.stringify(init)).not.toContain("synthetic-key");
+      expect(gatewayMock).not.toHaveBeenCalled();
+    } finally { vi.unstubAllGlobals(); }
+  });
+
   function client(pilot: boolean) {
     const feedMock = feed([envelope1]);
     const source = createReleasePolicyV3Source({ trust, url: FEED, origins: [ORIGIN], fetch: feedMock as typeof fetch,
@@ -395,8 +422,8 @@ describe("client wiring", () => {
     return { verify: () => c.verifyGateway(pilot ? { unqualifiedPlatformPilot: true } : {}), feedMock, gatewayMock };
   }
 
-  it("a v3 approval passes the caller-root gate, then still needs the pilot opt-in and connection binding", async () => {
-    for (const [pilot, pattern] of [[false, /unqualifiedPlatformPilot/], [true, /connection binding/]] as const) {
+  it("a qualified v3 approval needs connection binding with or without the old pilot flag", async () => {
+    for (const [pilot, pattern] of [[false, /connection binding/], [true, /connection binding/]] as const) {
       const { verify, feedMock, gatewayMock } = client(pilot);
       const error = await verify().catch((e: unknown) => e);
       expect(error).toBeInstanceOf(ConfidentialError);

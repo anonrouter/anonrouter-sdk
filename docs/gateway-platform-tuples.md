@@ -1,10 +1,12 @@
 # Gateway platform kinds and release tuples
 
-Implemented in the unpublished 0.1.3 candidate, on private branch
-`gcp-sdk-platform-tuples-20261008` (based on `sdk-connection-binding-20261007`
-at `277b976`). **Nothing here is published, deployed or production-approved.**
-The packaged production policy, the signed feed contract and every default call
-behave exactly as before.
+GCP-native boot-chain qualification is enabled for the unpublished 0.1.3
+candidate. JavaScript defaults to the owner-signed release-v3 feed for
+`api.anonrouter.ai`, with fixed owner keys and no node image pins. Python
+supports exact tuple policies but has no v3 feed support. See
+[gateway-policy-updates.md](gateway-policy-updates.md) for current production
+resolution, optional PZID and read-only verification. The qualification tooling
+and dated review history below describe how the earlier candidate was prepared.
 
 ## Why
 
@@ -97,10 +99,9 @@ and TCB exactly `UpToDate`. The verifier re-checks it on every call
   the SDK's own retained socket, which fetched the evidence and is the only one
   allowed to carry tickets and content (Node `openRetainedGatewayOperation`,
   Python sync `RetainedGatewayConnection`).
-- **Not qualified.** `GATEWAY_PLATFORM_QUALIFIED["gcp-tdx-native"]` is `false`.
-  `platform_boot_chain_qualified` fails as a required check unless the caller
-  passes `unqualifiedPlatformPilot: true` (`unqualified_platform_pilot=True`);
-  then it stays visible as an unmet advisory. The opt-in relaxes nothing else.
+- **Qualified.** `GATEWAY_PLATFORM_QUALIFIED["gcp-tdx-native"]` is `true`.
+  Hardware, quote register and retained-socket checks remain mandatory; the old
+  pilot flag is no longer needed.
 
 ## Client behavior
 
@@ -108,8 +109,8 @@ Refusals happen during policy resolution, before evidence, tickets or content:
 
 | Path | gcp-tdx-native result |
 |---|---|
-| Packaged registry entry | Refused at parse; none ships |
-| Signed feed approval | Refused (`platform kind is not qualified for signed approval`) even with valid signatures |
+| Packaged registry entry | No GCP image pins ship; JS defaults to release-v3 owner roots |
+| Signed feed approval | Qualified GCP accepts independently verified approvals; JS production uses release-v3 |
 | `verifyGateway` / `verify_gateway` (separate connection) | `unsupported_request`, no request sent |
 | Unbound `chat`/`verify` with `requireGateway` | `unsupported_request`, no ticket or content |
 | CLI separate-connection SPKI observation | Fails `tls_observed_on_retained_connection` |

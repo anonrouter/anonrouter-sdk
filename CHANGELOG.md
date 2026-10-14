@@ -14,19 +14,31 @@ environment on each CI run, so every published format is exercised.
 
 ## 0.1.3 (unpublished)
 
+- JavaScript: qualify GCP-native release-v3 content nodes and select the signed
+  production feed by default for `api.anonrouter.ai`. Package fixed owner root
+  public keys and minimum policy sequence 6, with no GCP image measurement pins.
+  Add credential-free `verifyContentNode()` with fresh nonce, native DCAP and
+  retained-socket TLS verification. Required client binding continues to retain
+  that verified socket for inference; legacy Phala remains an explicit option.
+- Keep GCE PZID optional. A future owner-signed `requireGcePzid: true` policy
+  makes machine identity required without an SDK release. Malformed or
+  mismatched presented PZID still fails closed.
+- Replace deployed-machine PZID test fixtures with synthetic identities and
+  independently computed known answers before release preparation.
+- Update registry notes from read-only checks on 2026-10-14: npm latest is 0.1.2
+  for both packages; the Python project is absent from PyPI. 0.1.3 is unpublished.
+
 - Repair W8 gateway pins and NEAR/provider-other compatibility; refuse missing
   GPU evidence and mismatched encryption keys.
 - Add staged, two-custodian signed gateway policy updates in JavaScript and
   Python, persistent rollback protection and bounded refresh on release drift.
-  Default activation awaits a verified publication; exact policies still work.
+  The v1 Phala source stays opt-in; GCP defaults to release-v3. Exact policies still work.
 - Add cross-language authority tests and release preparation/verification gates.
 - Add explicit gateway platform kinds and tuple-form policies: whole release
   tuples evaluated as OR with per-tuple expiry, mixed forms refused, legacy
   Phala policies unchanged. Add `gcp-tdx-native` verification with native DCAP,
   exact hardware registers and TD attributes, zero RTMR3 and owner registers, a
-  boot-key-derived instance id and mandatory same-socket TLS key binding. It is not
-  qualified: the packaged registry and signed feed refuse it, and a caller policy
-  needs an explicit pilot opt-in. See `docs/gateway-platform-tuples.md`.
+  boot-key-derived instance id and mandatory same-socket TLS key binding. GCP is now qualified and needs no pilot opt-in; every hardware and socket check remains required. See `docs/gateway-platform-tuples.md`.
 - Release tooling prepares signable phala-dstack-kms overlap approvals from a
   retained manifest set with a reviewer report, and writes only non-signable
   gcp-tdx-native qualification candidates that recompute quote, CCEL, UKI and
@@ -40,7 +52,7 @@ environment on each CI run, so every published format is exercised.
   unbounded by omitting its expiry (JavaScript and Python).
 - JavaScript: owner-signed release policy v3 for GCP-native content nodes
   (`createReleasePolicyV3Source`). No policy expiry; both owner signatures are
-  verified against a caller-pinned owner root, the connection-bound quote must
+  verified against the fixed packaged owner root or a caller-pinned root, the connection-bound quote must
   match an approved register tuple and not a revoked one, and a monotonic
   checkpoint refuses rollback, forks and revocation reversal. An unreachable
   feed may reuse the last verified policy for under one hour. Python parity is

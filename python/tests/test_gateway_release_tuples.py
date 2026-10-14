@@ -121,14 +121,14 @@ def test_signed_feed_never_supplies_an_unqualified_platform(case: dict[str, Any]
         )
 
     if case["accepted"]:
-        assert verify()["policy"].platform_kind == "phala-dstack-kms"
+        assert verify()["policy"].platform_kind in ("phala-dstack-kms", "gcp-tdx-native")
     else:
         with pytest.raises(GatewayPolicyError, match="not qualified"):
             verify()
 
 
-def test_gcp_is_not_qualified() -> None:
-    assert GATEWAY_PLATFORM_QUALIFIED == {"phala-dstack-kms": True, "gcp-tdx-native": False}
+def test_gcp_is_qualified() -> None:
+    assert GATEWAY_PLATFORM_QUALIFIED == {"phala-dstack-kms": True, "gcp-tdx-native": True}
 
 
 def test_packaged_registry_is_unchanged_single_value_legacy() -> None:
@@ -174,16 +174,6 @@ def test_unbound_chat_gated_on_gcp_is_refused_without_a_request() -> None:
         client.chat("venice-uncensored", "venice", [{"role": "user", "content": "synthetic-content-canary"}], 8,
                     require_gateway={"policy": _GCP, "unqualified_platform_pilot": True})
     assert seen == []
-
-
-def test_bound_client_without_pilot_is_refused_before_any_connection() -> None:
-    client = ConfidentialClient(
-        base_url=_ORIGIN, api_key="synthetic-key", control_base_url="https://control.gcp.example",
-        gateway_connection_binding={"mode": "required", "verification": {
-            "policy": _GCP, "chain_verifier": _Stub(False, None)}},
-    )
-    with pytest.raises(ConfidentialError, match="unqualified_platform_pilot"):
-        client.chat("venice-uncensored", "venice", [{"role": "user", "content": "synthetic-content-canary"}], 8)
 
 
 def test_bound_client_refuses_a_non_boolean_pilot_flag() -> None:

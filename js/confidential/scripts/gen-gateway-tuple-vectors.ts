@@ -179,7 +179,7 @@ const retained = { nonce: NONCE, origin: ORIGIN, nowMs: NOW, observedTlsSpki: { 
 const chainOk = { verified: true, tcbStatus: "UpToDate" };
 
 const verifyInputs: VerifyCase[] = [
-  { name: "gcp pilot: release A on firmware 1 over the retained socket", why: "The only shape that passes: whole tuple, native DCAP, same-socket key, explicit pilot. The unqualified boot chain stays visible as an unmet advisory.",
+  { name: "qualified GCP: release A on firmware 1 over the retained socket", why: "Whole tuple, native DCAP and same-socket key are mandatory on the qualified platform.",
     policy: gcpPolicy, evidence: gcpEvidence(releaseA), expectations: retained, chainVerifier: chainOk },
   { name: "gcp pilot: release B on firmware 2", why: "Tuples are OR: the second complete tuple matches on its own.",
     policy: gcpPolicy, evidence: gcpEvidence(releaseB), expectations: retained, chainVerifier: chainOk },
@@ -215,7 +215,7 @@ const verifyInputs: VerifyCase[] = [
     policy: gcpPolicy, evidence: gcpEvidence(releaseA), expectations: { ...retained, observedTlsSpki: { supplied: false, value: null } }, chainVerifier: chainOk },
   { name: "SEPARATE CONNECTION: matching SPKI not observed on the retained socket", why: "A certificate seen on another connection may belong to another node behind the balancer.",
     policy: gcpPolicy, evidence: gcpEvidence(releaseA), expectations: { ...retained, observedOnRetainedConnection: false }, chainVerifier: chainOk },
-  { name: "NO PILOT OPT-IN", why: "The native boot chain is unqualified, so an explicit caller acknowledgement is required.",
+  { name: "QUALIFIED PLATFORM: no pilot opt-in needed", why: "Qualified GCP boot chains require no pilot acknowledgement.",
     policy: gcpPolicy, evidence: gcpEvidence(releaseA), expectations: { ...retained, unqualifiedPlatformPilot: false }, chainVerifier: chainOk },
   { name: "NO NATIVE DCAP", why: "Without an Intel chain verifier there is no substitute: GCP fails closed.",
     policy: gcpPolicy, evidence: gcpEvidence(releaseA), expectations: retained, chainVerifier: null },
@@ -276,7 +276,7 @@ function envelope(policy: Record<string, unknown>) {
   return { schema: "anonrouter.gateway-policy-envelope/v1", payload, signatures };
 }
 const signedCases = [
-  { name: "unqualified gcp-tdx-native approval is refused even with valid signatures", origin: ORIGIN, envelope: envelope(gcpPolicy), accepted: false },
+  { name: "qualified gcp-tdx-native approval accepts valid signatures", origin: ORIGIN, envelope: envelope(gcpPolicy), accepted: true },
   { name: "phala tuple-form approval is accepted", origin: PHALA_ORIGIN, envelope: envelope(phalaPolicy), accepted: true }
 ];
 for (const c of signedCases) {

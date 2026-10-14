@@ -44,6 +44,7 @@ import {
 } from "./verify/route.js";
 import { GATEWAY_NONCE_HEX_LENGTH } from "./gateway/binding.js";
 import { assertGatewayPolicySecurityFloor, createSignedGatewayPolicySource, packagedGatewayPolicyAuthority, type GatewayPolicySource } from "./gateway/authority.js";
+import { createReleasePolicyV3Source, packagedReleasePolicyV3Authority } from "./gateway/release-v3.js";
 type VerifiedGatewayConnection = import("./gateway/retained-operation-node.js").RetainedGatewayOperation;
 import {
   GATEWAY_PLATFORM_QUALIFIED,
@@ -80,12 +81,10 @@ export interface CreateClientOptions {
     mode: "required";
     verification: Pick<VerifyGatewayInput, "policy" | "allowCandidatePolicy" | "chainVerifier" | "unqualifiedPlatformPilot">;
   };
-  /** Follow independently signed gateway approvals. Defaults to the packaged
-   * authority's activation flag. false retains exact bundled/caller pins.
-   * A source can supply durable sequence storage; it receives no API key.
-   * For GCP-native content nodes pass `createReleasePolicyV3Source(...)`: an
-   * owner-signed release policy v3 with no expiry, verified against the owner
-   * root you pin, usable only with required connection binding. */
+  /** Follow signed gateway approvals. Production api.anonrouter.ai defaults to
+   * release-v3 with independently packaged owner keys; legacy v1 remains opt-in.
+   * false selects exact bundled/caller pins. Sources receive no API key.
+   * GCP verification requires native retained connection binding. */
   gatewayPolicyUpdates?: boolean | GatewayPolicySource;
   /** Confidential inference origin, e.g. "https://api.anonrouter.ai".
    *  Gateway/provider evidence and encrypted request content all use this exact
@@ -276,9 +275,8 @@ export interface VerifyGatewayInput {
   chainVerifier?: TdxChainVerifier | TdxChainVerifierFactory;
   /**
    * Explicitly run a PILOT against a caller-supplied policy for a platform kind
-   * this SDK release has not qualified (today: `gcp-tdx-native`, whose native
-   * UKI/root boot chain and application measurement are not yet proved on
-   * hardware). Only honored for a caller-supplied policy with required
+   * this SDK release has not qualified. GCP is qualified and ignores this
+   * historical opt-in. Only honored for a caller-supplied policy with required
    * connection binding; the packaged registry and the signed feed never supply
    * such a policy. It relaxes no other check and the gap stays in the verdict.
    * Do not send real content to a pilot node until its boot integrity is
@@ -689,7 +687,9 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
   }
   const authority = packagedGatewayPolicyAuthority();
   const updateOption = options.gatewayPolicyUpdates;
+  const releaseV3Default = packagedReleasePolicyV3Authority().origins.includes(origin);
   const gatewayPolicySource = typeof updateOption === "object" ? updateOption
+    : releaseV3Default && updateOption !== false ? createReleasePolicyV3Source()
     : (updateOption === true || (updateOption === undefined && authority.enabled && authority.origins.includes(origin)))
       ? createSignedGatewayPolicySource() : undefined;
   const authHeaders = { authorization: `Bearer ${options.apiKey}` };
@@ -1038,8 +1038,8 @@ export function createClient(options: CreateClientOptions): AnonRouterClient {
   ): void {
     const kind = gatewayPolicyPlatformKind(resolved.policy);
     if (!GATEWAY_PLATFORM_QUALIFIED[kind]) {
-      // A release policy v3 source is always caller-constructed around an owner
-      // root the caller pinned; the package ships no v3 root.
+      // Unqualified future platforms can only use explicit caller policies or
+      // independently rooted sources, never an implicit packaged approval.
       if (resolved.provenance.origin !== "caller-supplied" && resolved.provenance.origin !== "signed-release-policy-v3") {
         throw new ConfidentialError("measurement_untrusted", `A ${kind} policy can only be supplied explicitly by the caller.`);
       }

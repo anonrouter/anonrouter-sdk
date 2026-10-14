@@ -9,6 +9,9 @@
 //   confidential-route-policy.json  which confidential routes AnonRouter offers
 
 export const SYNCED_FILES = {
+  "shared/release-policy-v3-authority.json": [
+    "js/confidential/src/gateway/release-policy-v3-authority.json"
+  ],
   "shared/gateway-policy-authority.json": [
     "js/confidential/src/gateway/gateway-policy-authority.json",
     "python/src/anonrouter_confidential/gateway_policy_authority.json"

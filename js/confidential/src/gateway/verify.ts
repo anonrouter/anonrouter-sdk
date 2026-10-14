@@ -717,11 +717,14 @@ export function verifyGatewayAttestation(
       checks.push(check(
         "gce_instance_identity",
         matched.identity === "verified",
-        matched.identity === "verified",
+        releaseV3.requireGcePzid === true || matched.identity === "verified",
         matched.identity === "verified"
           ? gceInstanceResource(presentedInstance!)
           : `the evidence carries no GCE PZID, so MROWNER was not shown to name a VM in project ${rule.projectNumber} zones ${Array.isArray(rule.zones) ? rule.zones.join(",") : "?"}; every other register matches the approved tuple`
       ));
+    }
+    if (releaseV3.requireGcePzid === true && (!matched || matched.identity === "not-applicable")) {
+      checks.push(check("gce_instance_identity", false, true, "the signed policy requires a verified GCE PZID"));
     }
   } else if (tupleForm) {
     // ONE tuple must match EVERY observed value at once. Independent allowlists

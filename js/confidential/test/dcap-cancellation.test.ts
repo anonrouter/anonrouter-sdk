@@ -15,7 +15,7 @@ const quote = vectors.quoteParsing.fixtures.quoteWithPckChain;
 const collateral = vectors.engineWire.collateral;
 const payload = buildDcapEngineRequest(quote, collateral, 1);
 const pass = '{"verified":true,"tcb_status":"UpToDate","engine":"synthetic-NOT-native"}';
-const fresh = (): AcquiredCollateral => ({ collateral, fmspc: "000102030405", nextUpdateMs: Date.now() + 60_000, fetchedAtMs: Date.now() });
+const fresh = (): AcquiredCollateral => ({ collateral: { ...collateral, pck_certificate_chain: vectors.quoteParsing.fixtures.pckChain }, fmspc: vectors.quoteParsing.fixtures.leafFmspc, nextUpdateMs: Date.now() + 60_000, fetchedAtMs: Date.now() });
 const tick = async () => { await Promise.resolve(); await Promise.resolve(); };
 class Child extends EventEmitter {
   stdin = Object.assign(new EventEmitter(), { end: vi.fn() });
@@ -114,7 +114,8 @@ describe("Node DCAP cancellation and join (synthetic fixtures)", () => {
     const other = new AbortController(); const second = cache.get(quote, Date.now(), other.signal);
     controller.abort(); expect(pending[0]!.signal!.aborted).toBe(true); expect(pending[1]!.signal!.aborted).toBe(false);
     const value = fresh(); pending[0]!.resolve(value); await refused; expect(cache.peek(value.fmspc)).toBeUndefined();
-    pending[1]!.resolve(value); expect(await second).toEqual(value); expect(cache.peek(value.fmspc)).toEqual(value);
+    pending[1]!.resolve(value); expect(await second).toEqual(value); const { pck_certificate_chain: _chain, ...platform } = value.collateral;
+    expect(cache.peek(value.fmspc)).toEqual({ ...value, collateral: platform });
     const aborted = new AbortController(); aborted.abort(); await expect(cache.get(quote, 1, aborted.signal)).rejects.toThrow("cancelled");
   });
 

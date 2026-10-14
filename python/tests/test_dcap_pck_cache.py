@@ -2,15 +2,26 @@
 import hashlib
 import json
 from pathlib import Path
+
 import pytest
-from anonrouter_confidential.gateway.dcap.collateral import AcquiredCollateral, CollateralCache, CollateralError, DcapCollateral
-from anonrouter_confidential.gateway.dcap.engine import AnonRouterDcapVerifier, DcapEngineVerdictV1
-import anonrouter_confidential.gateway.dcap.engine as engine
+
+from anonrouter_confidential.gateway.dcap import engine
+from anonrouter_confidential.gateway.dcap.collateral import (
+    AcquiredCollateral,
+    CollateralCache,
+    CollateralError,
+    DcapCollateral,
+)
+from anonrouter_confidential.gateway.dcap.engine import (
+    AnonRouterDcapVerifier,
+    DcapEngineVerdictV1,
+)
+
 FIXTURE = json.loads((Path(__file__).resolve().parents[2] / 'shared/vectors/dcap-same-fmspc-pck-chains.json').read_text())
 for chain in FIXTURE['chains']:
     assert hashlib.sha256(chain['pem'].encode()).hexdigest() == chain['sha256']
 CARRIERS = [('extraction-only\0' + chain['pem'] + '\0').encode('latin1').hex() for chain in FIXTURE['chains']]
-PLATFORM = dict(pck_crl_issuer_chain='issuer', root_ca_crl='00', pck_crl='01', tcb_info_issuer_chain='tcb issuer', tcb_info='exact signed bytes', tcb_info_signature='02', qe_identity_issuer_chain='qe issuer', qe_identity='exact qe bytes', qe_identity_signature='03')
+PLATFORM = {'pck_crl_issuer_chain': 'issuer', 'root_ca_crl': '00', 'pck_crl': '01', 'tcb_info_issuer_chain': 'tcb issuer', 'tcb_info': 'exact signed bytes', 'tcb_info_signature': '02', 'qe_identity_issuer_chain': 'qe issuer', 'qe_identity': 'exact qe bytes', 'qe_identity_signature': '03'}
 CACHED = AcquiredCollateral(DcapCollateral(**PLATFORM, pck_certificate_chain=FIXTURE['chains'][0]['pem']), FIXTURE['fmspc'], 1000, 1)
 def test_distinct_pcks_share_platform_fetch_without_mutation():
     calls = []

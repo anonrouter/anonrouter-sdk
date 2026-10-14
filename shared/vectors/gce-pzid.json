@@ -1,22 +1,22 @@
 {
   "protocol": "anonrouter-gce-pzid-vectors-v1",
-  "note": "Google writes MR_OWNER = SHA-384(PZID) on GCE C3 TDX. PZID is go-tdx-guest gce/pzid.go PZIDPayload: {\"instanceId\":%d,\"numericalProjectId\":%d,\"zone\":strconv.Quote(zone)} after validateZone (non-empty, [a-z0-9-] only). Every payload and digest here was also produced by a Go harness running that exact code (go1.27.1, 2026-10-12). Shared by src/contentNodes/bootstrap/gcePzid.ts and native/gcp-content-guest/src/gce_pzid.rs.",
+  "note": "Google writes MR_OWNER = SHA-384(PZID) on GCE C3 TDX. PZID is go-tdx-guest gce/pzid.go PZIDPayload: instanceId, numericalProjectId, zone in that order, non-empty [a-z0-9-] zone. The first two identities are synthetic; payloads and hashes were computed independently with Python hashlib, 2026-10-14. Remaining edge-case answers retain the original Go-produced vectors. No production VM identity is included.",
   "vectors": [
     {
-      "name": "router-506119 production control VM (c3-standard-4); its quotes carried MROWNER 52ed63d3... from 2026-08-27 to 2026-10-11",
-      "projectNumber": "1066448738612",
+      "name": "Synthetic C3 instance 1 (not a deployed VM)",
+      "projectNumber": "111222333444",
       "zone": "us-west1-a",
-      "instanceId": "32079702166802581",
-      "payload": "{\"instanceId\":32079702166802581,\"numericalProjectId\":1066448738612,\"zone\":\"us-west1-a\"}",
-      "mrOwner": "52ed63d3c298da6fe2aefcde574e4dcec375b23cec85fc130838962d1426735c225d85b38852bd8aaefc930d2d9ef8fe"
+      "instanceId": "112233445566778897",
+      "payload": "{\"instanceId\":112233445566778897,\"numericalProjectId\":111222333444,\"zone\":\"us-west1-a\"}",
+      "mrOwner": "657ef5f4fd213c55d102de36909da9b890e09baa8d6b695937454aa56374d3a2ad39ceb1775cbac204cdc5f918621dd5"
     },
     {
-      "name": "release 1060 c3-standard-4 reference boot ar-cg-n2-20261012-71511375-good (deleted); equals MROWNER of its quote.bin, sha256 603d73a7845659bd3141cdc02db660ad0f82ede3e9e5019489970008d39e1bb6",
-      "projectNumber": "1066448738612",
+      "name": "Synthetic C3 instance 2 (not a deployed VM)",
+      "projectNumber": "111222333444",
       "zone": "us-west1-a",
-      "instanceId": "1849812915283100931",
-      "payload": "{\"instanceId\":1849812915283100931,\"numericalProjectId\":1066448738612,\"zone\":\"us-west1-a\"}",
-      "mrOwner": "88a1526b00351b16fdb1cc290925eef894eeb34a036c52a36b91e1816abd7b7e2b7ffb3ea81ec3a149d8cb6d2214cacf"
+      "instanceId": "112233445566778898",
+      "payload": "{\"instanceId\":112233445566778898,\"numericalProjectId\":111222333444,\"zone\":\"us-west1-a\"}",
+      "mrOwner": "4b22e442df2b2589445ce366e52b9b79a185c34a3bd7990b1e588f12f5a3d96b6011bc1fba384a89c3cdd8a23ca04e95"
     },
     {
       "name": "go-tdx-guest gce/pzid_test.go TestPZIDPayload",
@@ -56,7 +56,7 @@
     "US-west1-a",
     "us-west1-a\"",
     "us west1",
-    "us-wést1-a",
+    "us-w\u00e9st1-a",
     "us_west1",
     "us-west1-a\n",
     "us-west1-a\\",
@@ -77,7 +77,7 @@
     "1.0"
   ],
   "policy": {
-    "note": "A release policy v3 payload with one exact (zero MROWNER, C4) tuple and one gce-pzid (C3) tuple. Both lanes must compute these digests; release-a is the native fixture tuple whose digest predates the rule (byte-compatible).",
+    "note": "Synthetic release-v3 payload with zero-MROWNER and gce-pzid tuples. Digests independently computed with Python hashlib/canonical JSON on 2026-10-14; no production identities.",
     "payload": {
       "protocol": "anonrouter-content-node-bootstrap-v1",
       "kind": "content-node-release-policy",
@@ -112,7 +112,7 @@
           "xfam": "0000000000000000",
           "mrOwnerRule": {
             "kind": "gce-pzid",
-            "projectNumber": "1066448738612",
+            "projectNumber": "111222333444",
             "zones": [
               "us-west1-a",
               "us-west1-b",
@@ -127,10 +127,10 @@
       "maxEvidenceAgeMs": 120000,
       "tcbStatus": "UpToDate"
     },
-    "policySha256": "db37fc4248012685c37571e5ada86dc6c58d2c21bb5ee2ac6de7092daa6883e1",
+    "policySha256": "b5581a577308031016d3a21028aecd9653cb41b2d83dfe11c8b43002524ce6f7",
     "tupleDigests": {
       "release-a": "7cadb5a47377a57e9452af735ffdd3dda1ef5e5597779c7786b7db18c7494dfe",
-      "release-c3": "dbf8027be9f4aabfb26f8bd88bcf454faeff89b8a1f1d110278b5ea664354f07"
+      "release-c3": "a8fd2ae8fd7e5357da8fbe0f66ab18ab9e32849fa0063032cfdb47c67cc463d5"
     }
   }
 }

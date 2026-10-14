@@ -589,9 +589,10 @@ class BoundClientTests(unittest.TestCase):
         t=self.topology(evidence_for=gcp_evidence(registers={'mrTd':'5e'*48}))
         with self.assertRaises(Exception):self.gcp_chat(self.gcp_client(t))
         self.assertEqual(t.att,0);self.assertEqual(t.paid,0);self.assertEqual(t.content,[])
-    def test_gcp_without_pilot_refused_before_any_connection(self):
+    def test_qualified_gcp_without_pilot_retains_verified_connection(self):
         t=self.topology(evidence_for=gcp_evidence())
-        with self.assertRaises(Exception):self.gcp_chat(self.gcp_client(t,pilot=False))
-        self.assertEqual(t.content_server.connections,0);self.assertEqual(t.gateway,0);self.assertEqual(t.att,0);self.assertEqual(t.content,[])
+        self.assertEqual(self.gcp_chat(self.gcp_client(t,pilot=False))['content'],'Hello E2EE')
+        self.assertEqual(t.content_server.connections,1);self.assertEqual(t.gateway,1)
+        self.assertEqual([slot for _,slot,_,_ in t.content],['a','a'])
 
 if __name__=='__main__':unittest.main(verbosity=2)

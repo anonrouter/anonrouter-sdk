@@ -79,10 +79,11 @@ export {
   type GatewayPolicyCheckpoint, type VerifiedGatewayPolicy, type SignedGatewayPolicySourceOptions
 } from "./gateway/authority.js";
 export { createBrowserGatewayPolicyStateStore } from "./gateway/state.js";
+export { verifyContentNode, type VerifyContentNodeOptions } from "./gateway/content-node.js";
 // Owner-signed release policy v3 for GCP-native content nodes: no expiry, a
 // pinned owner root, a monotonic checkpoint and revoked-tuple refusal.
 export {
-  createReleasePolicyV3Source, verifyReleasePolicyV3, verifyReleaseEnvelopeV3,
+  createReleasePolicyV3Source, packagedReleasePolicyV3Authority, verifyReleasePolicyV3, verifyReleaseEnvelopeV3,
   validateReleasePolicyV3Trust, checkReleasePolicyV3Successor, releasePolicyV3GatewayPolicy,
   releaseOwnerRootSha256, releaseTupleDigest, releaseEnvelopeV3Message, ReleasePolicyV3Error,
   RELEASE_V3_ENVELOPE_PROTOCOL, RELEASE_V3_SIGNATURE_DOMAIN_PREFIX, RELEASE_V3_KEY_IDS, RELEASE_V3_ROLES,

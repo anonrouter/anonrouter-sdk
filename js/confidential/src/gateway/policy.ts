@@ -58,28 +58,18 @@ export interface GatewayPlatformMeasurements {
  *                     RTMR1. It has guest-only per-boot keys, no KMS, no dstack
  *                     application events (RTMR3 stays zero) and is pinned only
  *                     through the hardware registers in the quote. Never vTPM
- *                     evidence. Requires same-connection verification and,
- *                     until its native boot chain is qualified, an explicit
- *                     caller pilot opt-in.
+ *                     evidence. Requires same-connection verification.
  */
 export type GatewayPlatformKind = "phala-dstack-kms" | "gcp-tdx-native";
 
 export const GATEWAY_PLATFORM_KINDS: readonly GatewayPlatformKind[] = ["phala-dstack-kms", "gcp-tdx-native"];
 
-/**
- * Whether a platform kind's boot chain has been qualified for this SDK release.
- *
- * gcp-tdx-native is NOT qualified: a small C4 TDX VM has produced a genuine,
- * natively verified quote, but no AnonRouter guest has yet proved that Google's
- * firmware measures its UKI (with the command line naming the verity root that
- * holds the application) into RTMR1 on this platform. Until a
- * reviewed SDK release flips this, the packaged registry and the signed feed
- * refuse the kind, and the verifier fails it unless the caller explicitly opted
- * into an unqualified pilot.
- */
+/** Qualified hardware boot chains. GCP release-v3 binds the measured UKI,
+ * command line and dm-verity application image to an owner-approved tuple.
+ * Qualification never relaxes DCAP, TCB, nonce or retained-socket TLS checks. */
 export const GATEWAY_PLATFORM_QUALIFIED: Readonly<Record<GatewayPlatformKind, boolean>> = Object.freeze({
   "phala-dstack-kms": true,
-  "gcp-tdx-native": false
+  "gcp-tdx-native": true
 });
 
 /**
@@ -172,6 +162,8 @@ export interface GatewayMeasuredTupleV3 {
  * verified against a pinned owner root; `loadGatewayPolicy` never accepts it.
  */
 export interface GatewayReleasePolicyV3 {
+  /** Signed policy may require PZID later. Absent/false keeps it optional. */
+  requireGcePzid?: boolean;
   /** The pinned owner root the envelope was verified against. */
   ownerRootSha256: string;
   deploymentId: string;
@@ -490,7 +482,10 @@ export function validateGatewayMeasuredTupleV3(input: unknown, index: number): G
 export function validateGatewayReleasePolicyV3(input: unknown): GatewayReleasePolicyV3 {
   if (!input || typeof input !== "object" || Array.isArray(input)) throw new GatewayPolicyError("releasePolicyV3 must be an object");
   const raw = input as Record<string, unknown>;
-  exactFields("releasePolicyV3", raw, RELEASE_V3_POLICY_FIELDS);
+  exactFields("releasePolicyV3", raw, raw.requireGcePzid === undefined ? RELEASE_V3_POLICY_FIELDS : [...RELEASE_V3_POLICY_FIELDS, "requireGcePzid"]);
+  if (raw.requireGcePzid !== undefined && typeof raw.requireGcePzid !== "boolean") {
+    throw new GatewayPolicyError("releasePolicyV3.requireGcePzid must be boolean");
+  }
   const ownerRootSha256 = exactHex("releasePolicyV3.ownerRootSha256", raw.ownerRootSha256, 64);
   const policySha256 = exactHex("releasePolicyV3.policySha256", raw.policySha256, 64);
   if (typeof raw.deploymentId !== "string" || !RELEASE_V3_IDENTIFIER.test(raw.deploymentId)) {
@@ -519,7 +514,8 @@ export function validateGatewayReleasePolicyV3(input: unknown): GatewayReleasePo
   if (tuples.some((tuple) => revoked.has(releaseTupleDigest(tuple)))) {
     throw new GatewayPolicyError("releasePolicyV3 approves a tuple it also revokes");
   }
-  return { ownerRootSha256, deploymentId: raw.deploymentId, sequence: raw.sequence, policySha256, tuples, revokedTuples };
+  return { ownerRootSha256, deploymentId: raw.deploymentId, sequence: raw.sequence, policySha256, tuples, revokedTuples,
+    ...(raw.requireGcePzid === undefined ? {} : { requireGcePzid: raw.requireGcePzid as boolean }) };
 }
 
 function validateReleaseTuples(kind: GatewayPlatformKind, value: unknown): GatewayReleaseTuple[] {

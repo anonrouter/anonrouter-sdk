@@ -1,279 +1,141 @@
 # Signed gateway policy updates
 
-Implemented in the unpublished 0.1.3 candidate. **The production feed is live;
-default SDK activation and package publication are pending.**
-`shared/gateway-policy-authority.json` deliberately retains `enabled: false`
-until continuing renewal ownership and the separate SDK release gates pass.
-Current default calls still use the exact bundled W8 policy. The owner installed
-the purpose-specific signer; backend branch `gateway-policy-activation-20261006`
-published real sequence 1 through the website-only KMS lane. The gateway, control,
-DNS, SDK GitHub branch and registries are unchanged. Explicit opt-in works today.
+JavaScript 0.1.3 selects the GCP release-v3 feed by default for
+`https://api.anonrouter.ai`. This is a local, unpublished SDK candidate.
+No registry publication or production change is part of this preparation.
 
-## Approval contract
+The SDK packages the fixed USB and laptop owner public keys, deployment
+`gcp-content-production`, group `release-owner-production`, owner root
+`10034ad2b11e9ef9f300da180a794010da369f2f14b2a896df42ceaf47077acb`,
+and minimum sequence 6 in `shared/release-policy-v3-authority.json`.
+It contains no GCP node image measurements. The publication URL is
+`https://anonrouter.ai/.well-known/anonrouter-content-release-v3.json`,
+separate from the content API. The feed cannot replace its signing roots.
+`packagedReleasePolicyV3Authority()` returns a defensive copy of these anchors.
+Root changes require an SDK release; approved node images do not.
 
-The SDK fixes the release authority instead of requiring a package upgrade for
-every compose hash. Two distinct Ed25519 signatures from the independently
-packaged production custodian roster authorize a policy. The running gateway
-cannot choose those keys. The live public publication URL is
-`https://anonrouter.ai/.well-known/anonrouter/gateway-policy.json`, separate
-from both confidential API origins. First approval expires
-2026-10-13T23:23:16.876Z; renew by 2026-10-11T23:23:16.876Z.
+Signatures establish owner approval, not proof that approved code is benign.
+Native Intel DCAP, exclusively `UpToDate` TCB, nonce and origin binding,
+evidence freshness and the quote-bound TLS key observed on the retained socket
+remain mandatory. GCP is qualified; it needs no pilot opt-in.
 
-Automatic acceptance means trusting those custodians to approve future code.
-Signatures authenticate that approval; they do not prove that the approved code
-is benign. Exact caller-supplied policies remain available and always override
-the feed. Root-key changes require a reviewed SDK update; this protocol does
-not allow a feed to replace its own signing keys.
+## Read-only verification
 
-The envelope has exactly `schema`, `payload`, and `signatures`. `payload` is a
-canonical ASCII JSON string with safe integers and fields:
-
-```text
-schema = anonrouter.gateway-policy/v1
-authority = anonrouter-production-custodians/v1
-sequence, issuedAtMs, expiresAtMs, manifestSha256, policy
-```
-
-Sign **exact UTF-8 bytes** of
-`anonrouter.gateway-policy-signature/v1\n` followed immediately by `payload`.
-Signatures are 128-character lowercase hex, each with a rostered `keyId`.
-Never reuse a GCP deployment authorization, SDK tag signature, certificate or
-signature over the payload's digest as this approval. The signing domain and
-bytes differ. Duplicate IDs/keys, unknown signers, changed/noncanonical payloads
-and insufficient signatures fail closed.
-
-Even an authorized policy cannot disable hardware verification, in-TEE TLS,
-private logs, digest-pinned images, evidence expiry, platform or KMS pins. TCB
-must remain exclusively `UpToDate`; evidence age cannot exceed five minutes.
-The policy source must equal the signed retained manifest digest. Every origin
-must belong to the independently configured authority.
-
-Tuple-form policies (explicit `platformKind`, whole release tuples) are
-described in [gateway-platform-tuples.md](gateway-platform-tuples.md). The feed
-accepts them only for a qualified platform kind; `gcp-tdx-native` is refused.
-GCP-native content nodes use the owner-signed release policy v3 below instead.
-
-## Release policy v3 (GCP-native content nodes)
-
-The v1 approval above expires (at most seven days), so keeping it valid needs a
-recurring owner signature. Release policy v3 has no expiry: the owner signs it
-once per release or revocation, and it stays valid until a higher sequence
-replaces it. `createReleasePolicyV3Source` verifies it; pass the source as
-`gatewayPolicyUpdates`. The package ships no v3 root, so the caller pins one.
-
-The caller pins `deploymentId`, `groupId`, the two Ed25519 owner keys
-(`custodian.prod.usb`, then `custodian.prod.laptop`) and
-`ownerRootSha256 = digest("release-owner-root", {deploymentId, groupId, keys})`.
-`digest(d, v)` is SHA-256 of ASCII `anonrouter-content-node-bootstrap-v1/` + `d`
-+ NUL, followed by the canonical JSON of `v` (sorted keys, printable ASCII,
-non-negative safe integers). A root that does not match its own fields refuses.
-
-The envelope has exactly `protocol`
-(`anonrouter-content-release-envelope-v3`), `role` (`release-policy`),
-`groupId`, `ownerRootSha256`, `payload` and `signatures`. Both owners sign the
-same 32 bytes, SHA-256 of ASCII `anonrouter-content-release-v3/authority/` +
-role + NUL followed by canonical `{groupId, ownerRootSha256, payload}`. Both
-signatures are required, in that key order, as 128-character lowercase hex.
-v1 and v2 envelopes are refused, and the v1 verifier refuses v3.
-
-The payload is strict: `protocol`, `kind` (`content-node-release-policy`),
-`deploymentId`, `sequence`, `issuedAtMs`, 1 to 16 measured `tuples` (every TDX
-register: MRTD, MRCONFIGID, MROWNER, MROWNERCONFIG, RTMR0 to RTMR3, TD
-attributes, XFAM), sorted unique `revokedTuples`, `revokedGenerations`,
-`minimumGenerationRevision`, `maxEvidenceAgeMs` (at most five minutes) and
-`tcbStatus` (`UpToDate`). There is no expiry field. A policy that approves a
-tuple it also revokes is refused. The verdict requires one approved tuple to
-match every register of the connection-bound quote, and refuses a quote whose
-`digest("measured-tuple", registers)` is revoked. The fixed `gcp-tdx-native`
-floor still applies: native DCAP with `UpToDate` TCB, in-TEE TLS observed on the
-retained connection, zero RTMR3 and owner registers, and the explicit
-`unqualifiedPlatformPilot` opt-in until a reviewed SDK release qualifies the
-platform.
-
-### MROWNER rule (GCE C3)
-
-On Google Cloud C3 TDX VMs Google writes MROWNER = SHA-384 of the VM's PZID,
-the ASCII JSON `{"instanceId":N,"numericalProjectId":N,"zone":"z"}` (go-tdx-guest
-`gce/pzid.go`), so it differs on every VM; C4 leaves it zero. A tuple without
-`mrOwnerRule` is the zero rule: the quote's MROWNER must be zero. A tuple may
-instead carry the owner-signed rule `mrOwnerRule: {kind: "gce-pzid",
-projectNumber: "<uint64>", zones: [1 to 8, sorted, unique]}` with `mrOwner`
-set to 48 zero bytes. The rule is inside `digest("measured-tuple", ...)`, so a
-revocation names its project and zones; a rule-less tuple's digest is
-unchanged. Every other register still matches exactly, and exactly one tuple
-must match.
-
-Under a gce-pzid tuple the quote's MROWNER must be nonzero. If the evidence
-document carries `gce_pzid` (the PZID payload string, outside `report_data`,
-because the quoted MROWNER already binds it), its SHA-384 must equal MROWNER
-and its project and zone must satisfy the rule: the verdict reports
-`instanceIdentity: "verified"` and `gceInstance`. A presented PZID that is not
-canonical or does not hash to MROWNER refuses; it never downgrades. If the
-evidence carries no PZID, the quote is accepted with `instanceIdentity:
-"unverified"` and an unmet advisory check `gce_instance_identity`: the image is
-the approved one, but where it runs (project and zone) was not checked, which is
-no weaker than a C4 node, whose zero MROWNER names no VM at all. Callers that
-need the VM identity require `instanceIdentity === "verified"`. Shared vectors:
-`shared/vectors/gce-pzid.json`.
-
-Checkpoint rules: a sequence below the pinned minimum or the held one refuses
-(`policy_rollback`); a different policy at the held sequence refuses
-(`policy_fork`); a successor that drops a held revocation refuses
-(`revocation_reversed`). The sequence and policy hash persist through the same
-durable store as v1 under `anonrouter.release-policy-v3/<ownerRootSha256>`, so
-rollback and forks are refused across restarts. Revocation reversal is checked
-against the policy held in the current process.
-
-By default the feed is checked on every resolve. A network failure or 5xx may
-reuse the last verified policy for less than one hour after the feed last
-served it, then every resolve refuses (`cache_stale`). A 4xx, malformed answer,
-bad signature, rollback, fork or reversal refuses at once and never falls back
-to the cache or to bundled pins. Results report `signed-release-policy-v3`,
-the owner root, deployment, sequence and policy hash; `expiresAtMs` there is
-the end of that offline window, not a policy expiry.
-
-## Resolution and rollback
-
-Publication requests carry no API key, cookies or body, refuse redirects, have
-a ten-second timeout and a 256 KiB decoded-body limit. Policies refresh every
-five minutes; cache reads do not extend that interval. After a
-hardware-verified gateway identity mismatch, the client refreshes once and
-re-verifies the same nonce-bound evidence with the new approved policy. It
-does not widen an allowlist or retry paid inference.
-
-A network/5xx outage may use a previously verified cached approval for at most
-one hour, and never beyond its signed expiry. Invalid signatures, rollback,
-noncanonical documents and security downgrades refuse immediately. Selecting
-the signed source never silently falls back to bundled pins. Approval expiry
-is rechecked after hardware verification, including the bounded refresh path.
-
-Sequence numbers strictly increase when the payload changes, including renewal
-or an intentional deployment rollback. The same sequence and exact payload may
-be served again. Clients persist their highest accepted sequence and payload
-hash before returning an approval. Node and Python share an atomic lock-file
-format at `~/.cache/anonrouter/gateway-policy-v1`; IndexedDB provides transactional
-browser storage. Storage corruption, locks or write failures refuse verification.
-No credential or inference content is stored. Browser builds contain no static
-Node import. File durability is tested on macOS; unsupported filesystem behavior
-fails closed, and callers may supply an atomic durable store for their runtime.
-
-A crashed file-store writer can leave a `.lock` directory. Inspect whether any
-writer is still active before an operator removes that lock. Never delete or
-lower the high-water mark to make a rejected release pass. A new installation
-only knows the packaged minimum sequence and the signed freshness window; it
-cannot reconstruct an unseen revocation history. Deleting application storage
-also removes its learned sequence. This is not a transparency-log protocol.
-
-## Client API
-
-After activation, the packaged flag selects updates automatically for the two
-known production origins when hop 1 is requested. Before activation, an explicit
-opt-in is available for a signed publication canary:
+Build this candidate before running it. The npm latest package is still 0.1.2.
+Install/build the native verifier separately and set
+`ANONROUTER_DCAP_VERIFIER_BIN` to its path, or put it on PATH.
 
 ```typescript
-const client = createClient({ apiKey, gatewayPolicyUpdates: true });
-// Hardware/TLS requirements still apply; provide the existing chain verifier
-// and observed TLS SPKI to verifyGateway()/requireGateway as usual.
+import { verifyContentNode } from "@anonrouter/confidential";
+
+const result = await verifyContentNode();
+console.log(result.policy.sequence, result.verdict.verificationLevel);
 ```
 
-```python
-client = ConfidentialClient(api_key=api_key, gateway_policy_updates=True)
+This Node-only helper sends one credential-free attestation GET with a fresh
+nonce over a normally validated TLS connection. It observes the connection's
+SPKI, verifies the quote on that socket, and closes it. It does not mint tickets,
+send inference, or spend money. A browser cannot run the native engine or inspect
+TLS certificates, and this helper refuses there.
+
+For inference, configure required connection binding so content uses its own
+retained verified socket:
+
+```typescript
+import { createClient } from "@anonrouter/confidential";
+import { createAnonRouterDcapVerifier } from "@anonrouter/confidential/dcap";
+
+const client = createClient({
+  apiKey,
+  gatewayConnectionBinding: {
+    mode: "required",
+    verification: { chainVerifier: createAnonRouterDcapVerifier() }
+  }
+});
+const result = await client.verifyGateway(); // no key or ticket sent
+// Subsequent client operations independently verify and retain their own socket.
 ```
 
-`false` selects exact bundled/caller policies. A custom signed source can use a
-caller-reviewed authority and storage. JavaScript exposes
-`createSignedGatewayPolicySource`, `verifySignedGatewayPolicy`, and the optional
-Node `@anonrouter/confidential/policy-state` adapter. Python exposes
-`SignedGatewayPolicySource`, `verify_signed_gateway_policy`, and
-`FileGatewayPolicyStateStore`. Custom stores must atomically refuse lower
-sequences or a changed payload at the same sequence. Results report
-`signed-release-authority`, authority, sequence, payload hash and signed expiry.
+`createReleasePolicyV3Source()` also uses the packaged production defaults.
+Callers can supply independent `trust`, `url`, `origins`, `stateStore`, `fetch`,
+`refreshMs` and `maxOfflineMs` for another deployment. Custom roots remain an
+explicit caller decision. Exact caller policies override feeds. The legacy
+Phala source is available through `createSignedGatewayPolicySource()`; its
+packaged v1 activation flag remains off. `gatewayPolicyUpdates: false` disables
+automatic feed selection and uses exact caller/bundled policies.
 
-## Release tooling and activation gates
+## Release-v3 contract
 
-Tuple-form preparation (Phala overlap approvals through a retained manifest set,
-and the non-signable GCP qualification candidate) is described in
-[gateway-platform-tuples.md](gateway-platform-tuples.md#signed-approval-preparation-scriptsgateway-policy-releasemjs).
+The strict envelope has `protocol` (`anonrouter-content-release-envelope-v3`),
+`role` (`release-policy`), `groupId`, `ownerRootSha256`, `payload`, `signatures`.
+Both signatures are required in fixed order: `custodian.prod.usb`, then
+`custodian.prod.laptop`. Neither v1 nor v2 is accepted by the v3 verifier.
 
-Build the SDK, then prepare from the independently retained accepted manifest
-and its generated strict gateway policy:
+Both sign SHA-256 of ASCII `anonrouter-content-release-v3/authority/` + role +
+NUL, followed by canonical `{groupId, ownerRootSha256, payload}`. Canonical
+JSON has sorted keys, printable ASCII and nonnegative safe integers.
+`digest(d, v)` is SHA-256 of ASCII `anonrouter-content-node-bootstrap-v1/` +
+`d` + NUL, then canonical JSON of `v`.
 
-```sh
-node scripts/gateway-policy-release.mjs prepare \
-  --manifest /reviewed/release-manifest.production.final.json \
-  --policy /reviewed/measurement-policy.production.json \
-  --sequence 1 --issued-at-ms ISSUED_MS --expires-at-ms EXPIRES_MS \
-  --out /reviewed/gateway-policy.payload
-```
+The payload carries `protocol`, `kind` (`content-node-release-policy`),
+`deploymentId`, `sequence`, `issuedAtMs`, 1..16 measured `tuples`, sorted unique
+`revokedTuples`, `revokedGenerations`, `minimumGenerationRevision`,
+`maxEvidenceAgeMs` (at most five minutes), `tcbStatus` (`UpToDate`), and optionally
+`requireGcePzid` (boolean). It has no expiry. Each tuple pins every TDX register,
+TD attributes and XFAM together; exactly one complete tuple must match. Mixing
+registers from different approved tuples fails. Approved and observed tuple
+digests must not be revoked.
 
-This creates an **unsigned** payload and `.signing-bytes` file. It checks clean
-finalized manifest shape, manifest hash, app, compose, release, OS and origin
-agreement and the non-negotiable security floor. It does not independently
-prove live hardware: the existing fresh DCAP/TLS acceptance gates must run on
-that exact policy before signing. Do not label preparation as approval.
+## Optional machine identity
 
-Once the approved purpose-specific signer supplies two public detached
-signatures in an array of `{keyId, signature}` records:
+Google C3 writes MROWNER = SHA-384 of the canonical PZID JSON
+`{"instanceId":N,"numericalProjectId":N,"zone":"z"}`. The signed tuple's
+`mrOwnerRule: {kind: "gce-pzid", projectNumber, zones}` carries a zero MROWNER
+placeholder and is included in the tuple digest. Every other register still
+matches exactly. Rule-less tuples require actual MROWNER zero (C4).
 
-```sh
-node scripts/gateway-policy-release.mjs assemble \
-  --payload /reviewed/gateway-policy.payload \
-  --signatures /reviewed/gateway-policy.signatures.json \
-  --out /reviewed/gateway-policy.json
-node scripts/gateway-policy-release.mjs verify \
-  --envelope /reviewed/gateway-policy.json
-```
+A presented `gce_pzid` must be canonical, hash to quoted MROWNER, and belong to
+the rule's project/zones. Otherwise verification fails. Absence is accepted with
+`instanceIdentity: "unverified"` and an unmet advisory; no project/zone claim is
+established. Valid PZID reports `verified` and `gceInstance`; zero-rule tuples
+report `not-applicable`.
 
-Assembly verifies both production origins against packaged roots and refuses
-unsigned/test/development approvals. It writes a new artifact, never overwrites
-an existing one, and does not publish it. Archive each policy and signatures.
+A future owner-signed payload may set `requireGcePzid: true` to require verified
+machine identity. Missing PZID and zero-rule tuples then fail the required
+`gce_instance_identity` check. Absent/false keeps identity optional. This is a
+supported SDK tightening option; adopting it also requires backend signer/feed
+support. No policy was changed in this work.
 
-**Operational gates (updated after first publication):**
+## Refresh and rollback
 
-1. **Complete:** owner-installed purpose-specific signer in backend branch
-   `gateway-policy-activation-20261006`; see canonical backend runbook
-   `docs/operations/GATEWAY_POLICY_AUTHORITY.md`. Its fixed public-artifact
-   operation preserves custody/session/roster/source checks and signs only the
-   exact policy domain. Owner installation and session activation were separate
-   gates. Agents never read private keys or activate the owner session.
-2. **First approval complete:** sequence 1 was prepared after fresh packed
-   hardware/TLS acceptance, then signed by production USB/laptop custodians,
-   ledger 78. Its exact unsigned payload is committed at
-   `deploy/phala/gateway-policy.approval.json`. Future renewals need new higher
-   sequences and a fresh committed approval prepared within five minutes of
-   signing; use `npm run gateway:policy:authorize -- --out NEW_ENVELOPE_FILE`.
-   Continuing renewal ownership is pending; no background renewal scheduler was
-   installed. Rollback is a higher-sequence approval of a retained release.
-3. **Complete:** the exact verified envelope is public under the fixed website
-   `.well-known/anonrouter/` path, KMS site-only sequence 1791329336. Independent
-   HTTP 200/no-redirect, JSON/CORS/no-store, byte/hash and signature checks pass.
-   Coordinate future publication with gateway promotion; the single-policy
-   protocol does not overlap rolling gateway releases or guarantee zero downtime.
-4. **First-feed acceptance complete:** exact packed JavaScript/Python from
-   `16f1612d40984eae866503dd6f960b48c4e6b3a9` passed real DCAP/observed TLS at
-   both origins with signed-release-authority provenance and forced refresh.
-   Separate processes/languages reused durable state. A real isolated browser
-   accepted cross-origin feed/signatures with default IndexedDB and passed full
-   page reload, without a Node global. Expiry/tamper/threshold/conflict refused;
-   durable rollback used a separate simulated higher checkpoint. No real gateway
-   rotation or revocation was performed. Browser acceptance establishes
-   publication/storage; native hardware/TLS verification is established in the
-   JS/Python runtime checks.
-5. **Pending renewal ownership and separate SDK release:** enable the packaged
-   flag, retain minimum sequence 1 (or a newer accepted publication), rebuild and
-   verify the exact release artifacts, then use separately authorized
-   GitHub/registry publication. Renew by October 11 before October 13 expiry;
-   automatic clients fail closed if operators stop maintaining signed approvals.
+The default source checks the feed on every resolve. Publication requests carry
+no API key, cookies or body, refuse redirects, have a ten-second timeout and a
+1 MiB decoded-body limit. Only verified policies are cached. Network/5xx outages
+can reuse a verified policy for less than one hour after confirmation; invalid
+signatures, malformed answers, 4xx, rollback, forks and revocation reversal fail
+immediately. There is no fallback to bundled Phala pins after selecting v3.
 
-These gates are necessary before saying default SDK users automatically follow
-production gateway updates. Clients on older SDKs still need the migration
-release. Neither automatic policy updates nor hardware verification fixes
-provider outages, rate limits, metering or missing provider GPU evidence.
+A lower sequence or a changed payload at the held sequence fails. The highest
+sequence and policy hash persist before acceptance under
+`anonrouter.release-policy-v3/<ownerRootSha256>` using the existing atomic
+Node/IndexedDB store. Dropped tuple revocations are also rejected against the
+policy held in process. That revocation list is not persisted across restarts;
+the durable sequence/hash still prevents replay of older approvals.
 
-## Verification
+A hardware-verified identity mismatch allows one forced feed refresh and
+re-verification of the same nonce/evidence/socket. It never retries paid
+inference. `expiresAtMs` on a v3 approval bounds offline use, not policy lifetime.
+Deleting stored checkpoints loses learned history; this is not a transparency log.
 
-Both languages consume `shared/vectors/gateway-policy-authority.json`:
-synthetic public keys and signatures only, never production approval material.
-CI and release gates run signature/refusal vectors, cross-language persisted
-rollback tests and publication-tool preparation/refusal tests. Browser bundling
-and empty-environment artifact installation are checked separately.
+## Python and legacy Phala
+
+Python qualifies exact GCP tuple policies and preserves native DCAP and retained
+TLS requirements. It does not implement release-v3 feed verification yet, so it
+must not be described as verifying current GCP production by default.
+
+The earlier Phala v1 authority remains available explicitly. It authorizes exact
+manifest-bound policies with at most seven-day expiry and two custodian
+signatures over `anonrouter.gateway-policy-signature/v1\n` plus the canonical
+payload string. Its independently packaged roster and security floor stay in
+force. The earlier sequence-1 approval/renewal dates are historical; reverify
+availability and expiry before using it.

@@ -65,16 +65,11 @@ GatewayPlatformKind = Literal["phala-dstack-kms", "gcp-tdx-native"]
 
 GATEWAY_PLATFORM_KINDS: tuple[str, ...] = ("phala-dstack-kms", "gcp-tdx-native")
 
-#: Whether a platform kind's boot chain has been qualified for this SDK release.
-#: gcp-tdx-native is NOT: a small C4 TDX VM produced a genuine natively verified
-#: quote, but no AnonRouter guest has yet proved that Google's firmware measures
-#: its UKI (whose command line names the verity root holding the application)
-#: into RTMR1 on this platform. Until a reviewed SDK release flips this, the packaged
-#: registry and the signed feed refuse the kind and the verifier fails it unless
-#: the caller explicitly opted into an unqualified pilot.
+#: Qualified boot chains; native DCAP and retained-socket TLS stay mandatory.
+#: Python supports exact tuple policies; release-v3 feed support remains JS-only.
 GATEWAY_PLATFORM_QUALIFIED: dict[str, bool] = {
     "phala-dstack-kms": True,
-    "gcp-tdx-native": False,
+    "gcp-tdx-native": True,
 }
 
 #: The longest validity window a single tuple may claim (366 days).

@@ -17,8 +17,8 @@
     ],
     "threshold": 2,
     "keys": {
-      "test-0": "5659990f336f584f4d5a91b89b0250ab3ed51366405ea4aacb83e9241a0f7edf",
-      "test-1": "064108923a8351c592ae5e2f5e32f9491a83b7a3f197c2a3b941a82ae8d405fc"
+      "test-0": "2d11b4a95db948de7adabf8bce7791ee898118823cb027508fb2a7b2ab5b5e53",
+      "test-1": "57b6f57dc19db784e679b7dcd21c1be029cb0fe72d51beb570efd0baf1b6aba8"
     },
     "minSequence": 1,
     "maxLifetimeMs": 604800000,
@@ -2264,8 +2264,8 @@
   ],
   "verifyCases": [
     {
-      "name": "gcp pilot: release A on firmware 1 over the retained socket",
-      "why": "The only shape that passes: whole tuple, native DCAP, same-socket key, explicit pilot. The unqualified boot chain stays visible as an unmet advisory.",
+      "name": "qualified GCP: release A on firmware 1 over the retained socket",
+      "why": "Whole tuple, native DCAP and same-socket key are mandatory on the qualified platform.",
       "policy": {
         "platformKind": "gcp-tdx-native",
         "source": "synthetic-gcp-tuple-vectors",
@@ -2351,7 +2351,6 @@
         "reason": null,
         "failedRequiredChecks": [],
         "unmetAdvisoryChecks": [
-          "platform_boot_chain_qualified",
           "firmware_event_log_replayed"
         ],
         "releaseTupleDetail": "tuple=release-a@fw1"
@@ -2445,7 +2444,6 @@
         "reason": null,
         "failedRequiredChecks": [],
         "unmetAdvisoryChecks": [
-          "platform_boot_chain_qualified",
           "firmware_event_log_replayed"
         ],
         "releaseTupleDetail": "tuple=release-b@fw2"
@@ -2541,7 +2539,6 @@
           "release_tuple_matched"
         ],
         "unmetAdvisoryChecks": [
-          "platform_boot_chain_qualified",
           "firmware_event_log_replayed"
         ],
         "releaseTupleDetail": "no single approved release tuple matches every measured value"
@@ -2637,7 +2634,6 @@
           "release_tuple_matched"
         ],
         "unmetAdvisoryChecks": [
-          "platform_boot_chain_qualified",
           "firmware_event_log_replayed"
         ],
         "releaseTupleDetail": "no single approved release tuple matches every measured value"
@@ -2733,7 +2729,6 @@
           "release_tuple_matched"
         ],
         "unmetAdvisoryChecks": [
-          "platform_boot_chain_qualified",
           "firmware_event_log_replayed"
         ],
         "releaseTupleDetail": "no single approved release tuple matches every measured value"
@@ -2829,7 +2824,6 @@
           "release_tuple_matched"
         ],
         "unmetAdvisoryChecks": [
-          "platform_boot_chain_qualified",
           "firmware_event_log_replayed"
         ],
         "releaseTupleDetail": "no single approved release tuple matches every measured value"
@@ -2925,7 +2919,6 @@
           "release_tuple_matched"
         ],
         "unmetAdvisoryChecks": [
-          "platform_boot_chain_qualified",
           "firmware_event_log_replayed"
         ],
         "releaseTupleDetail": "no single approved release tuple matches every measured value"
@@ -3021,7 +3014,6 @@
           "release_tuple_matched"
         ],
         "unmetAdvisoryChecks": [
-          "platform_boot_chain_qualified",
           "firmware_event_log_replayed"
         ],
         "releaseTupleDetail": "no single approved release tuple matches every measured value"
@@ -3117,7 +3109,6 @@
           "owner_config_registers_zero"
         ],
         "unmetAdvisoryChecks": [
-          "platform_boot_chain_qualified",
           "firmware_event_log_replayed"
         ],
         "releaseTupleDetail": "tuple=release-a@fw1"
@@ -3213,7 +3204,6 @@
           "owner_config_registers_zero"
         ],
         "unmetAdvisoryChecks": [
-          "platform_boot_chain_qualified",
           "firmware_event_log_replayed"
         ],
         "releaseTupleDetail": "tuple=release-a@fw1"
@@ -3309,7 +3299,6 @@
           "rtmr3_unextended"
         ],
         "unmetAdvisoryChecks": [
-          "platform_boot_chain_qualified",
           "firmware_event_log_replayed"
         ],
         "releaseTupleDetail": "tuple=release-a@fw1"
@@ -3405,7 +3394,6 @@
           "instance_id_derives_from_boot_key"
         ],
         "unmetAdvisoryChecks": [
-          "platform_boot_chain_qualified",
           "firmware_event_log_replayed"
         ],
         "releaseTupleDetail": "tuple=release-a@fw1"
@@ -3501,7 +3489,6 @@
           "instance_id_derives_from_boot_key"
         ],
         "unmetAdvisoryChecks": [
-          "platform_boot_chain_qualified",
           "firmware_event_log_replayed"
         ],
         "releaseTupleDetail": "tuple=release-a@fw1"
@@ -3583,7 +3570,6 @@
           "release_tuple_matched"
         ],
         "unmetAdvisoryChecks": [
-          "platform_boot_chain_qualified",
           "firmware_event_log_replayed"
         ],
         "releaseTupleDetail": "the matching release tuple is outside its validity window"
@@ -3665,7 +3651,6 @@
           "release_tuple_matched"
         ],
         "unmetAdvisoryChecks": [
-          "platform_boot_chain_qualified",
           "firmware_event_log_replayed"
         ],
         "releaseTupleDetail": "the matching release tuple is outside its validity window"
@@ -3761,7 +3746,6 @@
           "tls_certificate_bound_to_quote"
         ],
         "unmetAdvisoryChecks": [
-          "platform_boot_chain_qualified",
           "firmware_event_log_replayed"
         ],
         "releaseTupleDetail": "tuple=release-a@fw1"
@@ -3857,7 +3841,6 @@
           "tls_certificate_bound_to_quote"
         ],
         "unmetAdvisoryChecks": [
-          "platform_boot_chain_qualified",
           "firmware_event_log_replayed"
         ],
         "releaseTupleDetail": "tuple=release-a@fw1"
@@ -3953,15 +3936,14 @@
           "tls_observed_on_retained_connection"
         ],
         "unmetAdvisoryChecks": [
-          "platform_boot_chain_qualified",
           "firmware_event_log_replayed"
         ],
         "releaseTupleDetail": "tuple=release-a@fw1"
       }
     },
     {
-      "name": "NO PILOT OPT-IN",
-      "why": "The native boot chain is unqualified, so an explicit caller acknowledgement is required.",
+      "name": "QUALIFIED PLATFORM: no pilot opt-in needed",
+      "why": "Qualified GCP boot chains require no pilot acknowledgement.",
       "policy": {
         "platformKind": "gcp-tdx-native",
         "source": "synthetic-gcp-tuple-vectors",
@@ -4042,12 +4024,10 @@
         "tcbStatus": "UpToDate"
       },
       "expected": {
-        "status": "failed",
-        "verificationLevel": "unverified",
-        "reason": "platform_boot_chain_qualified",
-        "failedRequiredChecks": [
-          "platform_boot_chain_qualified"
-        ],
+        "status": "ok",
+        "verificationLevel": "hardware-verified",
+        "reason": null,
+        "failedRequiredChecks": [],
         "unmetAdvisoryChecks": [
           "firmware_event_log_replayed"
         ],
@@ -4142,7 +4122,6 @@
           "tcb_status_acceptable"
         ],
         "unmetAdvisoryChecks": [
-          "platform_boot_chain_qualified",
           "firmware_event_log_replayed"
         ],
         "releaseTupleDetail": "tuple=release-a@fw1"
@@ -4238,7 +4217,6 @@
           "tcb_status_acceptable"
         ],
         "unmetAdvisoryChecks": [
-          "platform_boot_chain_qualified",
           "firmware_event_log_replayed"
         ],
         "releaseTupleDetail": "tuple=release-a@fw1"
@@ -4412,7 +4390,7 @@
   ],
   "signedCases": [
     {
-      "name": "unqualified gcp-tdx-native approval is refused even with valid signatures",
+      "name": "qualified gcp-tdx-native approval accepts valid signatures",
       "origin": "https://content.gcp.example",
       "envelope": {
         "schema": "anonrouter.gateway-policy-envelope/v1",
@@ -4420,15 +4398,15 @@
         "signatures": [
           {
             "keyId": "test-0",
-            "signature": "54e793fd5d5d2a0e4acf682715a2700e2199ed487c786d472cd72021d94e54d6abd59d7698f9a730104abe33c11cd9355d0f4d0c499f784e77c9c3f18731ce04"
+            "signature": "51093951e0fcb192c15b100bf8b401335676e1cbdcf994a30c7acc288a71df39dc96fc24c496285052a018a6368f0177a0ce402ada2c55f684cd0f8b3800ee0c"
           },
           {
             "keyId": "test-1",
-            "signature": "e69a44dc09636a7b4f93814c4384571e177448b3ec7435ee586190e0bdf395931bf55abdeeed94304b530d3c25665c185dd044c1190c5bec1a3574e11baeb805"
+            "signature": "824bc1c40c6cddc5e91f420493f5e810b8be0b3a89af4f5c1340133daa26d8ab0dbc092ce6721a9c8c4bc8534d21cd99a0e1b2861a97d11f95835d04263fdf02"
           }
         ]
       },
-      "accepted": false
+      "accepted": true
     },
     {
       "name": "phala tuple-form approval is accepted",
@@ -4439,11 +4417,11 @@
         "signatures": [
           {
             "keyId": "test-0",
-            "signature": "e771f4ad90eb22ac7f08bd89344cc3858f714e6cc8c3df076efaaa3378fa3890ab1cacb10ed47b09ed4f30dcf257856714e4b0520d385fdbc85ad171ca890503"
+            "signature": "be64189138638261ae278e7fb2a3f40af0e0487bc9c91b5349b13b4860abe8f4c01d2352acf3c2804ca43c2fb76dae55d1d784f6e130c733edaf7ad263d9da03"
           },
           {
             "keyId": "test-1",
-            "signature": "f53afda39715bca245c0b0f036003876a0a7ebc2d070da22eaf7e334ae5b54101cb5c48e02b811350caad90845e176cf00e2f12228689dfd937cdaea57aaea0d"
+            "signature": "cc916c1403a61d5524d2cd15b4b96a5106a94ef1b78c78d2867752b96261616d337177ed29b404192549edf7ec49112d02eacafe15c74f089d84b5b5c5af9104"
           }
         ]
       },

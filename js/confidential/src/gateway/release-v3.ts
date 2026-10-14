@@ -26,6 +26,12 @@ import {
   RELEASE_V3_DIGEST_PROTOCOL
 } from "./release-v3-canonical.js";
 import { createDefaultGatewayPolicyStateStore } from "./state.js";
+import productionAuthority from "./release-policy-v3-authority.json" with { type: "json" };
+
+/** Independently packaged owner roots and publication location. No image pins. */
+export function packagedReleasePolicyV3Authority(): { trust: ReleasePolicyV3Trust; url: string; origins: string[] } {
+  return structuredClone(productionAuthority) as { trust: ReleasePolicyV3Trust; url: string; origins: string[] };
+}
 
 export const RELEASE_V3_ENVELOPE_PROTOCOL = "anonrouter-content-release-envelope-v3";
 export const RELEASE_V3_SIGNATURE_DOMAIN_PREFIX = "anonrouter-content-release-v3/authority/";
@@ -92,6 +98,8 @@ export interface ReleasePolicyV3Checkpoint {
 
 /** A release policy whose two owner signatures verified against the pinned root. */
 export interface VerifiedReleasePolicyV3 {
+  /** Optional signed tightening: require a quote-bound GCE machine identity. */
+  requireGcePzid?: boolean;
   deploymentId: string;
   groupId: string;
   ownerRootSha256: string;
@@ -227,7 +235,9 @@ export function verifyReleasePolicyV3(
   envelope: unknown, trust: ReleasePolicyV3Trust, previous?: ReleasePolicyV3Checkpoint
 ): VerifiedReleasePolicyV3 {
   const payload = verifyReleaseEnvelopeV3(envelope, trust, "release-policy");
-  const p = record(payload); fields(p, PAYLOAD_FIELDS);
+  const p = record(payload);
+  fields(p, p.requireGcePzid === undefined ? PAYLOAD_FIELDS : [...PAYLOAD_FIELDS, "requireGcePzid"]);
+  if (p.requireGcePzid !== undefined && typeof p.requireGcePzid !== "boolean") refuse("contract_invalid", "requireGcePzid must be boolean");
   if (p.protocol !== RELEASE_V3_DIGEST_PROTOCOL || p.kind !== RELEASE_V3_POLICY_KIND) refuse("contract_invalid", "not a release policy");
   if (identifier(p.deploymentId) !== trust.deploymentId) refuse("wrong_deployment");
   const sequence = safeInteger(p.sequence, 1);
@@ -255,7 +265,8 @@ export function verifyReleasePolicyV3(
   return {
     deploymentId: trust.deploymentId, groupId: trust.groupId, ownerRootSha256: trust.ownerRootSha256,
     sequence, issuedAtMs, policySha256, tuples, revokedTuples, revokedGenerations, minimumGenerationRevision,
-    maxEvidenceAgeMs, tcbStatus: "UpToDate"
+    maxEvidenceAgeMs, tcbStatus: "UpToDate",
+    ...(p.requireGcePzid === undefined ? {} : { requireGcePzid: p.requireGcePzid as boolean })
   };
 }
 
@@ -295,7 +306,8 @@ export function releasePolicyV3GatewayPolicy(verified: VerifiedReleasePolicyV3, 
       sequence: verified.sequence,
       policySha256: verified.policySha256,
       tuples: verified.tuples.map(({ tupleDigest: _digest, ...tuple }) => structuredClone(tuple)),
-      revokedTuples: [...verified.revokedTuples]
+      revokedTuples: [...verified.revokedTuples],
+      ...(verified.requireGcePzid === undefined ? {} : { requireGcePzid: verified.requireGcePzid })
     },
     source: `anonrouter-release-policy-v3:${verified.deploymentId}:${verified.policySha256}`,
     version: `release-policy-v3/${verified.sequence}`,
@@ -337,11 +349,11 @@ export interface VerifiedReleasePolicyV3Approval {
 
 export interface ReleasePolicyV3SourceOptions {
   /** The pinned owner root. */
-  trust: ReleasePolicyV3Trust;
+  trust?: ReleasePolicyV3Trust;
   /** https publication URL, on a host separate from every gateway origin. */
-  url: string;
+  url?: string;
   /** Gateway origins this owner root may approve. */
-  origins: string[];
+  origins?: string[];
   /** Feed check interval. Default 0: check on every resolve (every connection). Max 300000. */
   refreshMs?: number;
   /** Offline use of the last verified policy. Default and maximum 3600000 (one hour). */
@@ -358,7 +370,7 @@ export interface ReleasePolicyV3Source {
   resolve(origin: string, signal?: AbortSignal, forceRefresh?: boolean): Promise<VerifiedReleasePolicyV3Approval>;
 }
 
-function validateSourceOptions(options: ReleasePolicyV3SourceOptions): { refreshMs: number; maxOfflineMs: number; origins: string[] } {
+function validateSourceOptions(options: ReleasePolicyV3SourceOptions & { trust: ReleasePolicyV3Trust; url: string; origins: string[] }): { refreshMs: number; maxOfflineMs: number; origins: string[] } {
   validateReleasePolicyV3Trust(options.trust);
   let url: URL;
   try { url = new URL(options.url); } catch { return refuse("trust_invalid", "invalid publication URL"); }
@@ -383,9 +395,11 @@ function validateSourceOptions(options: ReleasePolicyV3SourceOptions): { refresh
  * bad signature, rollback, fork or revocation reversal refuses at once and never
  * falls back to the cache or to bundled pins.
  */
-export function createReleasePolicyV3Source(options: ReleasePolicyV3SourceOptions): ReleasePolicyV3Source {
-  const trust = structuredClone(options.trust);
-  const { refreshMs, maxOfflineMs, origins } = validateSourceOptions({ ...options, trust });
+export function createReleasePolicyV3Source(options: ReleasePolicyV3SourceOptions = {}): ReleasePolicyV3Source {
+  const defaults = packagedReleasePolicyV3Authority();
+  const trust = structuredClone(options.trust ?? defaults.trust);
+  const url = options.url ?? defaults.url;
+  const { refreshMs, maxOfflineMs, origins } = validateSourceOptions({ ...options, trust, url, origins: options.origins ?? defaults.origins });
   const fetchImpl = options.fetch ?? globalThis.fetch.bind(globalThis);
   const now = options.now ?? Date.now;
   const stateStore = options.stateStore ?? createDefaultGatewayPolicyStateStore();
@@ -397,7 +411,7 @@ export function createReleasePolicyV3Source(options: ReleasePolicyV3SourceOption
   async function fetchEnvelope(signal?: AbortSignal): Promise<unknown | "offline"> {
     let response: Response;
     try {
-      response = await fetchImpl(options.url, { method: "GET", credentials: "omit", redirect: "error", cache: "no-store",
+      response = await fetchImpl(url, { method: "GET", credentials: "omit", redirect: "error", cache: "no-store",
         headers: { accept: "application/json" },
         signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(10_000)]) : AbortSignal.timeout(10_000) });
     } catch {

@@ -4,6 +4,47 @@ Prepared 2026-10-06. This is an unpublished repair candidate; npm latest remains
 0.1.2 until the separate publication succeeds. Python registry availability must
 be established separately; existing wheel/sdist release assets are supported.
 
+## GCP release-v3 update, 2026-10-14
+
+0.1.3 package versions were already staged on `sdk-gce-pzid` at `31bd154`.
+This work completes that version's GCP verification changes; it does not bump
+the unpublished candidate again. npm latest remains 0.1.2 for both JS packages.
+PyPI returns 404 for the Python project. No npm/PyPI publish or production
+mutation is authorized.
+
+JavaScript now defaults to the production owner-signed release-v3 feed with
+fixed USB/laptop public keys and minimum sequence 6. There are no packaged GCP
+image pins. GCP is qualified in both verifier cores; Python release-v3 feed
+support remains pending. Phala exact policies and the opt-in v1 source remain.
+PZID is optional; a signed `requireGcePzid: true` can require it later.
+
+Fresh credential-free attestation passed on the real production endpoint with
+native dcap-qvl 0.6.1, Intel QE/platform `UpToDate`, nonce binding, approved
+release tuple and the TLS key observed on the retained socket. The live node
+omits PZID; its image verifies and machine identity stays `unverified`.
+Google CCEL replay remains advisory: UKI/verity provenance rests on release
+review. This acceptance is read-only and spends no inference credit.
+
+Validation of this candidate: 697 JS confidential tests and 14 client tests;
+515 Python tests; JS/Python type checks; ruff; 35 Node and 43 Python real
+loopback TLS cases; 33 retained-operation cases; mock E2EE self-test; shared
+file and CLI parity; installed npm tarballs plus wheel/sdist smoke checks.
+Live checks ran from the installed JS tarball with fresh nonces. Wrong nonce,
+origin, observed TLS key, separate-socket assertion and owner signature all
+failed closed. `scripts/verify-live-gcp.mjs` reproduces the read-only check. The content-free
+result is retained in [the live evidence record](evidence/sdk-0.1.3-gcp-live-2026-10-14.json).
+
+Live suites in the ordinary unit runs skipped because no live origin was set;
+the dedicated packed GCP probe above ran against production instead. The native
+engine was built locally from locked SDK source; this is hardware verification,
+not proof of reproducible Linux distribution bytes. The PCK cache cancellation
+fixture had the wrong platform ID and now uses the quote fixture's FMSPC and
+platform-only cache expectation. Existing Python cache-test lint was corrected.
+
+The preceding W8/v1 notes and the sections below describe the earlier repair
+candidate. Their activation/renewal dates are historical; use the GCP defaults
+above for current JavaScript production verification.
+
 ## Repairs
 
 - Refresh the packaged hop-1 policy from reviewed retained accepted W8 manifest
