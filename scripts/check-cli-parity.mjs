@@ -30,6 +30,7 @@ const CASES = [
   { name: "doctor, no origin", argv: ["doctor", "--compact"] },
   { name: "doctor, an origin this package pins", argv: ["doctor", "--origin", "https://api.private.anonrouter.ai", "--compact"] },
   { name: "doctor, an origin it does not", argv: ["doctor", "--origin", "https://example.invalid", "--compact"] },
+  { name: "doctor, the GCP release-v3 origin", argv: ["doctor", "--origin", "https://api.anonrouter.ai", "--compact"] },
   {
     name: "gateway against an unpinned origin (fails closed offline)",
     argv: ["gateway", "--origin", "https://nothing-is-pinned-for-this.example", "--compact"],

@@ -521,7 +521,11 @@ class RetainedGatewayConnection:
                 self._channel.guard(); verdict = self._bounded(verify)
             binding = verdict.binding
             if verdict.status != "ok" or verdict.verification_level != "hardware-verified" or verdict.tcb_status != "UpToDate" or binding is None or binding.tls_spki_sha256 != self._channel.pin or not any(c.name == "quote_signature_chain" and c.passed for c in verdict.checks) or any(c.required and not c.passed for c in verdict.checks) or type(evidence.get("issued_at_ms")) is not int:
-                raise ConfidentialError("a fully verified gateway identity is required for connection binding")
+                refusal = ConfidentialError("a fully verified gateway identity is required for connection binding")
+                # Content-free diagnostics only: never authorizes anything, and
+                # the socket is closed below.
+                refusal.verdict = verdict  # type: ignore[attr-defined]
+                raise refusal
             self._channel.evidence_expiry = evidence["issued_at_ms"] + active.max_evidence_age_ms
             self._channel.authorized = True
             self._verdict = cast(GatewayVerificationResult, _freeze(verdict))

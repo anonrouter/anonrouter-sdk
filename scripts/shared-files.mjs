@@ -10,7 +10,8 @@
 
 export const SYNCED_FILES = {
   "shared/release-policy-v3-authority.json": [
-    "js/confidential/src/gateway/release-policy-v3-authority.json"
+    "js/confidential/src/gateway/release-policy-v3-authority.json",
+    "python/src/anonrouter_confidential/release_policy_v3_authority.json"
   ],
   "shared/gateway-policy-authority.json": [
     "js/confidential/src/gateway/gateway-policy-authority.json",

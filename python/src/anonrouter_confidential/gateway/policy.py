@@ -173,6 +173,11 @@ class GatewayMeasurementPolicy:
     platform_kind: str | None = None
     #: Tuple form only: the approved releases, evaluated as OR of whole tuples.
     release_tuples: list[GatewayReleaseTuple] | None = None
+    #: gcp-tdx-native only, instead of ``release_tuples``: the verified facts of an
+    #: owner-signed release policy v3, in its JSON (camelCase) form: exact quote
+    #: register tuples with no expiry, revoked tuple digests and the sequence.
+    #: Only ``release_v3`` builds it; ``load_gateway_policy`` never accepts it.
+    release_policy_v3: dict[str, Any] | None = None
 
 
 def _hex_list(field: str, value: Any, exact_chars: int | None = None) -> list[str]:
@@ -244,6 +249,88 @@ def gateway_policy_requires_retained_connection(policy: GatewayMeasurementPolicy
     certificate proves nothing about the node that receives the request.
     """
     return gateway_policy_platform_kind(policy) == "gcp-tdx-native"
+
+
+MAX_RELEASE_V3_TUPLES = 16
+MAX_RELEASE_V3_REVOKED_TUPLES = 4096
+RELEASE_V3_IDENTIFIER = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,127}\Z")
+_RELEASE_V3_TUPLE_FIELDS = ("tupleId", "mrTd", "mrConfigId", "mrOwner", "mrOwnerConfig", "rtmr0", "rtmr1",
+                            "rtmr2", "rtmr3", "tdAttributes", "xfam")
+_RELEASE_V3_POLICY_FIELDS = ("ownerRootSha256", "deploymentId", "sequence", "policySha256", "tuples", "revokedTuples")
+
+
+def validate_gateway_measured_tuple_v3(raw: Any, index: int) -> dict[str, Any]:
+    """Validate one release policy v3 measured tuple (JSON form). Returns a copy."""
+    from .gce_pzid import GCE_ZERO_MR_OWNER, GcePzidError, validate_gce_mr_owner_rule
+
+    at = f"releasePolicyV3.tuples[{index}]"
+    if not isinstance(raw, dict):
+        raise GatewayPolicyError(f"{at} must be an object")
+    expected = set(_RELEASE_V3_TUPLE_FIELDS) | ({"mrOwnerRule"} if "mrOwnerRule" in raw else set())
+    if set(raw) != expected:
+        raise GatewayPolicyError(f"{at} must have exactly the fields {', '.join(sorted(expected))}")
+    if not isinstance(raw["tupleId"], str) or not RELEASE_V3_IDENTIFIER.match(raw["tupleId"]):
+        raise GatewayPolicyError(f"{at}.tupleId is invalid")
+    tuple_: dict[str, Any] = {"tupleId": raw["tupleId"]}
+    for name in _RELEASE_V3_TUPLE_FIELDS[1:]:
+        tuple_[name] = _exact_hex(f"{at}.{name}", raw[name], 16 if name in ("tdAttributes", "xfam") else 96)
+    if "mrOwnerRule" in raw:
+        try:
+            tuple_["mrOwnerRule"] = validate_gce_mr_owner_rule(raw["mrOwnerRule"], f"{at}.mrOwnerRule")
+        except GcePzidError as exc:
+            raise GatewayPolicyError(str(exc)) from None
+        # One encoding per rule: the MROWNER a rule admits is never the tuple's own field.
+        if tuple_["mrOwner"] != GCE_ZERO_MR_OWNER:
+            raise GatewayPolicyError(f"{at}.mrOwner must be the zero placeholder under a gce-pzid rule")
+    return tuple_
+
+
+def validate_gateway_release_policy_v3(raw: Any) -> dict[str, Any]:
+    """Re-check the release policy v3 facts carried in a gateway policy.
+
+    The owner signatures were checked when the envelope was verified; this
+    re-checks shape and the revocation rule on every use, so a mutated or
+    hand-built object cannot approve a revoked tuple.
+    """
+    from .release_v3_canonical import release_tuple_digest
+
+    if not isinstance(raw, dict):
+        raise GatewayPolicyError("releasePolicyV3 must be an object")
+    expected = set(_RELEASE_V3_POLICY_FIELDS) | ({"requireGcePzid"} if "requireGcePzid" in raw else set())
+    if set(raw) != expected:
+        raise GatewayPolicyError(f"releasePolicyV3 must have exactly the fields {', '.join(sorted(expected))}")
+    if "requireGcePzid" in raw and type(raw["requireGcePzid"]) is not bool:
+        raise GatewayPolicyError("releasePolicyV3.requireGcePzid must be boolean")
+    owner_root = _exact_hex("releasePolicyV3.ownerRootSha256", raw["ownerRootSha256"], 64)
+    policy_sha = _exact_hex("releasePolicyV3.policySha256", raw["policySha256"], 64)
+    if not isinstance(raw["deploymentId"], str) or not RELEASE_V3_IDENTIFIER.match(raw["deploymentId"]):
+        raise GatewayPolicyError("releasePolicyV3.deploymentId is invalid")
+    sequence = raw["sequence"]
+    if type(sequence) is not int or not 1 <= sequence <= _MAX_SAFE_INTEGER:
+        raise GatewayPolicyError("releasePolicyV3.sequence must be a positive safe integer")
+    tuples_raw = raw["tuples"]
+    if not isinstance(tuples_raw, list) or not 1 <= len(tuples_raw) <= MAX_RELEASE_V3_TUPLES:
+        raise GatewayPolicyError(f"releasePolicyV3.tuples must contain 1..{MAX_RELEASE_V3_TUPLES} tuples")
+    tuples = [validate_gateway_measured_tuple_v3(entry, index) for index, entry in enumerate(tuples_raw)]
+    if len({t["tupleId"] for t in tuples}) != len(tuples):
+        raise GatewayPolicyError("releasePolicyV3.tuples tupleIds must be unique")
+    revoked_raw = raw["revokedTuples"]
+    if not isinstance(revoked_raw, list) or len(revoked_raw) > MAX_RELEASE_V3_REVOKED_TUPLES:
+        raise GatewayPolicyError(
+            f"releasePolicyV3.revokedTuples must contain at most {MAX_RELEASE_V3_REVOKED_TUPLES} digests"
+        )
+    revoked = [_exact_hex(f"releasePolicyV3.revokedTuples[{i}]", v, 64) for i, v in enumerate(revoked_raw)]
+    if any(revoked[i - 1] >= revoked[i] for i in range(1, len(revoked))):
+        raise GatewayPolicyError("releasePolicyV3.revokedTuples must be sorted ascending and unique")
+    revoked_set = set(revoked)
+    if any(release_tuple_digest(t) in revoked_set for t in tuples):
+        raise GatewayPolicyError("releasePolicyV3 approves a tuple it also revokes")
+    result: dict[str, Any] = {"ownerRootSha256": owner_root, "deploymentId": raw["deploymentId"],
+                              "sequence": sequence, "policySha256": policy_sha, "tuples": tuples,
+                              "revokedTuples": revoked}
+    if "requireGcePzid" in raw:
+        result["requireGcePzid"] = raw["requireGcePzid"]
+    return result
 
 
 def _exact_hex(field: str, value: Any, chars: int) -> str:
@@ -390,6 +477,8 @@ def assert_gateway_platform_security_floor(policy: GatewayMeasurementPolicy) -> 
     if policy.platform_kind is None:
         if policy.release_tuples is not None:
             refuse("release tuples require an explicit platformKind")
+        if policy.release_policy_v3 is not None:
+            refuse("a release policy v3 requires platformKind gcp-tdx-native")
         if not policy.key_provider_id or not policy.platform:
             refuse("policy weakens mandatory security requirements")
         return
@@ -397,6 +486,18 @@ def assert_gateway_platform_security_floor(policy: GatewayMeasurementPolicy) -> 
         refuse("unknown platformKind")
     if policy.key_provider_id is not None or policy.platform is not None:
         refuse("a tuple-form policy cannot also carry independent platform or key-provider allowlists")
+    if policy.release_policy_v3 is not None:
+        if policy.platform_kind != "gcp-tdx-native":
+            refuse("a release policy v3 requires platformKind gcp-tdx-native")
+        if policy.release_tuples is not None:
+            refuse("a release policy v3 cannot also carry release tuples")
+        if policy.app_ids or policy.compose_hashes or policy.release_ids:
+            refuse("a release policy v3 pins quote registers only; the identity lists must be empty")
+        try:
+            validate_gateway_release_policy_v3(policy.release_policy_v3)
+        except GatewayPolicyError as exc:
+            refuse(str(exc))
+        return
     try:
         tuples = _validate_release_tuples(policy.platform_kind, policy.release_tuples)
     except GatewayPolicyError as exc:

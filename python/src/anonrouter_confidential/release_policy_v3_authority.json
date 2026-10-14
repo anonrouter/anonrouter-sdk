@@ -1,0 +1,22 @@
+{
+  "url": "https://anonrouter.ai/.well-known/anonrouter-content-release-v3.json",
+  "origins": [
+    "https://api.anonrouter.ai"
+  ],
+  "trust": {
+    "deploymentId": "gcp-content-production",
+    "groupId": "release-owner-production",
+    "keys": [
+      {
+        "keyId": "custodian.prod.usb",
+        "publicKey": "25238b49e6bccb09e8966be2340928399cc11acabefabf263e12e230a5a3389d"
+      },
+      {
+        "keyId": "custodian.prod.laptop",
+        "publicKey": "e57d592b5f1ccdbdac0b6d29052cfe32619b73e4323db80ea8f2b51e26fb0923"
+      }
+    ],
+    "ownerRootSha256": "10034ad2b11e9ef9f300da180a794010da369f2f14b2a896df42ceaf47077acb",
+    "minimumPolicySequence": 6
+  }
+}

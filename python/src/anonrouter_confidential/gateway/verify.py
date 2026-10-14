@@ -56,6 +56,12 @@ from .event_log import (
     replay_rtmrs,
     single_event_payload,
 )
+from .gce_pzid import (
+    GCE_PZID_RULE_KIND,
+    gce_instance_from_mr_owner,
+    gce_instance_resource,
+    gce_pzid_rule_admits,
+)
 from .policy import (
     GATEWAY_PLATFORM_QUALIFIED,
     GatewayMeasurementPolicy,
@@ -64,6 +70,11 @@ from .policy import (
     assert_gateway_platform_security_floor,
     gateway_policy_platform_kind,
     gateway_policy_requires_retained_connection,
+)
+from .release_v3_canonical import (
+    RELEASE_MEASURED_REGISTER_FIELDS,
+    ReleaseCanonicalError,
+    release_tuple_digest,
 )
 
 #: A vm_config blob is bounded so a hostile response cannot pin the CPU parsing it.
@@ -130,6 +141,14 @@ class GatewayVerificationResult:
     policy_version: str
     verified_at_ms: float
     extra: dict[str, Any] = field(default_factory=dict)
+    #: Under a release policy v3 gce-pzid tuple: "verified" (the evidence carried a
+    #: PZID whose SHA-384 is the quoted MROWNER, in the rule's project and zones),
+    #: "unverified" (no PZID presented; every other register matched), or
+    #: "not-applicable" (zero-rule tuple or not a release policy v3). None when
+    #: verification stopped before the tuple was judged.
+    instance_identity: str | None = None
+    #: The digest-verified GCE VM, only when ``instance_identity`` is "verified".
+    gce_instance: dict[str, str] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -143,6 +162,8 @@ class GatewayVerificationResult:
             "policy_version": self.policy_version,
             "verified_at_ms": self.verified_at_ms,
             "checks": [c.as_dict() for c in self.checks],
+            "instance_identity": self.instance_identity,
+            "gce_instance": dict(self.gce_instance) if self.gce_instance else None,
         }
 
 
@@ -227,6 +248,9 @@ def verify_gateway_attestation(
     kind = gateway_policy_platform_kind(policy)
     tuple_form = policy.platform_kind is not None or policy.release_tuples is not None
     native_gcp = kind == "gcp-tdx-native"
+    # An owner-signed release policy v3 pins exact quote registers with no expiry;
+    # its floor (policy_security_floor below) refuses it on any other kind.
+    release_v3 = policy.release_policy_v3
 
     # --- 0. Tuple-form policies prove their own floor ---------------------------
     # Legacy policies are checked exactly as before. A tuple-form policy is held
@@ -328,14 +352,27 @@ def verify_gateway_attestation(
             )
         )
         # Owner-supplied registers can carry configuration the tuple does not pin.
+        # MROWNER is the one exception, and only under a release policy v3 that
+        # carries an owner-signed gce-pzid rule: GCE C3 writes SHA-384(PZID) there.
+        # Which tuple (if any) admits a nonzero MROWNER is decided at the tuple
+        # match below; a zero-rule tuple never does.
+        mr_owner_zero = quote.mr_owner.lower() == _ZERO_REGISTER
+        owner_rule_in_policy = (
+            isinstance(release_v3, dict)
+            and isinstance(release_v3.get("tuples"), list)
+            and any(isinstance(t, dict) and "mrOwnerRule" in t for t in release_v3["tuples"])
+        )
         checks.append(
             check(
                 "owner_config_registers_zero",
-                all(
-                    value.lower() == _ZERO_REGISTER
-                    for value in (quote.mr_config_id, quote.mr_owner, quote.mr_owner_config)
-                ),
+                all(value.lower() == _ZERO_REGISTER for value in (quote.mr_config_id, quote.mr_owner_config))
+                and (mr_owner_zero or owner_rule_in_policy),
                 True,
+                None
+                if mr_owner_zero
+                else "MROWNER is nonzero; only a tuple's owner-signed gce-pzid rule may admit it (release_tuple_matched)"
+                if owner_rule_in_policy
+                else "MROWNER is nonzero and no owner-signed gce-pzid rule applies",
             )
         )
         # instance_id names the boot: SHA-256 of the per-boot Ed25519 boot key the
@@ -556,20 +593,28 @@ def verify_gateway_attestation(
             )
 
     # --- 7. Locally pinned identity -------------------------------------------
-    checks.append(
-        check("app_id_pinned", any(hex_equal(i, binding.app_id) for i in policy.app_ids), True)
-    )
-    checks.append(
-        check(
-            "compose_hash_pinned",
-            any(hex_equal(h, binding.compose_hash) for h in policy.compose_hashes),
-            True,
+    # A release policy v3 has no app, compose or release allowlists: the exact
+    # register tuple below (RTMR1 measures the UKI that names the verity root)
+    # pins the image, and the binding's identity fields are its own claims.
+    if release_v3 is None:
+        checks.append(
+            check("app_id_pinned", any(hex_equal(i, binding.app_id) for i in policy.app_ids), True)
         )
-    )
-    checks.append(check("release_pinned", binding.release_id in policy.release_ids, True))
+        checks.append(
+            check(
+                "compose_hash_pinned",
+                any(hex_equal(h, binding.compose_hash) for h in policy.compose_hashes),
+                True,
+            )
+        )
+        checks.append(check("release_pinned", binding.release_id in policy.release_ids, True))
     checks.append(check("origin_pinned", binding.origin in policy.origins, True))
 
-    if tuple_form:
+    instance_identity = "not-applicable"
+    gce_instance: dict[str, str] | None = None
+    if release_v3 is not None:
+        instance_identity, gce_instance = _match_release_v3(release_v3, quote, doc, checks)
+    elif tuple_form:
         # ONE tuple must match EVERY observed value at once. Independent allowlists
         # would accept an old firmware register beside a new compose hash; a tuple
         # cannot.
@@ -797,6 +842,8 @@ def verify_gateway_attestation(
         )
 
     return GatewayVerificationResult(
+        instance_identity=instance_identity,
+        gce_instance=gce_instance,
         status="ok",
         verification_level="hardware-verified" if chain_verified else "provider-attested",
         checks=checks,
@@ -809,3 +856,127 @@ def verify_gateway_attestation(
         policy_version=policy.version,
         verified_at_ms=now_ms,
     )
+
+
+def _match_release_v3(
+    release_v3: dict[str, Any], quote: Any, doc: dict[str, Any], checks: list[AttestationCheck]
+) -> tuple[str, dict[str, str] | None]:
+    """Match the quote against an owner-signed release policy v3 (JS parity).
+
+    Every register but MROWNER is compared exactly. MROWNER follows the tuple's
+    rule: the zero rule needs MROWNER zero (GCE C4); a gce-pzid rule needs a
+    nonzero MROWNER that a valid PZID in its project and zones explains, or, with
+    no PZID presented, is accepted as "unverified" unless the signed policy
+    requires the PZID.
+    """
+    attribute = {"mrTd": "mr_td", "mrConfigId": "mr_config_id", "mrOwner": "mr_owner",
+                 "mrOwnerConfig": "mr_owner_config", "rtmr0": "rtmr0", "rtmr1": "rtmr1", "rtmr2": "rtmr2",
+                 "rtmr3": "rtmr3", "tdAttributes": "td_attributes", "xfam": "xfam"}
+    observed = {name: str(getattr(quote, attribute[name])).lower() for name in RELEASE_MEASURED_REGISTER_FIELDS}
+    try:
+        observed_digest: str | None = release_tuple_digest(observed)
+    except ReleaseCanonicalError:
+        observed_digest = None
+
+    # A presented PZID binds only through the quoted MROWNER. One that does not
+    # hash to it (or is not canonical) refuses outright: it never degrades to
+    # "unverified", or a node could opt out of the check by sending garbage.
+    presented = doc.get("gce_pzid")
+    pzid_presented = presented is not None
+    presented_instance = gce_instance_from_mr_owner(presented, observed["mrOwner"]) if pzid_presented else None
+    if pzid_presented:
+        checks.append(check(
+            "gce_pzid_matches_mrowner",
+            presented_instance is not None,
+            True,
+            gce_instance_resource(presented_instance)
+            if presented_instance
+            else "the presented GCE PZID is not canonical, or its SHA-384 is not the quoted MROWNER",
+        ))
+
+    raw_tuples = release_v3.get("tuples")
+    tuples = [t for t in (raw_tuples if isinstance(raw_tuples, list) else []) if isinstance(t, dict)]
+    same_image = [t for t in tuples
+                  if all(name == "mrOwner" or t.get(name) == observed[name] for name in RELEASE_MEASURED_REGISTER_FIELDS)]
+    matches: list[tuple[dict[str, Any], str]] = []
+    for t in same_image:
+        rule = t.get("mrOwnerRule")
+        if "mrOwnerRule" not in t:
+            if t.get("mrOwner") == _ZERO_REGISTER and observed["mrOwner"] == _ZERO_REGISTER:
+                matches.append((t, "not-applicable"))
+        elif (isinstance(rule, dict) and rule.get("kind") == GCE_PZID_RULE_KIND
+              and t.get("mrOwner") == _ZERO_REGISTER and observed["mrOwner"] != _ZERO_REGISTER):
+            if presented_instance is not None:
+                if gce_pzid_rule_admits(rule, presented_instance):
+                    matches.append((t, "verified"))
+            elif not pzid_presented:
+                matches.append((t, "unverified"))
+    # Exactly one tuple, as control and the node require: tuples are correlated,
+    # never chosen between.
+    matched = matches[0] if len(matches) == 1 else None
+    matched_digest: str | None = None
+    if matched is not None:
+        try:
+            matched_digest = release_tuple_digest(matched[0])
+        except (ReleaseCanonicalError, KeyError, TypeError):
+            matched_digest = None
+    raw_revoked = release_v3.get("revokedTuples")
+    revoked_list: list[Any] = raw_revoked if isinstance(raw_revoked, list) else []
+    # Both the quote's raw registers and the matched tuple (rule included) must be
+    # unrevoked: a gce-pzid tuple's identity is its rule, not the per-VM MROWNER.
+    revoked = observed_digest is None or observed_digest in revoked_list or (
+        matched is not None and (matched_digest is None or matched_digest in revoked_list))
+    checks.append(check(
+        "release_tuple_not_revoked",
+        not revoked,
+        True,
+        "the quote registers have no tuple digest"
+        if observed_digest is None
+        else f"tuple_digest={observed_digest}"
+        + (f" matched_tuple_digest={matched_digest}"
+           if matched_digest is not None and matched_digest != observed_digest else ""),
+    ))
+    unmatched = "no tuple in the signed release policy matches every quote register"
+    if len(matches) > 1:
+        unmatched = "more than one tuple in the signed release policy matches the quote"
+    elif same_image:
+        if observed["mrOwner"] == _ZERO_REGISTER:
+            unmatched = ("every other register matches, but MROWNER is zero and no matching tuple has the zero "
+                         "MROWNER rule")
+        elif presented_instance is not None:
+            unmatched = (f"every other register matches, but the GCE VM {gce_instance_resource(presented_instance)} "
+                         "is outside every matching gce-pzid rule")
+        elif pzid_presented:
+            unmatched = "every other register matches, but the presented GCE PZID does not verify"
+        else:
+            unmatched = "every other register matches, but MROWNER is nonzero and no matching tuple has a gce-pzid rule"
+    checks.append(check(
+        "release_tuple_matched",
+        matched is not None,
+        True,
+        f"tuple={matched[0]['tupleId']} policy_sequence={release_v3.get('sequence')}"
+        + ("" if matched[1] == "not-applicable"
+           else f" mrowner_rule={GCE_PZID_RULE_KIND} instance_identity={matched[1]}")
+        if matched is not None
+        else unmatched,
+    ))
+    require_pzid = release_v3.get("requireGcePzid") is True
+    instance_identity = "not-applicable"
+    gce_instance: dict[str, str] | None = None
+    if matched is not None and matched[1] != "not-applicable":
+        rule = matched[0]["mrOwnerRule"]
+        instance_identity = matched[1]
+        gce_instance = dict(presented_instance) if matched[1] == "verified" and presented_instance else None
+        zones = ",".join(rule["zones"]) if isinstance(rule.get("zones"), list) else "?"
+        checks.append(check(
+            "gce_instance_identity",
+            matched[1] == "verified",
+            require_pzid or matched[1] == "verified",
+            gce_instance_resource(presented_instance)
+            if matched[1] == "verified" and presented_instance
+            else f"the evidence carries no GCE PZID, so MROWNER was not shown to name a VM in project "
+            f"{rule.get('projectNumber')} zones {zones}; every other register matches the approved tuple",
+        ))
+    if require_pzid and (matched is None or matched[1] == "not-applicable"):
+        checks.append(check("gce_instance_identity", False, True, "the signed policy requires a verified GCE PZID"))
+    return instance_identity, gce_instance

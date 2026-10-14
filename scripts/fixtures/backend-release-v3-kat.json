@@ -1,0 +1,182 @@
+{
+  "_readme": [
+    "Excerpt of the AnonRouter backend's release policy v3 known answers, produced by the",
+    "server's own canonical()/digest() and node:crypto Ed25519 (an implementation",
+    "independent of this SDK). Synthetic qualification keys only (seeds 0x11.. and 0x22..);",
+    "nothing here is a production key, pin or measurement. The provider keyset section of the",
+    "source file is deliberately not copied.",
+    "Source: anonrouter src/contentNodes/bootstrap/vectors/release-v3.json at 404e161e, and the",
+    "tcbGrace digest from tests/unit/content-node-tcb-grace.test.ts (also asserted by the guest's",
+    "release_v3.rs)."
+  ],
+  "trust": {
+    "deploymentId": "gcp-content-qualification",
+    "groupId": "release-owner-qualification",
+    "keys": [
+      {
+        "keyId": "custodian.prod.usb",
+        "publicKey": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+      },
+      {
+        "keyId": "custodian.prod.laptop",
+        "publicKey": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0"
+      }
+    ],
+    "ownerRootSha256": "dbf88bb4116a138225f60dc7c28506e9b4072f02e708795d0e2100eb09bad503",
+    "minimumPolicySequence": 1
+  },
+  "tupleDigests": {
+    "release-a": "aeb1a0736fd1e5c04f368fbf32aaf112898becdf75be841bfb4f6141af98f3f5",
+    "release-b": "f84de9769f74d11bdc20b5413e22f71d2dab07d5eb08ab535867901be7d66cf7"
+  },
+  "policy": {
+    "signingMessage": "0440850a4b9ce052f1ab7afab15cff9f3fc0ded3a9a082ca66b79f8aa51cfc52",
+    "payloadSha256": "da3ceba48b9a04d0f38aa77f43ae1c61e08e314b1b5e6c6bf881cb51840c5a89",
+    "envelope": {
+      "protocol": "anonrouter-content-release-envelope-v3",
+      "role": "release-policy",
+      "groupId": "release-owner-qualification",
+      "ownerRootSha256": "dbf88bb4116a138225f60dc7c28506e9b4072f02e708795d0e2100eb09bad503",
+      "payload": {
+        "protocol": "anonrouter-content-node-bootstrap-v1",
+        "kind": "content-node-release-policy",
+        "deploymentId": "gcp-content-qualification",
+        "sequence": 1,
+        "issuedAtMs": 1791000000000,
+        "tuples": [
+          {
+            "tupleId": "release-a",
+            "mrTd": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+            "mrConfigId": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+            "mrOwner": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+            "mrOwnerConfig": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+            "rtmr0": "b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0",
+            "rtmr1": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+            "rtmr2": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+            "rtmr3": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+            "tdAttributes": "0000001000000000",
+            "xfam": "e702060000000000"
+          },
+          {
+            "tupleId": "release-b",
+            "mrTd": "a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
+            "mrConfigId": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+            "mrOwner": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+            "mrOwnerConfig": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+            "rtmr0": "b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0",
+            "rtmr1": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+            "rtmr2": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+            "rtmr3": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+            "tdAttributes": "0000001000000000",
+            "xfam": "e702060000000000"
+          }
+        ],
+        "revokedTuples": [],
+        "revokedGenerations": [],
+        "minimumGenerationRevision": 1,
+        "maxEvidenceAgeMs": 120000,
+        "tcbStatus": "UpToDate"
+      },
+      "signatures": [
+        {
+          "keyId": "custodian.prod.usb",
+          "signature": "cece8957d24472ea926bb9acf7274a43bc7f2f19dd4787ae4ec98068050249363bc6dce3f490b2d4641fb23f57aa26bb158a9263645a5ec877d780adab1d0c0c"
+        },
+        {
+          "keyId": "custodian.prod.laptop",
+          "signature": "e5d287ea5dd6ae4104ec9032c3b33bdbeb37785c14f2f0d3b4af05d16f743f27159704258aa1a0ac851b841fde87d520aa4790a3b6acb2f65e89a57f63d5210e"
+        }
+      ]
+    }
+  },
+  "successor": {
+    "signingMessage": "dadbfc9c18f55e636919be68e03f5a7bae83aa5d5dc0ee95ed2b1ae87df6283d",
+    "payloadSha256": "f774ad11ee4cec347a8dc7a074aa0ebd587c59a3b5ac21935d00d31568eab87e",
+    "envelope": {
+      "protocol": "anonrouter-content-release-envelope-v3",
+      "role": "release-policy",
+      "groupId": "release-owner-qualification",
+      "ownerRootSha256": "dbf88bb4116a138225f60dc7c28506e9b4072f02e708795d0e2100eb09bad503",
+      "payload": {
+        "protocol": "anonrouter-content-node-bootstrap-v1",
+        "kind": "content-node-release-policy",
+        "deploymentId": "gcp-content-qualification",
+        "sequence": 2,
+        "issuedAtMs": 1791086400000,
+        "tuples": [
+          {
+            "tupleId": "release-b",
+            "mrTd": "a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
+            "mrConfigId": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+            "mrOwner": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+            "mrOwnerConfig": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+            "rtmr0": "b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0",
+            "rtmr1": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+            "rtmr2": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+            "rtmr3": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+            "tdAttributes": "0000001000000000",
+            "xfam": "e702060000000000"
+          }
+        ],
+        "revokedTuples": [
+          "aeb1a0736fd1e5c04f368fbf32aaf112898becdf75be841bfb4f6141af98f3f5"
+        ],
+        "revokedGenerations": [],
+        "minimumGenerationRevision": 1,
+        "maxEvidenceAgeMs": 120000,
+        "tcbStatus": "UpToDate"
+      },
+      "signatures": [
+        {
+          "keyId": "custodian.prod.usb",
+          "signature": "08107056a7b9331c41b8a6e1d6b6cf824702922c0e72e771c3b8c59ca9a719bbbc36b1df353d1abb566440e9d68763c9f8ceb28b932aa8161554792f4d25d30e"
+        },
+        {
+          "keyId": "custodian.prod.laptop",
+          "signature": "8e1ec42deacdb4d739d42ef40e4fd57d7425b504ecfd21a33f2a944a09825c146adb4c348975fecec176f0c37d0eeada1bd6dda5b9baa770ea524abc9b645f0e"
+        }
+      ]
+    }
+  },
+  "tcbGrace": {
+    "payload": {
+      "protocol": "anonrouter-content-node-bootstrap-v1",
+      "kind": "content-node-release-policy",
+      "deploymentId": "gcp-content-qualification",
+      "sequence": 1,
+      "issuedAtMs": 1791000000001,
+      "tuples": [
+        {
+          "tupleId": "release-a",
+          "mrTd": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "mrConfigId": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "mrOwner": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "mrOwnerConfig": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "rtmr0": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "rtmr1": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "rtmr2": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "rtmr3": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "tdAttributes": "0000000000000000",
+          "xfam": "0000000000000000"
+        }
+      ],
+      "revokedTuples": [],
+      "revokedGenerations": [],
+      "minimumGenerationRevision": 1,
+      "maxEvidenceAgeMs": 120000,
+      "tcbStatus": "UpToDate",
+      "tcbGrace": {
+        "statuses": [
+          "OutOfDate",
+          "SWHardeningNeeded"
+        ],
+        "advisoryIds": [
+          "INTEL-SA-01312",
+          "INTEL-SA-01367"
+        ],
+        "notAfterMs": 1793592000001
+      }
+    },
+    "policySha256": "297c02dfb0110dedd27c03c04e9911822bec2f74583f4e24f18879f959bf6ef0"
+  }
+}

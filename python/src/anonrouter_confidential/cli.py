@@ -38,8 +38,11 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from .client import ConfidentialError, create_client
+from .gateway.binding import canonical_gateway_origin
 from .gateway.dcap import create_anonrouter_dcap_verifier, describe_dcap_installation
 from .gateway.policy import load_gateway_policy, pinned_gateway_policy_for
+from .gateway.release_v3 import packaged_release_policy_v3_authority
+from .gateway.transport_sync import BoundGatewayTransportError
 from .verify.route import (
     RequestedRoute,
     RouteHopVerdict,
@@ -275,6 +278,44 @@ def _hop_document(hop: RouteHopVerdict) -> dict[str, Any]:
     }
 
 
+#: The deprecated Phala rollback name: still pinned, removed at Phala retirement.
+DEPRECATED_PHALA_ORIGIN = "https://api.private.anonrouter.ai"
+
+
+def _canonical(origin: str | None) -> str | None:
+    if not origin:
+        return None
+    try:
+        return canonical_gateway_origin(origin)
+    except ValueError:
+        return None
+
+
+def release_v3_origin(origin: str | None) -> bool:
+    """Whether this origin is held to the packaged owner root's signed release-v3 feed."""
+    canonical = _canonical(origin)
+    return canonical is not None and canonical in packaged_release_policy_v3_authority()["origins"]
+
+
+def origin_notes(origin: str | None) -> list[str]:
+    """Notes shared word for word with the JavaScript command (CLI parity)."""
+    notes: list[str] = []
+    if release_v3_origin(origin):
+        authority = packaged_release_policy_v3_authority()
+        notes.append(
+            f"{origin} is verified against the owner-signed release policy v3 at {authority['url']} "
+            f"(owner root {authority['trust']['ownerRootSha256']}, minimum sequence "
+            f"{authority['trust']['minimumPolicySequence']}), with native DCAP on one retained TLS socket; "
+            "any packaged pin shown is the legacy Phala policy and is not used for this origin"
+        )
+    if _canonical(origin) == DEPRECATED_PHALA_ORIGIN:
+        notes.append(
+            f"{DEPRECATED_PHALA_ORIGIN} is the deprecated Phala rollback name; its pin is removed when the "
+            "Phala plane is retired"
+        )
+    return notes
+
+
 def _resolve_policy(options: dict[str, Any]) -> tuple[Any, str]:
     if options["policy_file"]:
         raw = _read_json_file(options["policy_file"], "policy")
@@ -348,6 +389,7 @@ def _doctor(options: dict[str, Any], io: CliIo) -> int:
                 "verification fails closed."
             ),
             *report.instructions,
+            *origin_notes(options["origin"]),
         ],
     }
     io.out(f'{_serialize(document, options["compact"])}\n')
@@ -406,7 +448,12 @@ def _verify(options: dict[str, Any], io: CliIo) -> int:
     timeout_seconds = float(options["timeout_ms"]) / 1000.0
 
     policy, note = _resolve_policy(options)
-    notes.append(note)
+    # A GCP origin with no --policy is held to the signed release policy v3, and
+    # only on the bound path: every node behind the load balancer has its own
+    # per-boot TLS key, so a separately observed certificate proves nothing.
+    bound_release_v3 = policy is None and release_v3_origin(origin)
+    notes.append("using the owner-signed release policy v3 feed for this origin" if bound_release_v3 else note)
+    notes.extend(origin_notes(origin))
 
     collateral = None
     if options["collateral_file"]:
@@ -432,7 +479,12 @@ def _verify(options: dict[str, Any], io: CliIo) -> int:
             )
 
     observed_spki: str | None = None
-    if options["tls_check"]:
+    if bound_release_v3:
+        notes.append(
+            "the TLS key was read from the same retained socket that fetched the evidence, not from a "
+            "separate connection"
+        )
+    elif options["tls_check"]:
         observed_spki = observe_tls_spki(origin, timeout_seconds)
         if observed_spki is None:
             notes.append(
@@ -484,9 +536,24 @@ def _verify(options: dict[str, Any], io: CliIo) -> int:
         # takes the weakest.
         hop1: dict[str, Any] | None = None
         try:
-            hop1 = client.verify_gateway(**gateway_kwargs)
+            if bound_release_v3:
+                if chain_verifier is None:
+                    raise ConfidentialError(
+                        "GCP content nodes are verified only with the native DCAP engine on a retained "
+                        "connection: rerun with --dcap"
+                    )
+                from .gateway.content_node import verify_content_node
+                bound = verify_content_node(origin, chain_verifier=chain_verifier, timeout=timeout_seconds)
+                hop1 = {"policy": bound["policy"], "verdict": bound["verdict"]}
+                bound_binding = bound["verdict"].binding
+                if bound_binding is not None and bound_binding.tls_spki_sha256 and any(
+                    c.name == "tls_certificate_bound_to_quote" and c.passed for c in bound["verdict"].checks
+                ):
+                    observed_spki = bound_binding.tls_spki_sha256
+            else:
+                hop1 = client.verify_gateway(**gateway_kwargs)
             gateway_hop = gateway_hop_verdict(hop1["verdict"])
-        except ConfidentialError as exc:
+        except (ConfidentialError, ValueError, BoundGatewayTransportError) as exc:
             gateway_hop = hop_unavailable(
                 str(exc) or "gateway verification could not be attempted"
             )
@@ -577,7 +644,11 @@ def _verify(options: dict[str, Any], io: CliIo) -> int:
                 "tcbStatus": hop1["verdict"].tcb_status if hop1 else None,
                 "tlsSpki": {
                     "observed": observed_spki,
-                    "source": "separate-tls-connection" if options["tls_check"] else "not-observed",
+                    "source": "retained-connection"
+                    if bound_release_v3
+                    else "separate-tls-connection"
+                    if options["tls_check"]
+                    else "not-observed",
                     "matchesAttested": (
                         observed_spki.lower() == str(attested_spki).lower()
                         if observed_spki is not None and attested_spki

@@ -56,6 +56,10 @@ from .gateway.policy import (
     gateway_policy_requires_retained_connection,
     pinned_gateway_policy_for,
 )
+from .gateway.release_v3 import (
+    ReleasePolicyV3Source,
+    packaged_release_policy_v3_authority,
+)
 from .gateway.retained_sync import (
     RetainedGatewayConnection as VerifiedGatewayConnection,
 )
@@ -255,7 +259,7 @@ class ConfidentialClient(MediaOwner):
         http_client: httpx.Client | None = None,
         timeout: float = 300.0,
         allow_insecure_http: bool = False,
-        gateway_policy_updates: bool | SignedGatewayPolicySource | None = None,
+        gateway_policy_updates: bool | SignedGatewayPolicySource | ReleasePolicyV3Source | None = None,
         gateway_connection_binding: dict[str, Any] | None = None,
     ) -> None:
         """``timeout`` bounds how long a single response may take to arrive.
@@ -302,8 +306,16 @@ class ConfidentialClient(MediaOwner):
         )
         self.base_url = self.origin
         authority = packaged_gateway_policy_authority()
-        if isinstance(gateway_policy_updates, SignedGatewayPolicySource):
-            self._gateway_policy_source: SignedGatewayPolicySource | None = gateway_policy_updates
+        # Production api.anonrouter.ai (GCP content nodes) defaults to the
+        # owner-signed release policy v3 with the packaged owner root; it is
+        # verifiable only through required gateway connection binding or
+        # verify_content_node(). False selects exact bundled/caller pins.
+        release_v3_default = self.origin in packaged_release_policy_v3_authority()["origins"]
+        self._gateway_policy_source: SignedGatewayPolicySource | ReleasePolicyV3Source | None
+        if isinstance(gateway_policy_updates, (SignedGatewayPolicySource, ReleasePolicyV3Source)):
+            self._gateway_policy_source = gateway_policy_updates
+        elif release_v3_default and gateway_policy_updates is not False:
+            self._gateway_policy_source = ReleasePolicyV3Source()
         elif gateway_policy_updates is True or (
             gateway_policy_updates is None and authority["enabled"] and self.origin in authority["origins"]
         ):
@@ -914,7 +926,7 @@ class ConfidentialClient(MediaOwner):
             active, provenance = resolved
             kind = gateway_policy_platform_kind(active)
             if not GATEWAY_PLATFORM_QUALIFIED.get(kind, False):
-                if provenance["origin"] != "caller-supplied":
+                if provenance["origin"] not in ("caller-supplied", "signed-release-policy-v3"):
                     raise ConfidentialError(f"a {kind} policy can only be supplied explicitly by the caller")
                 if not pilot:
                     raise ConfidentialError(
@@ -941,6 +953,17 @@ class ConfidentialClient(MediaOwner):
                 "origin": "caller-supplied",
                 "source": policy.source,
                 "version": policy.version,
+            }
+        if isinstance(self._gateway_policy_source, ReleasePolicyV3Source):
+            approved = self._gateway_policy_source.resolve(self.origin, force_refresh=force_refresh)
+            active = approved["policy"]
+            return active, {
+                "origin": "signed-release-policy-v3", "source": active.source,
+                "version": active.version, "authority": approved["authority"],
+                "sequence": approved["sequence"], "payloadSha256": approved["payloadSha256"],
+                "expiresAtMs": approved["expiresAtMs"],
+                "ownerRootSha256": approved["release"]["ownerRootSha256"],
+                "deploymentId": approved["release"]["deploymentId"],
             }
         if self._gateway_policy_source is not None:
             approved = self._gateway_policy_source.resolve(self.origin, force_refresh=force_refresh)

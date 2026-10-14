@@ -32,6 +32,14 @@ from .gateway.authority import (
     packaged_gateway_policy_authority,
     verify_signed_gateway_policy,
 )
+from .gateway.content_node import verify_content_node
+from .gateway.release_v3 import (
+    ReleasePolicyV3Error,
+    ReleasePolicyV3Source,
+    packaged_release_policy_v3_authority,
+    release_policy_v3_gateway_policy,
+    verify_release_policy_v3,
+)
 from .gateway.state import FileGatewayPolicyStateStore
 from .measurements import (
     load_measurements,
@@ -104,11 +112,18 @@ from .verify.state import (
     state_for_level,
 )
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 
 __all__ = [
     "FileGatewayPolicyStateStore",
     "SignedGatewayPolicySource",
+    # owner-signed release policy v3 (GCP content nodes, the api.anonrouter.ai default)
+    "ReleasePolicyV3Error",
+    "ReleasePolicyV3Source",
+    "packaged_release_policy_v3_authority",
+    "release_policy_v3_gateway_policy",
+    "verify_release_policy_v3",
+    "verify_content_node",
     "canonical_gateway_policy_json",
     "packaged_gateway_policy_authority",
     "verify_signed_gateway_policy",

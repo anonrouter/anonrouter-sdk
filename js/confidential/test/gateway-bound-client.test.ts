@@ -558,3 +558,106 @@ describe("gcp-tdx-native mandatory real-connection key binding — synthetic nat
     expect(t.observed.content.map(c => c.slot)).toEqual(["a", "a"]);
   });
 });
+
+// verifyContentNode: the owner-signed release policy v3 feed (synthetic owner
+// keys, mocked https feed) plus one retained real-TLS attestation. Read-only:
+// no ticket, no content, one socket.
+const { verifyContentNode }: typeof import("../dist/gateway/content-node.js") = await import(
+  packageRoot ? pathToFileURL(join(packageRoot, "dist/gateway/content-node.js")).href : new URL("../dist/gateway/content-node.js", import.meta.url).href);
+const v3: typeof import("../dist/gateway/release-v3.js") = await import(
+  packageRoot ? pathToFileURL(join(packageRoot, "dist/gateway/release-v3.js")).href : new URL("../dist/gateway/release-v3.js", import.meta.url).href);
+const { ed25519 } = await import("@noble/curves/ed25519.js");
+const V3_SEEDS = [new Uint8Array(32).fill(0x11), new Uint8Array(32).fill(0x22)];
+const V3_KEYS = [
+  { keyId: "custodian.prod.usb" as const, publicKey: Buffer.from(ed25519.getPublicKey(V3_SEEDS[0]!)).toString("hex") },
+  { keyId: "custodian.prod.laptop" as const, publicKey: Buffer.from(ed25519.getPublicKey(V3_SEEDS[1]!)).toString("hex") }
+];
+const V3_TRUST = { deploymentId: "gcp-content-qualification", groupId: "release-owner-qualification", keys: V3_KEYS,
+  ownerRootSha256: v3.releaseOwnerRootSha256({ deploymentId: "gcp-content-qualification", groupId: "release-owner-qualification", keys: V3_KEYS }),
+  minimumPolicySequence: 1 };
+const V3_FEED = "https://policy.example/.well-known/anonrouter-content-release-v3.json";
+const V3_TUPLE = { tupleId: "synthetic-gcp", mrTd: SYNTHETIC_GCP_REGISTERS.mrTd, mrConfigId: "00".repeat(48), mrOwner: "00".repeat(48),
+  mrOwnerConfig: "00".repeat(48), rtmr0: SYNTHETIC_GCP_REGISTERS.rtmr0, rtmr1: SYNTHETIC_GCP_REGISTERS.rtmr1,
+  rtmr2: SYNTHETIC_GCP_REGISTERS.rtmr2, rtmr3: "00".repeat(48), tdAttributes: SYNTHETIC_GCP_REGISTERS.tdAttributes,
+  xfam: SYNTHETIC_GCP_REGISTERS.xfam };
+function v3Envelope(extra: Record<string, unknown> = {}) {
+  const payload = { protocol: "anonrouter-content-node-bootstrap-v1", kind: "content-node-release-policy",
+    deploymentId: "gcp-content-qualification", sequence: 1, issuedAtMs: Date.now(), tuples: [V3_TUPLE], revokedTuples: [],
+    revokedGenerations: [], minimumGenerationRevision: 1, maxEvidenceAgeMs: 300000, tcbStatus: "UpToDate", ...extra };
+  const message = v3.releaseEnvelopeV3Message("release-policy", V3_TRUST.groupId, V3_TRUST.ownerRootSha256, payload);
+  return { protocol: "anonrouter-content-release-envelope-v3", role: "release-policy", groupId: V3_TRUST.groupId,
+    ownerRootSha256: V3_TRUST.ownerRootSha256, payload,
+    signatures: V3_SEEDS.map((seed, index) => ({ keyId: V3_KEYS[index]!.keyId, signature: Buffer.from(ed25519.sign(message, seed)).toString("hex") })) };
+}
+function v3Source(origin: string, envelope: unknown) {
+  const feed = vi.fn(async () => new Response(JSON.stringify(envelope), { status: 200, headers: { "content-type": "application/json" } }));
+  const states: Array<{ sequence: number; payloadSha256: string }> = [];
+  const source = v3.createReleasePolicyV3Source({ trust: V3_TRUST, url: V3_FEED, origins: [origin], fetch: feed as unknown as typeof fetch,
+    stateStore: { async observe(_authority, checkpoint) { states.push(checkpoint); } } });
+  return { source, feed, states };
+}
+
+describe("verifyContentNode — signed release-v3 feed, synthetic native port, real TLS", () => {
+  it("verifies on one retained socket with no ticket or content", async () => {
+    const t = await topology(); evidenceOverride = gcpEvidence();
+    const { source, feed, states } = v3Source(t.contentOrigin, v3Envelope());
+    const result = await verifyContentNode({ origin: t.contentOrigin, policySource: source, chainVerifier: syntheticNativeBoundary,
+      signal: AbortSignal.timeout(5000) });
+    expect(result.verdict.status).toBe("ok");
+    expect(result.verdict.verificationLevel).toBe("hardware-verified");
+    expect(result.verdict.instanceIdentity).toBe("not-applicable");
+    expect(result.policy).toMatchObject({ origin: "signed-release-policy-v3", sequence: 1, ownerRootSha256: V3_TRUST.ownerRootSha256 });
+    expect(result.rawEvidence?.binding).toBeTruthy();
+    expect(feed).toHaveBeenCalledTimes(1); expect(states).toHaveLength(1);
+    expect(t.observed.connections).toBe(1); expect(t.observed.gateway).toBe(1);
+    expect(t.observed.attTickets).toBe(0); expect(t.observed.paidTickets).toBe(0); expect(t.observed.content).toHaveLength(0);
+  });
+  it("returns a failed verdict for a quote binding another node's TLS key", async () => {
+    const t = await topology(); evidenceOverride = gcpEvidence("b");
+    const { source } = v3Source(t.contentOrigin, v3Envelope());
+    const result = await verifyContentNode({ origin: t.contentOrigin, policySource: source, chainVerifier: syntheticNativeBoundary });
+    expect(result.verdict.status).toBe("failed");
+    expect(result.verdict.checks.filter(c => c.required && !c.passed).map(c => c.name)).toEqual(["tls_certificate_bound_to_quote"]);
+    expect(result.rawEvidence).toBeNull();
+    expect(t.observed.attTickets).toBe(0); expect(t.observed.content).toHaveLength(0);
+  });
+  it("returns a failed verdict for a revoked tuple", async () => {
+    const t = await topology(); evidenceOverride = gcpEvidence();
+    const other = { ...V3_TUPLE, tupleId: "other", mrTd: "5e".repeat(48) };
+    const { source } = v3Source(t.contentOrigin, v3Envelope({ tuples: [other], revokedTuples: [v3.releaseTupleDigest(V3_TUPLE)] }));
+    const result = await verifyContentNode({ origin: t.contentOrigin, policySource: source, chainVerifier: syntheticNativeBoundary });
+    expect(result.verdict.status).toBe("failed");
+    expect(result.verdict.checks.filter(c => c.required && !c.passed).map(c => c.name))
+      .toEqual(["release_tuple_not_revoked", "release_tuple_matched"]);
+  });
+  it("requires the PZID when the signed policy says so, even on an approved image", async () => {
+    const t = await topology(); evidenceOverride = gcpEvidence();
+    const { source } = v3Source(t.contentOrigin, v3Envelope({ requireGcePzid: true }));
+    const result = await verifyContentNode({ origin: t.contentOrigin, policySource: source, chainVerifier: syntheticNativeBoundary });
+    expect(result.verdict.status).toBe("failed");
+    expect(result.verdict.checks.filter(c => c.required && !c.passed).map(c => c.name)).toEqual(["gce_instance_identity"]);
+  });
+  it("accepts a signed tcbGrace and still verifies UpToDate", async () => {
+    const t = await topology(); evidenceOverride = gcpEvidence();
+    const now = Date.now();
+    const { source } = v3Source(t.contentOrigin, v3Envelope({ issuedAtMs: now,
+      tcbGrace: { statuses: ["OutOfDate"], advisoryIds: ["INTEL-SA-01367"], notAfterMs: now + 86_400_000 } }));
+    const result = await verifyContentNode({ origin: t.contentOrigin, policySource: source, chainVerifier: syntheticNativeBoundary });
+    expect(result.verdict.status).toBe("ok"); expect(result.verdict.tcbStatus).toBe("UpToDate");
+  });
+  it("refuses a tampered owner signature before any connection", async () => {
+    const t = await topology(); evidenceOverride = gcpEvidence();
+    const envelope = v3Envelope(); envelope.signatures[1]!.signature = "00".repeat(64);
+    const { source } = v3Source(t.contentOrigin, envelope);
+    await expect(verifyContentNode({ origin: t.contentOrigin, policySource: source, chainVerifier: syntheticNativeBoundary }))
+      .rejects.toMatchObject({ code: "signature_invalid" });
+    expect(t.observed.connections).toBe(0); expect(t.observed.gateway).toBe(0);
+  });
+  it("refuses an origin the policy source does not authorize before any connection", async () => {
+    const t = await topology(); evidenceOverride = gcpEvidence();
+    const { source } = v3Source("https://content.other.example", v3Envelope());
+    await expect(verifyContentNode({ origin: t.contentOrigin, policySource: source, chainVerifier: syntheticNativeBoundary }))
+      .rejects.toMatchObject({ code: "unauthorized_origin" });
+    expect(t.observed.connections).toBe(0);
+  });
+});
