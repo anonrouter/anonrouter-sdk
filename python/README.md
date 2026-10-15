@@ -47,7 +47,7 @@ dependencies: `cryptography`, `pynacl`, `httpx`, `pycryptodome`.
 
 Installing also installs the `anonrouter-verify` command. See below.
 
-## Required gateway connection binding (unpublished candidate)
+## Required gateway connection binding (0.1.3)
 
 Install `pip install "./python[connection-binding]"` for the reviewed synchronous
 transport pair (HTTPX 0.28.1 / HTTPCore 1.0.9). Add `mlkem` to the extras only for
@@ -99,7 +99,8 @@ switch. Paid dispatch has a maximum 180-second admission window from initial
 preparation, shortened by approval/evidence expiry. Deployment retirement must retain
 the old serving slot through routing convergence and that window, then let
 admitted streams finish. Platform bounds, native quote capacity and actual
-deployment continuity remain unaccepted. The candidate is unpublished.
+deployment continuity remain operational responsibilities. Python 0.1.3 ships
+as GitHub release assets; PyPI publication remains disabled.
 
 ## Provider crypto (protocols)
 

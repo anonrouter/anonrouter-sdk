@@ -1,10 +1,32 @@
 # Release readiness for 0.1.3
 
-Prepared 2026-10-06; GCP release-v3 update 2026-10-14 (branch
-`sdk-0.1.3-gcp-release`, based on `sdk-gce-pzid` 31bd154 plus the earlier
-candidate f8e7921). Unpublished: npm latest is 0.1.2 for both packages and PyPI
-returns 404 for `anonrouter-confidential`. Nothing is tagged, pushed or published
-until the owner gives the go.
+Released 2026-10-15. GitHub tag `v0.1.3` fixes the reviewed source at
+`deb7c0ec23d7f2b081eaaca71414daae69c4c42a`; the exact checked artifacts were
+published to GitHub and both JavaScript packages to npm. PyPI remains disabled.
+The preparation and historical validation notes below record how the release
+was qualified; do not recreate or move the existing tag.
+
+## Publication evidence, 2026-10-15
+
+[Release run 38802834403](https://github.com/anonrouter/anonrouter-sdk/actions/runs/38802834403)
+passed release gates, reproducible artifact builds and fresh packed JavaScript
+and Python verification of GCP policy sequence 9, Intel TCB `UpToDate`, and the
+TLS key on the retained socket. Required checks passed; CCEL replay and optional
+machine PZID remain the documented advisory gaps. The free live checks sent no
+API key, ticket, prompt or inference request.
+
+The initial npm upload failed with E404 because neither package had a trusted
+publisher configured. Both now trust `anonrouter/anonrouter-sdk`, workflow
+`release.yml`, without an environment restriction, with direct `npm publish`
+permission. Rerunning only the failed npm job published the original accepted
+tarballs with GitHub Actions provenance; the successful GitHub release and tag
+were preserved.
+
+Post-publication checks confirmed npm `latest` 0.1.3 for both packages and
+registry tarballs matching the GitHub `SHA256SUMS`: client `4c54d465...`,
+confidential `e740cc79...`. A fresh registry install then passed free,
+fresh-nonce GCP attestation at policy 9 with `hardware_verified`, retained-socket
+TLS and no failed required checks.
 
 ## GCP release-v3 update, 2026-10-14
 
@@ -73,49 +95,34 @@ workflow uses its own reproducible linux/amd64 build.
   `.github/release-notes/v0.1.3.md`), then `publish-npm` because repository
   variable `PUBLISH_NPM` is `true`. `PUBLISH_PYPI` is not set, so PyPI is
   skipped and Python ships as GitHub release assets.
-- The `NPM_TOKEN` bootstrap secret still exists (created 2026-09-12). If npm
-  trusted publishing is configured for both packages, delete it after this
-  release, as `docs/npm-first-publication.md` already requires.
+- Both npm packages use GitHub Actions OIDC trusted publishing and show
+  `Valid`. The obsolete bootstrap `NPM_TOKEN` secret was removed after this
+  verification; future releases need no stored npm token. See
+  [npm publication](npm-first-publication.md).
 - `@anonrouter/client` 0.1.3 is unchanged from 0.1.2 apart from its version.
 
-### Publish commands (owner go only)
-
-Run from the main checkout. `<COMMIT>` is the reviewed head of
-`sdk-0.1.3-gcp-release`; the branch fast-forwards `origin/main` (16980d0).
+### Verify the published release
 
 ```bash
-cd ~/Desktop/anonrouter-sdk
-git fetch origin
-git log --oneline -1 sdk-0.1.3-gcp-release            # confirm <COMMIT>
-git merge-base --is-ancestor origin/main sdk-0.1.3-gcp-release && echo fast-forward-ok
-git push origin sdk-0.1.3-gcp-release:main            # optional, keeps doc links on main current
-git tag -a v0.1.3 <COMMIT> -m "v0.1.3"
-git push origin v0.1.3                                # starts release.yml; publishes npm after the live gate
-gh run watch "$(gh run list --workflow release.yml --limit 1 --json databaseId -q '.[0].databaseId')"
-```
-
-The workflow then runs, from the checksummed artifacts it built:
-
-```bash
-npm publish anonrouter-client-0.1.3.tgz --provenance --access public
-npm publish anonrouter-confidential-0.1.3.tgz --provenance --access public
-```
-
-Afterwards (read-only checks, then the recommended deprecation):
-
-```bash
-npm view @anonrouter/confidential dist-tags --json     # expect latest 0.1.3
+npm view @anonrouter/confidential dist-tags --json     # latest 0.1.3
 npm view @anonrouter/client dist-tags --json
-mkdir -p /tmp/ar013 && cd /tmp/ar013 && npm init -y >/dev/null && npm install @anonrouter/confidential@0.1.3
+mkdir -p /tmp/ar013 && cd /tmp/ar013 && npm init -y >/dev/null
+npm install @anonrouter/confidential@0.1.3
 ANONROUTER_DCAP_VERIFIER_BIN=/path/to/anonrouter-dcap-verifier \
   npx anonrouter-verify gateway --origin https://api.anonrouter.ai --dcap --require hardware_verified
-npm deprecate "@anonrouter/confidential@<0.1.3" \
-  "Cannot verify api.anonrouter.ai since 2026-10-14 (GCP content nodes). Upgrade to 0.1.3: https://github.com/anonrouter/anonrouter-sdk/releases/tag/v0.1.3"
 ```
 
-PyPI is not part of this release. If the owner later enables it:
-`gh variable set PUBLISH_PYPI --body true` after configuring the PyPI trusted
-publisher, then re-run the release workflow for the tag.
+Compare registry tarball SHA-256 values with the GitHub release's `SHA256SUMS`.
+Do not rebuild or republish version 0.1.3. Future release tags need the owner's
+release approval and the same artifact/live gates.
+
+Older confidential versions cannot verify the current GCP deployment. Their
+npm deprecation is a separate recommended follow-up; do not deprecate the thin
+client merely because its version predates 0.1.3.
+
+PyPI is not part of this release. Any later PyPI publication needs separate
+owner approval, a configured trusted publisher and a deliberately scoped run;
+do not rerun successful GitHub/npm publication jobs.
 
 ### Rollback
 

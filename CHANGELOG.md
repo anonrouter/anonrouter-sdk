@@ -12,7 +12,7 @@ ecosystem; checksummed artifacts are also attached to each GitHub release.
 `scripts/smoke-artifacts.mjs` builds every artifact and installs it into an empty
 environment on each CI run, so every published format is exercised.
 
-## 0.1.3 (unpublished)
+## [0.1.3] - 2026-10-15
 
 Upgrading from 0.1.2: read [docs/migrating-to-0.1.3.md](docs/migrating-to-0.1.3.md).
 0.1.2 cannot verify `api.anonrouter.ai` since it moved to GCP on 2026-10-14.
@@ -53,8 +53,9 @@ Upgrading from 0.1.2: read [docs/migrating-to-0.1.3.md](docs/migrating-to-0.1.3.
   `api.anonrouter.ai` in both languages; the Phala name is informational.
 - Replace deployed-machine PZID test fixtures with synthetic identities and
   independently computed known answers before release preparation.
-- Registry status from read-only checks on 2026-10-14: npm latest is 0.1.2 for
-  both packages; the Python project is absent from PyPI. 0.1.3 is unpublished.
+- Published both JavaScript packages to npm and all checksummed artifacts to
+  GitHub on 2026-10-15. Python remains available from GitHub assets or source;
+  PyPI publication is disabled.
 
 - Repair W8 gateway pins and NEAR/provider-other compatibility; refuse missing
   GPU evidence and mismatched encryption keys.
@@ -602,6 +603,7 @@ Initial public release.
   `enableNodeCrypto()`. A browser build still degrades only that one sub-check, as
   intended.
 
+[0.1.3]: https://github.com/anonrouter/anonrouter-sdk/releases/tag/v0.1.3
 [0.1.2]: https://github.com/anonrouter/anonrouter-sdk/releases/tag/v0.1.2
 [0.1.1]: https://github.com/anonrouter/anonrouter-sdk/releases/tag/v0.1.1
 [0.1.0]: https://github.com/anonrouter/anonrouter-sdk/releases/tag/v0.1.0

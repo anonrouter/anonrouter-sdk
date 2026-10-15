@@ -14,7 +14,7 @@ For the plaintext API surface, see `@anonrouter/client`.
 ```bash
 npm install @anonrouter/confidential
 
-# For the unpublished 0.1.3 candidate, build from its prepared checkout:
+# To build from source instead:
 git clone https://github.com/anonrouter/anonrouter-sdk
 cd anonrouter-sdk/js && npm ci && npm run build
 ```
@@ -45,9 +45,8 @@ that proof.
 
 ## GCP content-node verification
 
-This checkout prepares 0.1.3; npm latest is 0.1.2 as checked 2026-10-14.
-Build/install this candidate locally to use these APIs. Publication awaits the
-owner's go.
+Released in 0.1.3 on 2026-10-15. Install `@anonrouter/confidential@0.1.3`
+from npm to use these APIs.
 
 GCP-native is the default qualified platform for `api.anonrouter.ai`.
 The SDK fixes the owner root public keys and follows the independently signed

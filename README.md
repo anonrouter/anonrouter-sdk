@@ -21,10 +21,10 @@ lives here in the open.
 Both `@anonrouter/confidential` and `anonrouter-confidential` also install an
 `anonrouter-verify` command. See [Verify from a terminal](#verify-from-a-terminal).
 
-Registry status checked 2026-10-14: both npm packages serve **0.1.2**.
-This checkout prepares **0.1.3**, which is not published. PyPI returns 404 for
-`anonrouter-confidential`; install Python from source or a checksummed release
-wheel/sdist. No registry publication is authorized by this preparation.
+**0.1.3 was released on 2026-10-15** on GitHub and npm for both JavaScript
+packages. Python 0.1.3 is available as a checksummed wheel/sdist on the
+[GitHub release](https://github.com/anonrouter/anonrouter-sdk/releases/tag/v0.1.3).
+PyPI publication remains disabled; install Python from those assets or source.
 
 Since 2026-10-14 `api.anonrouter.ai` is served by Google Cloud Intel TDX
 content nodes. 0.1.3 (JavaScript and Python) verifies them against the
@@ -275,7 +275,7 @@ The SDK reports a `verification_level` and never inflates it:
 ```bash
 npm install @anonrouter/confidential
 
-# Before registry propagation, build from a clone of this repo:
+# To build from source instead:
 git clone https://github.com/anonrouter/anonrouter-sdk
 cd anonrouter-sdk/js && npm ci && npm run build
 ```
@@ -327,16 +327,17 @@ const reply = await client.chat({
 console.log(reply.content);
 ```
 
-The 0.1.3 candidate supports required socket checks in
+0.1.3 supports required socket checks in
 Node and synchronous Python. See the [Node package instructions](js/confidential/README.md)
 and [Python package instructions](python/README.md) for opt-in setup and limits.
-Required client mode verifies and retains a fresh socket for each operation. Operational continuity and publication remain pending.
+Required client mode verifies and retains a fresh socket for each operation.
+Ongoing deployment continuity remains an operational responsibility.
 
 ## Quickstart: `anonrouter-confidential` (Python)
 
 > **Not on PyPI yet.** Install the Python package from this repository or from the
 > checksummed wheel/sdist attached to the GitHub release. PyPI returns 404 for
-> this project as of 2026-10-14; JavaScript registry publication is separate. Every
+> this project as of 2026-10-15; JavaScript packages are published separately on npm. Every
 > artifact is installed into an empty environment by
 > `scripts/smoke-artifacts.mjs` before release.
 
@@ -505,7 +506,7 @@ See `CONTRIBUTING.md` for dev setup and how the pins are maintained, and
 
 Apache-2.0. See `LICENSE`.
 
-Signed gateway-policy updates are staged in the unpublished candidate; see
+Signed gateway-policy updates are included in 0.1.3; see
 [the approval contract and activation gates](docs/gateway-policy-updates.md).
 Default clients still use the bundled exact policy until activation.
 GCP-native content nodes verify against an owner-signed release policy v3 with
