@@ -32,7 +32,7 @@
   },
   "keywords": ["anonrouter", "api", "client", "openai-compatible", "inference", "ticket"],
   "devDependencies": {
-    "typescript": "^5.7.2",
-    "vitest": "^4.1.10"
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.0"
   }
 }
