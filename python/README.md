@@ -25,7 +25,10 @@ from 0.1.2: see [the migration note](../docs/migrating-to-0.1.3.md).
 **Not on PyPI yet.** Install from a clone of the
 [monorepo](https://github.com/anonrouter/anonrouter-sdk), or use the checksummed
 wheel/sdist attached to the GitHub release. PyPI returns 404 for this project
-as of 2026-10-14. JavaScript registry publication is separate. The wheel/sdist are
+as of 2026-10-28. The PyPI organization is approved; follow the
+[first-publication runbook](https://github.com/anonrouter/anonrouter-sdk/blob/main/docs/pypi-first-publication.md)
+for trusted publisher setup and publication of the accepted 0.1.3 artifacts.
+JavaScript registry publication is separate. The wheel/sdist are
 built and installed into clean virtualenvs on every CI run.
 
 ```bash
