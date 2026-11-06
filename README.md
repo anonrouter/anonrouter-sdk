@@ -16,17 +16,15 @@ lives here in the open.
 | --- | --- | --- |
 | `@anonrouter/confidential` | JavaScript / TypeScript (npm) | Independently verify TEE / E2EE routes, run end-to-end-encrypted inference, and generate images / speech over the two-origin ticket exchange. |
 | `@anonrouter/client` | JavaScript / TypeScript (npm) | Thin, dependency-free API client for the public (plaintext / TEE / private) routes. |
-| `anonrouter-confidential` | Python (GitHub release wheel/sdist; not on PyPI) | Python verification, E2EE and media client, with the same release-v3 GCP verification as JavaScript. |
+| `anonrouter-confidential` | Python (PyPI) | Python verification, E2EE and media client, with the same release-v3 GCP verification as JavaScript. |
 
 Both `@anonrouter/confidential` and `anonrouter-confidential` also install an
 `anonrouter-verify` command. See [Verify from a terminal](#verify-from-a-terminal).
 
 **0.1.3 was released on 2026-10-15** on GitHub and npm for both JavaScript
-packages. Python 0.1.3 is available as a checksummed wheel/sdist on the
-[GitHub release](https://github.com/anonrouter/anonrouter-sdk/releases/tag/v0.1.3).
-PyPI publication remains disabled; install Python from those assets or source.
-The PyPI organization is approved; the [first-publication runbook](docs/pypi-first-publication.md)
-covers the organization-owned trusted publishing of Python 0.1.3.post1.
+packages. Python is on PyPI as
+[`anonrouter-confidential`](https://pypi.org/project/anonrouter-confidential/)
+0.1.3.post1, published 2026-11-06. It has the same verification code as 0.1.3.
 
 Since 2026-10-14 `api.anonrouter.ai` is served by Google Cloud Intel TDX
 content nodes. 0.1.3 (JavaScript and Python) verifies them against the
@@ -337,20 +335,11 @@ Ongoing deployment continuity remains an operational responsibility.
 
 ## Quickstart: `anonrouter-confidential` (Python)
 
-> **Not on PyPI yet.** Install the Python package from this repository or from the
-> checksummed wheel/sdist attached to the GitHub release. PyPI returns 404 for
-> this project as of 2026-10-15; JavaScript packages are published separately on npm. Every
-> artifact is installed into an empty environment by
-> `scripts/smoke-artifacts.mjs` before release.
+> Install the Python package from [PyPI](https://pypi.org/project/anonrouter-confidential/).
 
 ```bash
-# From a clone of this repo:
-git clone https://github.com/anonrouter/anonrouter-sdk
-cd anonrouter-sdk
-pip install "./python[mlkem]"                  # mlkem extra enables the Chutes route
-
-# Once it is on PyPI:
-# pip install "anonrouter-confidential[mlkem]"
+pip install "anonrouter-confidential[connection-binding]"
+pip install "anonrouter-confidential[connection-binding,mlkem]"  # adds the Chutes route
 ```
 
 Python 3.10 or newer. CI runs the suite on 3.10, 3.11, 3.12 and 3.13.

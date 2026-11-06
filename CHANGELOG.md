@@ -12,7 +12,7 @@ ecosystem; checksummed artifacts are also attached to each GitHub release.
 `scripts/smoke-artifacts.mjs` builds every artifact and installs it into an empty
 environment on each CI run, so every published format is exercised.
 
-## [Python 0.1.3.post1] - unreleased
+## [Python 0.1.3.post1] - 2026-11-06
 
 Python only, for the first PyPI publication. The verification code matches 0.1.3.
 The PyPI description is rewritten, with examples tested against production, and

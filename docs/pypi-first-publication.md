@@ -1,5 +1,8 @@
 # First PyPI publication: anonrouter-confidential 0.1.3.post1
 
+Published 2026-11-06 under the `anonrouter` PyPI organization. This page records
+the process. Do not rerun it for the same version.
+
 Python's first PyPI release is `0.1.3.post1`. Its verification code matches
 `v0.1.3`. The accepted 0.1.3 wheel was not published because its embedded
 description was written before publication and is unfit for the PyPI page.
