@@ -12,8 +12,8 @@ which probes both origins with no credential and no spend.
 What the example demonstrates, and the reason these methods exist: ONE call here
 is TWO HTTP requests to two different hosts. The control origin sees your API key
 and the content-free shape of the work; the confidential origin sees the prompt
-and only a single-use ticket. No configuration of the official OpenAI SDK can do
-that -- it has one base URL and one credential.
+and only a single-use ticket. A client with one base URL and one credential
+cannot do that.
 
 The JavaScript twin is ``js/confidential/examples/media.ts``; it prints the same
 things in the same order.

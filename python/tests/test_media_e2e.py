@@ -8,7 +8,7 @@ headers, real serialization, real status codes, real binary bodies.
 The two servers are deliberately ADVERSARIES of the client. The control server
 refuses to mint if it is ever shown content; the relay refuses to serve if it is
 ever shown a credential, and enforces the single-use ticket and every bound fact
-exactly as ``src/routes/{image,speech}.ts`` does. A client that cheats on the
+exactly as the production routes do. A client that cheats on the
 protocol fails here rather than passing against a mock that agrees with it.
 
 Mirrors ``js/confidential/test/media-e2e.test.ts``.
