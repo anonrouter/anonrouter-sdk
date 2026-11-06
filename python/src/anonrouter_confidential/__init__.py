@@ -2,10 +2,10 @@
 confidential inference from Python.
 
 Mirrors the JS ``@anonrouter/confidential`` surface and passes the SAME shared KAT
-vectors, so Python and JS agree bit-for-bit. Verification fails closed and NEVER
-emits ``hardware-verified``: the ceiling is ``provider-attested`` for NEAR/Venice/
-Chutes and ``sdk-verified`` for Tinfoil, from its official verifier's document
-plus the pinned-TLS observation recorded on the serving connection.
+vectors, so Python and JS agree bit-for-bit. Verification fails closed. Provider
+route checks reach ``provider-attested`` for NEAR/Venice/Chutes and ``sdk-verified``
+for Tinfoil. AnonRouter's own servers can reach ``hardware-verified`` with the
+separately installed DCAP engine.
 """
 
 from __future__ import annotations
@@ -112,7 +112,7 @@ from .verify.state import (
     state_for_level,
 )
 
-__version__ = "0.1.3"
+__version__ = "0.1.3.post1"
 
 __all__ = [
     "FileGatewayPolicyStateStore",
@@ -136,8 +136,8 @@ __all__ = [
     # `client.audio.speech.create(...)` run the two-origin ticket exchange
     # automatically: the API key mints a content-free single-use ticket at the
     # control origin, and the prompt or text goes only to the confidential
-    # inference origin, authenticated by that ticket alone. An official OpenAI
-    # client cannot perform this exchange -- one base URL, one credential.
+    # inference origin, authenticated by that ticket alone. A client with one
+    # base URL and one credential cannot perform this exchange.
     "ImagesApi",
     "AudioApi",
     "SpeechApi",

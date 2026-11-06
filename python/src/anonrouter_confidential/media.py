@@ -17,14 +17,9 @@ different things:
                     a cookie, or any stable account identifier.
 
 Neither host holds both halves, so neither can by itself say "this account asked
-for this picture". An official OpenAI client cannot perform this exchange: it has
-one base URL and one credential, so it would send the key and the prompt to the
-same host in one request.
-
-The contract is derived from deployed code -- ``src/routes/image.ts``,
-``src/routes/speech.ts``, ``src/inference/ticketRequestSchema.ts`` and
-``src/providers/types.ts`` in the AnonRouter production tree -- and was verified
-against the live origins on 2026-08-30.
+for this picture". A client with one base URL and one credential cannot perform
+this exchange: it would send the key and the prompt to the same host in one
+request.
 """
 
 from __future__ import annotations
@@ -45,7 +40,7 @@ from .errors import ConfidentialError
 
 # ---- Canonical bounds, mirrored from the server -----------------------------
 #
-# Duplicated from AnonRouter's ``src/providers/types.ts`` so a request that
+# Mirrors AnonRouter's published request limits so a request that
 # cannot possibly succeed is refused BEFORE a ticket is minted. Minting first and
 # failing at the relay would burn a single-use ticket for nothing.
 

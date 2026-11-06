@@ -1,386 +1,150 @@
+
 # anonrouter-confidential
 
-Independently verify AnonRouter TEE / E2EE routes and run confidential inference
-from Python. This package shares the provider verification/E2EE vectors with JavaScript.
-It verifies the current GCP production content nodes behind `api.anonrouter.ai`
-against the owner-signed release-v3 feed, exactly as the JavaScript package does
-(shared vectors, including the backend's own signed envelopes). That needs the
-`connection-binding` extra and the native DCAP engine:
+Verify what is running behind AnonRouter, then send encrypted requests from your own Python app.
+
+AnonRouter's privacy claims should not depend on taking our word for them. This package checks them on your machine, and it refuses to continue when a check fails.
+
+- **Verify AnonRouter's servers** against a signed release policy and Intel's hardware attestation.
+- **Verify a model route** using the provider's attestation evidence.
+- **Send end-to-end encrypted chat** that is encrypted on your machine before it leaves.
+- **Keep your API key and your prompts apart.** The key goes to one host, and the prompt goes to another with a single-use ticket.
+
+## Install
+
+```bash
+pip install "anonrouter-confidential[connection-binding]"
+```
+
+Requires Python 3.10 or newer. Add the `mlkem` extra for routes that use the ML-KEM transport.
+
+## Verify AnonRouter
+
+This needs no API key and sends no inference.
 
 ```python
 from anonrouter_confidential import verify_content_node
 
-result = verify_content_node()  # credential-free, read-only, one retained TLS socket
+result = verify_content_node()
 print(result["policy"]["sequence"], result["verdict"].verification_level)
 ```
 
-For inference pass `gateway_connection_binding={"mode": "required", "verification":
-{"chain_verifier": create_anonrouter_dcap_verifier()}}` to `create_client`. Upgrading
-from 0.1.2: see [the migration note](../docs/migrating-to-0.1.3.md).
+This prints `hardware-verified` when the check succeeds. Full hardware verification needs the `anonrouter-dcap-verifier` program, which is a separate download so that you choose exactly which binary you trust. Get the Linux amd64 build from the [GitHub releases](https://github.com/anonrouter/anonrouter-sdk/releases), or build it from source and compare digests. Without it, this prints `unverified`.
 
-"Don't trust us, verify." The verifier is pure over its inputs and fails closed.
-
-## Install
-
-**Not on PyPI yet.** Install from a clone of the
-[monorepo](https://github.com/anonrouter/anonrouter-sdk), or use the checksummed
-wheel/sdist attached to the GitHub release. PyPI returns 404 for this project
-as of 2026-10-28. The PyPI organization is approved; follow the
-[first-publication runbook](https://github.com/anonrouter/anonrouter-sdk/blob/main/docs/pypi-first-publication.md)
-for trusted publisher setup and publication of the accepted 0.1.3 artifacts.
-JavaScript registry publication is separate. The wheel/sdist are
-built and installed into clean virtualenvs on every CI run.
-
-```bash
-git clone https://github.com/anonrouter/anonrouter-sdk
-cd anonrouter-sdk
-
-pip install "./python[connection-binding]"  # verify (incl. GCP) + NEAR/Venice E2EE + TDX
-pip install "./python[mlkem]"         # adds the Chutes ML-KEM-768 transport
-```
-
-Once it is published the same extras apply to the package name:
-
-```
-pip install "anonrouter-confidential[mlkem]"
-```
-
-Python 3.10 or newer. CI runs the suite on 3.10, 3.11, 3.12 and 3.13. Four runtime
-dependencies: `cryptography`, `pynacl`, `httpx`, `pycryptodome`.
-
-Installing also installs the `anonrouter-verify` command. See below.
-
-## Required gateway connection binding (0.1.3)
-
-Install `pip install "./python[connection-binding]"` for the reviewed synchronous
-transport pair (HTTPX 0.28.1 / HTTPCore 1.0.9). Add `mlkem` to the extras only for
-Chutes. Other versions and asynchronous transports refuse required mode.
+## Encrypted chat
 
 ```python
+import os
+from anonrouter_confidential import at_least, create_client
+
+with create_client(api_key=os.environ["ANONROUTER_API_KEY"]) as client:
+    verdict = client.verify_route(
+        model="google/gemma-4-26b-a4b-uncensored",
+        provider="venice",
+    )
+    if not at_least(verdict.overall_state, "cryptographically_checked"):
+        raise SystemExit(verdict.reason)
+
+    out = client.chat(
+        model="google/gemma-4-26b-a4b-uncensored",
+        provider="venice",
+        messages=[{"role": "user", "content": "hello"}],
+        max_output_tokens=256,
+    )
+    print(out["content"])
+```
+
+This checks the provider route and encrypts your prompt on your machine. It does not verify AnonRouter's own servers. For that, use strict mode.
+
+## Strict mode
+
+Strict mode verifies AnonRouter's servers on the same connection before each operation. If verification fails, nothing is sent. It needs the `anonrouter-dcap-verifier` program.
+
+```python
+import os
 from anonrouter_confidential import create_client
 from anonrouter_confidential.gateway.dcap import create_anonrouter_dcap_verifier
 
 with create_client(
-    api_key="...",
+    api_key=os.environ["ANONROUTER_API_KEY"],
     gateway_policy_updates=True,
     gateway_connection_binding={
         "mode": "required",
         "verification": {"chain_verifier": create_anonrouter_dcap_verifier()},
     },
 ) as client:
-    result = client.verify_route(model="venice-uncensored", provider="venice")
+    verdict = client.verify_route(
+        model="google/gemma-4-26b-a4b-uncensored",
+        provider="venice",
+    )
+    print(verdict.gateway.state, verdict.overall_state)
+
+    out = client.chat(
+        model="google/gemma-4-26b-a4b-uncensored",
+        provider="venice",
+        messages=[{"role": "user", "content": "hello"}],
+        max_output_tokens=256,
+    )
+    print(out["content"])
 ```
 
-Each operation opens one normally validated TLS connection and verifies a fresh
-nonce-bound gateway quote on that connection before minting tickets. Provider
-evidence, encrypted chat and image/speech keep that same connection; control
-remains separate. Approval/evidence expiry and cancellation are checked before
-tickets and immediately before content writes. Custom clients, proxies, redirect overrides
-and per-call disabling are refused. A `threading.Event` supplied as `cancel_event`
-cancels only that operation; completing or closing it never replays inference.
+`verdict.gateway.state` covers AnonRouter's servers and can reach `hardware_verified`. `verdict.overall_state` is the weakest result across everything checked, so it also reflects the provider route. Any mismatch between the route you requested and the route that was served makes the whole result untrusted.
 
-Before sending any HTTP bytes, an initial connection reset or handshake timeout
-may trigger one fresh preparation attempt. The failed socket and local watcher
-are closed/joined, and synchronous DNS has returned, before retry. The new attempt
-uses a fresh nonce and current policy; both attempts share one 180-second deadline
-starting before initial policy resolution. Certificate, quote, policy and
-verification failures are refused. Paid inference is never retried.
+## Images and speech
 
-Standalone `verify_gateway()` reports evidence and does not bind a later generic
-HTTP client. Ordinary mode remains unchanged. Required binding is sync only; DNS
-resolution and foreign verification/policy threads cannot be forcibly interrupted by
-cancellation. Closing the client signals both preparing and active bound
-operations, preventing their late completion from admitting tickets or content;
-bytes already dispatched cannot be recalled. A final paid response that closes
-its connection can finish through the complete body or streaming DONE marker.
-Earlier quote/provider close responses refuse reuse. Reports use private
-read-only snapshots with attribute access and `as_dict()`, rather than original
-dataclass instances; default and standalone evidence reports retain their types.
-
-The retained connection removes the A-quote/B-new-connection race during a DNS
-switch. Paid dispatch has a maximum 180-second admission window from initial
-preparation, shortened by approval/evidence expiry. Deployment retirement must retain
-the old serving slot through routing convergence and that window, then let
-admitted streams finish. Platform bounds, native quote capacity and actual
-deployment continuity remain operational responsibilities. Python 0.1.3 ships
-as GitHub release assets; PyPI publication remains disabled.
-
-## Provider crypto (protocols)
-
-- `other` (`near-v2`, direct NEAR route; legacy `near-ai` remains supported): Ed25519 client key, per-field ephemeral X25519,
-  HKDF-SHA256 info `ed25519_encryption`, XChaCha20-Poly1305. Wire = 32-byte X25519
-  pub then 24-byte nonce then ciphertext+tag, lowercase hex.
-- `venice` (`venice-legacy`): secp256k1 ECDH over the shared point's X coordinate,
-  HKDF-SHA256 info `ecdsa_encryption`, AES-256-GCM. Wire = 65-byte uncompressed pub
-  then 12-byte nonce then ciphertext+tag, hex.
-- `chutes` (`chutes-mlkem-v1`): ML-KEM-768, HKDF-SHA256 salt = ML-KEM ciphertext's
-  first 16 bytes, info `e2e-req-v1` / `e2e-resp-v1`, ChaCha20-Poly1305, gzip. Wire =
-  1088-byte ML-KEM ciphertext then 12-byte nonce then ciphertext+tag.
+Your API key gets a single-use ticket from one host, and the prompt goes to the other host with only that ticket.
 
 ```python
-from anonrouter_confidential.crypto import near, venice, chutes
-
-near.decrypt(ciphertext_hex, client_ed25519_secret_hex)     # -> str
-venice.decrypt(ciphertext_hex, client_private_hex)          # -> str
-chutes.decrypt_response(blob_bytes, response_secret_key)    # -> dict
-```
-
-## The two hops
-
-A request travels through two parties, and verifying one tells you nothing about
-the other:
-
-| | Question it answers | How to verify |
-| --- | --- | --- |
-| **Hop 1** AnonRouter's own routing plane | Is the data plane I am connected to the exact reviewed build, running inside an Intel TDX confidential VM, bound to my nonce and my origin? | `verify_gateway()` |
-| **Hop 2** the downstream provider route | Did the model provider terminate my request inside a verified enclave running measurements I pinned? | `verify_attestation()` |
-
-## Verify a route (hop 2)
-
-```python
+import os
 from anonrouter_confidential import create_client
 
-with create_client(
-    "https://api.anonrouter.ai",
-    api_key="...",
-    control_base_url="https://control.anonrouter.ai",
-) as client:
-    result = client.verify_attestation(model="venice-uncensored", provider="venice")
-    verdict = result["verdict"]            # OUR independent NormalizedVerdict
-    assert verdict.status == "ok"
-    assert verdict.verification_level == "provider-attested"
+with create_client(api_key=os.environ["ANONROUTER_API_KEY"]) as client:
+    image = client.images.generate(
+        model="alibaba/z-image-turbo",
+        prompt="a lighthouse in a storm",
+        size="1024x1024",
+    )
+    open("out.webp", "wb").write(image.data[0].data)
+
+    speech = client.audio.speech.create(
+        model="hexgrad/kokoro-82m",
+        input="The quick brown fox.",
+        voice="af_sky",
+    )
+    speech.write_to("out.mp3")
 ```
 
-## Verify AnonRouter itself (hop 1)
-
-```python
-result = client.verify_gateway()           # or policy=... to pin it yourself
-verdict = result["verdict"]
-assert verdict.status == "ok"
-print(verdict.binding.release_id, verdict.binding.compose_hash)
-```
-
-The policy a gateway is held to must never come from that gateway: a server that
-could hand you the list of builds you accept could always name itself. So the pins
-ship inside this package, and an origin with no pin raises rather than falling back
-to whatever the server claims.
-
-The production pin ships as `published` from an independently retained release
-manifest. It sets `requireHardwareVerified` while this package bundles no native
-engine, so verification fails closed with reason `quote_signature_chain` until
-you install one (see below). That is the honest answer: without chaining the
-quote's signature to Intel's roots, nobody has checked it came from real silicon.
-
-## Reaching `hardware_verified`
-
-This package bundles **no DCAP engine** inside the pure-Python wheel. The official
-linux/amd64 engine is built reproducibly in a digest-pinned container and can be
-installed separately; keeping it separate also makes the executable digest an
-explicit operator choice rather than an opaque wheel payload.
-
-What ships instead is a strict adapter to the reviewed engine, plus the
-Intel-signed collateral it needs (the engine performs no network access, on
-purpose). Get `anonrouter-dcap-verifier` either as the checksummed `linux/amd64`
-[release asset](https://github.com/anonrouter/anonrouter-sdk/releases) or, better,
-by building the same source yourself with `scripts/build-dcap-verifier.sh
---reproduce` and comparing digests. Put it on PATH or name it in
-`ANONROUTER_DCAP_VERIFIER_BIN`, and hop 1 can reach `hardware_verified`:
-
-The collateral cache shares only platform-wide Intel documents between nodes
-with the same FMSPC. Each returned input gets the PCK chain from its own quote.
-When preparing the native verifier, the adapter omits any supplied PCK-chain
-override so the engine parses that chain directly from the current quote.
-Signed TCB documents, revocation lists, freshness and quote signatures are still
-checked by the same pinned engine. A malformed or mismatched quote fails closed.
-
-```python
-from anonrouter_confidential.gateway.dcap import (
-    create_anonrouter_dcap_verifier,
-    describe_dcap_installation,
-)
-
-describe_dcap_installation()   # is one installed? which one? what is its digest?
-
-verdict = client.verify_route(
-    model=..., provider=...,
-    gateway={"chain_verifier": create_anonrouter_dcap_verifier()},
-)
-```
-
-The adapter fails closed on every path: a missing engine, a digest that does not
-match `expected_binary_sha256`, a timeout, a crash, non-JSON output, collateral it
-could not acquire, or a verdict whose measured report disagrees with the quote the
-SDK parsed. Without an engine the ceiling is `cryptographically_checked` and a
-policy demanding hardware verification fails closed. It never silently downgrades.
-
-Hop 2 is unaffected and still caps at `provider-attested`: several provider routes
-run GPU enclaves whose NVIDIA attestation chain is not available to verify, and
-chaining only the CPU quote would claim more than was checked.
+These requests are not end-to-end encrypted. The prompt is readable inside the attested enclave that handles it. Use strict mode to verify that enclave before sending. See the [media guide](https://github.com/anonrouter/anonrouter-sdk/blob/main/docs/ticketed-media.md).
 
 ## Verify from a terminal
 
 ```bash
 anonrouter-verify doctor --origin https://api.anonrouter.ai
-anonrouter-verify gateway --origin https://api.anonrouter.ai --dcap \
-  --require hardware_verified
-echo $?   # 0 met, 1 not met, 2 the command itself was wrong
+anonrouter-verify gateway --origin https://api.anonrouter.ai --dcap --require hardware_verified
 ```
 
-It prints one JSON document, identical to the one the JavaScript command prints,
-and exits nonzero unless the assurance you asked for was established. `gateway` is
-credential-free; `route` adds hop 2 and reads an API key only from an environment
-variable, never from argv. Neither prints a key, a ticket, request content, or the
-raw evidence body.
+The command exits with an error unless the assurance you asked for was established, so you can use it to gate a deploy or CI job.
 
-## Both hops at once
+## What this proves, and what it doesn't
 
-`verify_route()` is the stable contract: it establishes both hops, cross-binds them
-to the route you asked for, and reports ordered states rather than a boolean.
+| Result | Meaning |
+| --- | --- |
+| `hardware_verified` | The evidence chains to Intel's roots with an accepted security status. Needs the separate verifier program. |
+| `cryptographically_checked` | The evidence is internally consistent and matches the expected identity, but it is not proof of real hardware. |
+| `policy_matched` | The identity the evidence claims matched what you expected, but nothing cryptographically ties it to hardware. |
+| `untrusted` | A check failed. Do not rely on this route. |
+| `unavailable` | Verification could not run. This is also a failure. |
 
-```python
-from anonrouter_confidential import at_least
+Provider route checks currently stop at `cryptographically_checked`, because the GPU attestation on several routes is not available to verify.
 
-verdict = client.verify_route(
-    model="venice-uncensored",
-    provider="venice",
-    gateway=True,                          # omit to skip hop 1 entirely
-)
+On a `tee` route, your prompt is readable inside the verified enclave. On an `e2ee` route, it is encrypted to the provider's attested key, so AnonRouter's relay only handles ciphertext.
 
-verdict.overall_state                      # the weakest hop you ASKED about
-verdict.gateway.requested                  # whether hop 1 was in scope at all
-verdict.gateway.state                      # hardware_verified | ... | unavailable
-verdict.gateway.failed_checks              # the exact required checks that failed
-verdict.binding_mismatches                 # the route you asked for vs what was served
-verdict.content_visible_to_anonrouter      # True on a tee route
+## More
 
-if not at_least(verdict.overall_state, "cryptographically_checked"):
-    raise SystemExit(verdict.reason)
-```
-
-Gate with `at_least()` rather than comparing strings: it is the one place the
-ordering lives, so a threshold keeps meaning the same thing if a state is later
-inserted into the scale.
-
-`overall_state` only ever covers the hops you asked for, which is why
-`gateway.requested` sits beside it. A trusted verdict with
-`gateway.requested is False` establishes the provider enclave and makes no claim
-about the router. And any entry in `binding_mismatches` forces the whole verdict
-untrusted however strong the individual hops were.
-
-`verify()` returns the earlier report shape and is still supported; prefer
-`verify_route()`.
-
-## Confidential chat
-
-```python
-out = client.chat(
-    model="venice-uncensored",
-    provider="venice",
-    messages=[{"role": "user", "content": "hello"}],
-    max_output_tokens=256,
-)
-print(out["content"])
-```
-
-To refuse to send anything unless AnonRouter's own plane attests, pass
-`require_gateway=True`. The check runs before the first authenticated call, so a
-failure means no ticket was spent and no plaintext went near the wire.
-
-## Images and speech
-
-`client.images.generate(...)` and `client.audio.speech.create(...)` run
-AnonRouter's two-origin ticket exchange for you. The API key mints a
-**content-free** single-use ticket at the control origin; the prompt or text then
-goes to the confidential origin with that ticket as its only credential. Neither
-host sees both your identity and your content.
-
-```python
-from anonrouter_confidential import create_client
-
-# The production origins are the defaults, so this is the whole configuration.
-client = create_client(api_key=os.environ["ANONROUTER_API_KEY"])
-
-image = client.images.generate(
-    model="alibaba/z-image-turbo",
-    prompt="a lighthouse in a storm",
-    size="1024x1024",
-)
-open("out.png", "wb").write(image.data[0].data)
-print(image.selected_model, image.data[0].mime_type)
-
-speech = client.audio.speech.create(
-    model="venice/kokoro-text-to-speech",
-    input="The quick brown fox.",
-    voice="af_sky",
-)
-speech.write_to("out.mp3")
-```
-
-**The official OpenAI SDK cannot perform this exchange.** It has one base URL and
-one credential, so it would send your API key and your prompt to the same host in
-one request. Point it at the confidential origin and the mint answers 404; point
-it at the control origin and media answers 503. Both failures are the design
-working. AnonRouter's OpenAI-compatibility broker is a **different, lower-privacy
-option** — one service receives the key and the prompt together — and this SDK
-never selects it implicitly, never falls back to it, and has no flag that enables
-it.
-
-Unsupported OpenAI parameters are **refused, not dropped**: `n` other than 1,
-`response_format` other than `b64_json` / `mp3`, `speed` other than 1, and unknown
-keywords like `quality`. Silently ignoring them would hand you something other
-than what you paid for. Failed POSTs are **never retried**, because a media
-generation is billed on the provider attempt.
-
-One detail that matters for speech: the ticket binds the exact character count,
-and the server counts **UTF-16 code units**, not Python code points. `"Hi 😀"` is
-4 to `len()` and 5 to the server. The SDK uses the server's counting
-(`utf16_length`), so emoji do not produce a mysterious 409.
-
-**Media is not end-to-end encrypted, unlike `chat()`.** The prompt reaches the
-confidential origin as plaintext. What protects it is the origin split (the host
-holding the prompt never holds your credential) plus the TDX enclave that host
-runs in — which you can verify yourself with `verify_gateway()` before you send
-anything, against the same origin the content goes to. That is a real property
-and a weaker one than E2EE chat; if your threat model needs AnonRouter to be
-unable to read the content even in principle, media does not meet it today.
-
-Full contract, compatibility matrix, bound ticket facts, and the error taxonomy:
-[`docs/ticketed-media.md`](../docs/ticketed-media.md).
-
-## Verification ceiling (honest by design)
-
-Hop 2's ceiling is `provider-attested` for NEAR / Venice / Chutes: the chain to
-the vendor roots is deliberately not wired there, because several of those routes
-run GPU enclaves whose NVIDIA attestation is not available to verify, and chaining
-only the CPU quote would claim more than was checked. For Tinfoil, Python
-validates the official verifier document returned by AnonRouter against the
-fixed Tinfoil provider-authority policy, and requires the pinned-TLS observation
-AnonRouter recorded on the serving connection: the document reports its attested
-TLS key twice from one AMD report field, so on its own it proves nothing about
-what is actually being served. The Tinfoil hardware claim is AMD SEV-SNP alone.
-No NVIDIA GPU evidence is verified on this route, and nothing binds the model
-weights. Both the document and the observation come from AnonRouter here. To
-verify the Tinfoil enclave directly and independently, use Tinfoil's own Python
-client; the JavaScript package exposes an equivalent as `verifyTinfoilEnclave()`,
-which runs the official verifier and then pins its own connection.
-
-Hop 1 can reach `hardware_verified`, and only with a real engine that actually
-chained the quote to Intel's roots with an accepted TCB status. Nothing here emits
-that state on its own.
-
-On the production confidential origin your plaintext never reaches ordinary
-AnonRouter infrastructure: the relay runs inside an attested Intel TDX CVM and
-terminates TLS in-enclave (`transport_terminates_in_tee` and
-`tls_certificate_bound_to_quote` are required checks in the shipped policy).
-
-What still differs between the modalities is the TRUST SET. On a `tee` route the
-relay handles your plaintext inside that enclave, so you are trusting the reviewed
-build — a build changed to exfiltrate it would change the measurements and hop 1
-would stop verifying, which makes cheating detectable rather than impossible. On an
-`e2ee` route the request is encrypted to the provider's attested key, so the relay
-holds ciphertext whatever code it runs and our build is not in your trust set at
-all. That is what `content_visible_to_anonrouter` marks.
+- [Verification guide](https://github.com/anonrouter/anonrouter-sdk/blob/main/VERIFYING.md)
+- [Security and trust model](https://github.com/anonrouter/anonrouter-sdk/blob/main/SECURITY.md)
+- [Source code](https://github.com/anonrouter/anonrouter-sdk)
 
 ## License
 
-Apache-2.0.
+Apache-2.0

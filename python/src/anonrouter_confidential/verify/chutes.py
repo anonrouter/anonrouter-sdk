@@ -183,7 +183,7 @@ def verify_chutes(evidence: Any, expectations: AttestationExpectations) -> Norma
     # where the question does not arise, when in fact it arises and the provider
     # does not answer it. It is advisory rather than required because the route
     # genuinely works and refusing it would be a policy decision about live
-    # traffic, not a verification result — but a reader now sees the gap in
+    # traffic, not a verification result, but a reader now sees the gap in
     # ``advisory_gaps`` instead of having to know the format to infer it.
     #
     # What still binds the model on this route is AnonRouter's own attested relay

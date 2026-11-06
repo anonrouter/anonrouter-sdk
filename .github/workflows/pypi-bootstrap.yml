@@ -1,9 +1,25 @@
-name: Publish Python 0.1.3 to PyPI
+name: Publish Python package
 
-# One-time publication of the already accepted release. Never rebuild or retag
-# 0.1.3, and never rerun the npm publication to bootstrap Python.
+# Manual first publication of anonrouter-confidential. Run with target testpypi
+# first. Run with target pypi only after that page has been approved, passing the
+# two hashes from the rehearsal so the real upload is the exact bytes that were
+# rehearsed. A published version cannot be replaced on either index.
 on:
   workflow_dispatch:
+    inputs:
+      target:
+        description: Index to publish to
+        type: choice
+        options: [testpypi, pypi]
+        default: testpypi
+      wheel_sha256:
+        description: Rehearsed wheel SHA-256 (required for pypi)
+        type: string
+        required: false
+      sdist_sha256:
+        description: Rehearsed sdist SHA-256 (required for pypi)
+        type: string
+        required: false
 
 permissions:
   contents: read
@@ -13,55 +29,105 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  acceptance:
-    name: Validate released artifacts and current gateway
-    if: github.ref == 'refs/heads/main'
+  build:
+    name: Build and verify the distributions
     runs-on: ubuntu-latest
     steps:
+      - name: Real publication runs only from main with rehearsed hashes
+        if: inputs.target == 'pypi'
+        env:
+          WHEEL_SHA256: ${{ inputs.wheel_sha256 }}
+          SDIST_SHA256: ${{ inputs.sdist_sha256 }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          echo "$WHEEL_SHA256" | grep -Eq '^[0-9a-f]{64}$'
+          echo "$SDIST_SHA256" | grep -Eq '^[0-9a-f]{64}$'
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-        with:
-          # Accepted v0.1.3 commit, independent of mutable main and tag names.
-          ref: deb7c0ec23d7f2b081eaaca71414daae69c4c42a
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
-        with:
-          node-version: "22"
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.11"
-      - name: Download and verify the accepted release bytes
+      - name: Build with pinned tools
+        working-directory: python
+        run: |
+          set -euo pipefail
+          python -m pip install build==1.6.1 hatchling==1.33.0 twine==7.0.0
+          python -m build --no-isolation --outdir ../dist/pypi
+          python -m twine check --strict ../dist/pypi/*
+      - name: Record hashes
+        run: |
+          set -euo pipefail
+          cd dist/pypi
+          sha256sum -- * | tee SHA256SUMS
+          {
+            echo '### Distribution hashes'
+            echo '```'
+            cat SHA256SUMS
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Real publication matches the rehearsal
+        if: inputs.target == 'pypi'
+        env:
+          WHEEL_SHA256: ${{ inputs.wheel_sha256 }}
+          SDIST_SHA256: ${{ inputs.sdist_sha256 }}
+        run: |
+          set -euo pipefail
+          cd dist/pypi
+          test "$(sha256sum -- *.whl | cut -d' ' -f1)" = "$WHEEL_SHA256"
+          test "$(sha256sum -- *.tar.gz | cut -d' ' -f1)" = "$SDIST_SHA256"
+      - name: Clean install verifies production without credentials or inference
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          mkdir -p dist/artifacts dist/pypi
-          gh release download v0.1.3 --repo anonrouter/anonrouter-sdk --dir dist/artifacts
-          cd dist/artifacts
-          echo 'b11541a1b201d49e0b005c5d5d35ab23fb180f6d2606d690c638456daa324583  SHA256SUMS' | sha256sum --check --strict
-          sha256sum --check --strict SHA256SUMS
-          cp anonrouter_confidential-0.1.3-py3-none-any.whl anonrouter_confidential-0.1.3.tar.gz ../pypi/
-      - name: Validate PyPI metadata
-        run: |
-          python -m pip install build twine
-          python -m twine check --strict dist/pypi/*
-      - name: Fresh packed installs verify current production without credentials or inference
-        run: |
-          chmod +x dist/artifacts/anonrouter-dcap-verifier-linux-amd64
-          node scripts/check-live-gateways.mjs --out live-sdk-acceptance.json
+          mkdir -p dist/engine
+          gh release download v0.1.3 --repo anonrouter/anonrouter-sdk --dir dist/engine \
+            --pattern SHA256SUMS --pattern anonrouter-dcap-verifier-linux-amd64
+          (
+            cd dist/engine
+            echo 'b11541a1b201d49e0b005c5d5d35ab23fb180f6d2606d690c638456daa324583  SHA256SUMS' | sha256sum --check --strict
+            grep ' anonrouter-dcap-verifier-linux-amd64$' SHA256SUMS | sha256sum --check --strict
+            chmod +x anonrouter-dcap-verifier-linux-amd64
+          )
+          python -m venv "$RUNNER_TEMP/clean"
+          wheel=$(ls dist/pypi/*.whl)
+          "$RUNNER_TEMP/clean/bin/pip" install "${wheel}[connection-binding]"
+          "$RUNNER_TEMP/clean/bin/pip" check
+          export ANONROUTER_DCAP_VERIFIER_BIN="$PWD/dist/engine/anonrouter-dcap-verifier-linux-amd64"
+          cd "$RUNNER_TEMP"
+          clean/bin/anonrouter-verify gateway --origin https://api.anonrouter.ai --dcap --require hardware_verified
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
-          name: pypi-distributions
-          path: dist/pypi/
+          name: python-distributions
+          path: |
+            dist/pypi/*.whl
+            dist/pypi/*.tar.gz
           if-no-files-found: error
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
-        if: always()
-        with:
-          name: pypi-live-acceptance
-          path: live-sdk-acceptance.json
-          if-no-files-found: warn
 
-  publish:
-    name: Publish accepted Python distributions
-    needs: acceptance
+  publish-testpypi:
+    name: Publish to TestPyPI
+    needs: build
+    if: inputs.target == 'testpypi'
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/project/anonrouter-confidential/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          name: python-distributions
+          path: dist/pypi
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        with:
+          packages-dir: dist/pypi
+          repository-url: https://test.pypi.org/legacy/
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: build
+    if: inputs.target == 'pypi'
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -71,7 +137,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
         with:
-          name: pypi-distributions
+          name: python-distributions
           path: dist/pypi
       - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:

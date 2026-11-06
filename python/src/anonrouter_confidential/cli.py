@@ -278,7 +278,7 @@ def _hop_document(hop: RouteHopVerdict) -> dict[str, Any]:
     }
 
 
-#: The deprecated Phala rollback name: still pinned, removed at Phala retirement.
+#: A deprecated origin that stays pinned until it is removed.
 DEPRECATED_PHALA_ORIGIN = "https://api.private.anonrouter.ai"
 
 

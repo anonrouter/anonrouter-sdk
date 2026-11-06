@@ -384,7 +384,7 @@ print(json.dumps({
         assert(probeOutput.providerPinsPresent, "no provider measurement pins found after install");
         assert(probeOutput.platformGate, "platform qualification gate or legacy pin form changed in the artifact");
         assert(probeOutput.releaseV3Root, "release-v3 owner root or API missing after install");
-        assert(probeOutput.version === "0.1.3", `installed __version__ is ${probeOutput.version}`);
+        assert(probeOutput.version === "0.1.3.post1", `installed __version__ is ${probeOutput.version}`);
       });
 
       const doctor = runAllowingFailure(join(venv, "bin", "anonrouter-verify"), ["doctor", "--compact"]);
