@@ -338,13 +338,8 @@ Ongoing deployment continuity remains an operational responsibility.
 > Install the Python package from [PyPI](https://pypi.org/project/anonrouter-confidential/).
 
 ```bash
-# From a clone of this repo:
-git clone https://github.com/anonrouter/anonrouter-sdk
-cd anonrouter-sdk
-pip install "./python[mlkem]"                  # mlkem extra enables the Chutes route
-
-# Once it is on PyPI:
-# pip install "anonrouter-confidential[mlkem]"
+pip install "anonrouter-confidential[connection-binding]"
+pip install "anonrouter-confidential[connection-binding,mlkem]"  # adds the Chutes route
 ```
 
 Python 3.10 or newer. CI runs the suite on 3.10, 3.11, 3.12 and 3.13.
