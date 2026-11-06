@@ -25,6 +25,8 @@ Both `@anonrouter/confidential` and `anonrouter-confidential` also install an
 packages. Python 0.1.3 is available as a checksummed wheel/sdist on the
 [GitHub release](https://github.com/anonrouter/anonrouter-sdk/releases/tag/v0.1.3).
 PyPI publication remains disabled; install Python from those assets or source.
+The PyPI organization is approved; the [first-publication runbook](docs/pypi-first-publication.md)
+prepares the accepted 0.1.3 artifacts for organization-owned trusted publishing.
 
 Since 2026-10-14 `api.anonrouter.ai` is served by Google Cloud Intel TDX
 content nodes. 0.1.3 (JavaScript and Python) verifies them against the

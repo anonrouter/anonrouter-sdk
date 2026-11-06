@@ -190,11 +190,10 @@ jobs:
 
   # ---- Registry publication ---------------------------------------------------
   #
-  # Both jobs below are complete and both are OFF. They run only when the
-  # repository variable named in `if:` is set to "true", which is an owner action
-  # taken once, after the corresponding registry account and trusted publisher
-  # exist. Until then a tag push produces a GitHub release and touches no
-  # registry.
+  # Each registry is independently gated by its repository variable. npm is
+  # enabled. PyPI's first 0.1.3 upload uses pypi-bootstrap.yml; enable this
+  # workflow's PyPI publisher only after that bootstrap. See
+  # docs/pypi-first-publication.md for both exact publisher identities.
   #
   # PyPI and every npm release after the first use a short-lived OIDC identity
   # minted for this workflow run. npm cannot configure a trusted publisher until
@@ -250,6 +249,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: [artifacts, live-acceptance]
     if: vars.PUBLISH_PYPI == 'true'
+    environment:
+      name: pypi
+      url: https://pypi.org/project/anonrouter-confidential/
     permissions:
       contents: read
       id-token: write
@@ -260,6 +262,8 @@ jobs:
           path: dist/artifacts
       - name: Keep only the Python distributions
         run: |
+          set -euo pipefail
+          (cd dist/artifacts && sha256sum --check --strict SHA256SUMS)
           mkdir -p dist/pypi
           cp dist/artifacts/anonrouter_confidential-* dist/pypi/
           ls -l dist/pypi
