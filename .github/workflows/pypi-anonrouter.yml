@@ -1,6 +1,6 @@
-name: Publish anonrouter to PyPI
+name: Publish anonrouter-sdk to PyPI
 
-# Manual publication of the `anonrouter` package. The hashes come from the build
+# Manual publication of the `anonrouter-sdk` package. The hashes come from the build
 # that was tested, so the upload is exactly those bytes. A published version
 # cannot be replaced.
 on:
@@ -71,7 +71,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/project/anonrouter/
+      url: https://pypi.org/project/anonrouter-sdk/
     permissions:
       id-token: write
     steps:

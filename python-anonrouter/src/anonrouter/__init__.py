@@ -1,7 +1,7 @@
 """AnonRouter for Python.
 
 This package exposes the main entry points of ``anonrouter-confidential`` under
-the shorter ``anonrouter`` name.
+the shorter ``anonrouter`` import name.
 """
 
 from __future__ import annotations

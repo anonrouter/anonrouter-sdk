@@ -1,5 +1,5 @@
 [project]
-name = "anonrouter"
+name = "anonrouter-sdk"
 version = "0.1.0"
 description = "The AnonRouter Python package: verified routes and encrypted inference."
 readme = "README.md"

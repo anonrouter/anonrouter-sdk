@@ -1,14 +1,14 @@
-# anonrouter
+# anonrouter-sdk
 
 The AnonRouter Python package. Verify what is running behind AnonRouter, then send encrypted requests from your own app.
 
 ## Install
 
 ```bash
-pip install anonrouter
+pip install anonrouter-sdk
 ```
 
-Requires Python 3.10 or newer. This installs [`anonrouter-confidential`](https://pypi.org/project/anonrouter-confidential/) and gives you its main functions under the shorter `anonrouter` name.
+Requires Python 3.10 or newer. This installs [`anonrouter-confidential`](https://pypi.org/project/anonrouter-confidential/) and gives you its main functions through `import anonrouter`.
 
 ## Verify AnonRouter
 
