@@ -1,0 +1,84 @@
+name: Publish anonrouter-sdk to PyPI
+
+# Manual publication of the `anonrouter-sdk` package. The hashes come from the build
+# that was tested, so the upload is exactly those bytes. A published version
+# cannot be replaced.
+on:
+  workflow_dispatch:
+    inputs:
+      wheel_sha256:
+        description: Tested wheel SHA-256
+        type: string
+        required: true
+      sdist_sha256:
+        description: Tested sdist SHA-256
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pypi-anonrouter
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and verify the distributions
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+      - name: Build with pinned tools
+        working-directory: python-anonrouter
+        run: |
+          set -euo pipefail
+          python -m pip install build==1.6.1 hatchling==1.33.0 twine==7.0.0
+          python -m build --no-isolation --outdir ../dist/pypi
+          python -m twine check --strict ../dist/pypi/*
+      - name: Check the tested hashes
+        env:
+          WHEEL_SHA256: ${{ inputs.wheel_sha256 }}
+          SDIST_SHA256: ${{ inputs.sdist_sha256 }}
+        run: |
+          set -euo pipefail
+          cd dist/pypi
+          sha256sum -- * | tee -a "$GITHUB_STEP_SUMMARY"
+          test "$(sha256sum -- *.whl | cut -d' ' -f1)" = "$WHEEL_SHA256"
+          test "$(sha256sum -- *.tar.gz | cut -d' ' -f1)" = "$SDIST_SHA256"
+      - name: Clean install passes its tests and reaches production
+        run: |
+          set -euo pipefail
+          python -m venv "$RUNNER_TEMP/clean"
+          "$RUNNER_TEMP/clean/bin/pip" install "$(ls dist/pypi/*.whl)" pytest
+          "$RUNNER_TEMP/clean/bin/pip" check
+          "$RUNNER_TEMP/clean/bin/python" -m pytest -q python-anonrouter/tests
+          "$RUNNER_TEMP/clean/bin/anonrouter-verify" doctor --compact
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: anonrouter-distributions
+          path: |
+            dist/pypi/*.whl
+            dist/pypi/*.tar.gz
+          if-no-files-found: error
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/anonrouter-sdk/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          name: anonrouter-distributions
+          path: dist/pypi
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        with:
+          packages-dir: dist/pypi

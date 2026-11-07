@@ -17,6 +17,7 @@ lives here in the open.
 | `@anonrouter/confidential` | JavaScript / TypeScript (npm) | Independently verify TEE / E2EE routes, run end-to-end-encrypted inference, and generate images / speech over the two-origin ticket exchange. |
 | `@anonrouter/client` | JavaScript / TypeScript (npm) | Thin, dependency-free API client for the public (plaintext / TEE / private) routes. |
 | `anonrouter-confidential` | Python (PyPI) | Python verification, E2EE and media client, with the same release-v3 GCP verification as JavaScript. |
+| `anonrouter-sdk` | Python (PyPI) | Installs `anonrouter-confidential` and exposes its main functions through `import anonrouter`. |
 
 Both `@anonrouter/confidential` and `anonrouter-confidential` also install an
 `anonrouter-verify` command. See [Verify from a terminal](#verify-from-a-terminal).
