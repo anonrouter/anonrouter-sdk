@@ -6,8 +6,6 @@ on your server.
 
 ## Install
 
-Once the package is available on npm:
-
 ```sh
 npm install ai@7 @anonrouter/ai-sdk-provider
 ```
