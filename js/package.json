@@ -2,7 +2,7 @@
   "name": "anonrouter-sdk-js",
   "private": true,
   "description": "npm workspaces root for the AnonRouter JS SDKs",
-  "workspaces": ["confidential", "client"],
+  "workspaces": ["confidential", "client", "ai-sdk-provider"],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",

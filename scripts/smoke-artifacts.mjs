@@ -13,8 +13,8 @@
 //   1. builds the artifact (npm pack / python -m build),
 //   2. installs it into a fresh, empty environment with no repo on the path,
 //   3. imports every documented entry point,
-//   4. runs the installed command and checks its exit code and its JSON, and
-//   5. asserts the shipped measurement pins are present and parse.
+//   4. exercises the shipped commands and the AI SDK provider, and
+//   5. checks that packages with measurement pins ship those pins.
 //
 //   node scripts/smoke-artifacts.mjs [--keep]
 //
@@ -56,10 +56,12 @@ function check(name, fn) {
   try {
     fn();
     console.log(`ok: ${name}`);
+    return true;
   } catch (error) {
     console.error(`FAIL: ${name}`);
     console.error(`      ${error instanceof Error ? error.message : String(error)}`);
     failures += 1;
+    return false;
   }
 }
 
@@ -78,13 +80,15 @@ run("npm", [
   "pack",
   "-w", "@anonrouter/confidential",
   "-w", "@anonrouter/client",
+  "-w", "@anonrouter/ai-sdk-provider",
   "--pack-destination", packDir
 ], { cwd: join(root, "js") });
 
 const tarballs = readdirSync(packDir).filter((name) => name.endsWith(".tgz"));
 const confidentialTarball = tarballs.find((name) => name.startsWith("anonrouter-confidential-"));
 const clientTarball = tarballs.find((name) => name.startsWith("anonrouter-client-"));
-assert(confidentialTarball && clientTarball, "npm pack did not produce both tarballs");
+const aiProviderTarball = tarballs.find((name) => name.startsWith("anonrouter-ai-sdk-provider-"));
+assert(confidentialTarball && clientTarball && aiProviderTarball, "npm pack did not produce all three tarballs");
 
 const jsHome = join(workspace, "js-consumer");
 mkdirSync(jsHome, { recursive: true });
@@ -95,19 +99,16 @@ writeFileSync(join(jsHome, "package.json"), JSON.stringify({
   version: "0.0.0"
 }, null, 2));
 
-let npmInstalled = true;
-try {
+const npmInstalled = check("the npm tarballs install in a clean consumer", () => {
   run("npm", [
     "install",
     "--no-audit", "--no-fund",
     join(packDir, confidentialTarball),
-    join(packDir, clientTarball)
+    join(packDir, clientTarball),
+    join(packDir, aiProviderTarball),
+    "ai@^7.0.0"
   ], { cwd: jsHome });
-} catch (error) {
-  npmInstalled = false;
-  console.error("SKIPPED: npm install from the tarballs failed (no registry access?)");
-  console.error(`         ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`);
-}
+});
 
 if (npmInstalled) {
   // Every documented entry point, imported the way a user would import it.
@@ -192,6 +193,73 @@ console.log(JSON.stringify(report));
   check("the media production origin defaults survive packaging",
     () => assert(probeOutput.mediaDefaults, "media defaults or the UTF-16 counter did not survive packaging"));
 
+  check("the installed AI SDK provider generates text through the private ticket flow", () => {
+    const aiProbe = join(jsHome, "ai-provider-probe.mjs");
+    writeFileSync(aiProbe, `
+import assert from "node:assert/strict";
+import { generateText } from "ai";
+import { anonrouter, createAnonRouter } from "@anonrouter/ai-sdk-provider";
+
+assert.equal(anonrouter.specificationVersion, "v4");
+assert.equal(anonrouter("smoke/model").modelId, "smoke/model");
+const calls = [];
+const provider = createAnonRouter({
+  apiKey: "ar_smoke-probe-key-not-a-credential",
+  fetch: async (input, init) => {
+    const request = new Request(input, init);
+    calls.push(request.url);
+    assert.equal(request.method, "POST");
+    const body = await request.json();
+    assert.equal(body.model, "smoke/model");
+    assert.equal(body.max_completion_tokens ?? body.max_tokens, 64);
+
+    if (request.url === "https://control.anonrouter.ai/v1/inference/tickets") {
+      assert.equal(request.headers.get("authorization"), "Bearer ar_smoke-probe-key-not-a-credential");
+      assert.equal(body.messages, undefined);
+      return Response.json({
+        ticket: "smoke-ticket",
+        model: "smoke/model",
+        max_output_tokens: 64,
+        operation: "chat",
+        privacy_class: "private",
+        expires_in: 30
+      });
+    }
+
+    assert.equal(request.url, "https://api.anonrouter.ai/v1/chat/completions");
+    assert.equal(request.headers.get("authorization"), null);
+    assert.equal(request.headers.get("x-anonrouter-ticket"), "smoke-ticket");
+    assert.equal(body.messages[0].content, "Test the installed adapter.");
+    return Response.json({
+      id: "smoke-completion",
+      object: "chat.completion",
+      created: 1,
+      model: "smoke/model",
+      choices: [{
+        index: 0,
+        message: { role: "assistant", content: "Packed provider works." },
+        finish_reason: "stop"
+      }],
+      usage: { prompt_tokens: 6, completion_tokens: 4, total_tokens: 10 }
+    });
+  }
+});
+
+const result = await generateText({
+  model: provider("smoke/model"),
+  prompt: "Test the installed adapter.",
+  maxOutputTokens: 64,
+  maxRetries: 0
+});
+assert.equal(result.text, "Packed provider works.");
+assert.deepEqual(calls, [
+  "https://control.anonrouter.ai/v1/inference/tickets",
+  "https://api.anonrouter.ai/v1/chat/completions"
+]);
+`);
+    run(process.execPath, [aiProbe], { cwd: jsHome });
+  });
+
   // The command, run from the installed bin rather than from the repo.
   // The installed bin itself, not `npx`: this is the symlink npm creates from the
   // package's `bin` entry, and whether it exists and is executable is part of what
@@ -217,7 +285,13 @@ console.log(JSON.stringify(report));
   writeFileSync(join(jsHome, "types.ts"), `
 import { createClient, type RouteVerdict, type RouteVerificationState } from "@anonrouter/confidential";
 import { createAnonRouterDcapVerifier } from "@anonrouter/confidential/dcap";
+import { createAnonRouter } from "@anonrouter/ai-sdk-provider";
+import { generateText } from "ai";
 const client = createClient({ baseUrl: "https://api.anonrouter.ai", apiKey: "k" });
+const provider = createAnonRouter({ apiKey: "k" });
+export function generate() {
+  return generateText({ model: provider("smoke/model"), prompt: "Test the provider." });
+}
 export async function gate(): Promise<RouteVerificationState> {
   const verdict: RouteVerdict = await client.verifyRoute({
     model: "m", provider: "venice",
