@@ -55,14 +55,14 @@
     "eventsource-parser": "^3.1.1"
   },
   "peerDependencies": {
-    "ai": "^7.0.0",
+    "ai": "^7.0.170",
     "zod": "^3.25.76 || ^4.1.8"
   },
   "devDependencies": {
-    "@types/node": "^22",
-    "ai": "^7.0.0",
-    "typescript": "^5.7.2",
-    "vitest": "^4.1.10",
-    "zod": "^4.1.8"
+    "@types/node": "^26",
+    "ai": "^7.0.170",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0",
+    "zod": "^4.6.7"
   }
 }
